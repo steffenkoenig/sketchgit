@@ -175,9 +175,16 @@ export class CollaborationManager {
       layer.appendChild(el);
       this.remoteCursors[clientId] = el.id;
     }
-    el.innerHTML =
-      `<div class="rcursor-tip" style="border-bottom-color:${data.color}"></div>` +
-      `<div class="rcursor-name" style="background:${data.color}">${data.name}</div>`;
+    el.replaceChildren();
+    const tip = document.createElement('div');
+    tip.className = 'rcursor-tip';
+    tip.style.borderBottomColor = data.color;
+    const nameEl = document.createElement('div');
+    nameEl.className = 'rcursor-name';
+    nameEl.style.background = data.color;
+    nameEl.textContent = data.name;
+    el.appendChild(tip);
+    el.appendChild(nameEl);
     el.style.left = data.x + 'px';
     el.style.top = data.y + 'px';
   }
@@ -207,28 +214,31 @@ export class CollaborationManager {
 
     const list = document.getElementById('connectedList');
     if (list) {
-      list.innerHTML = others
-        .map(
-          (c) =>
-            `<div class="connected-peer">` +
-            `<div style="width:6px;height:6px;background:${c.color || 'var(--a3)'};border-radius:50%"></div>` +
-            `${(c.name || 'User').slice(0, 20)}` +
-            `</div>`,
-        )
-        .join('');
+      list.replaceChildren();
+      for (const c of others) {
+        const peer = document.createElement('div');
+        peer.className = 'connected-peer';
+        const dot = document.createElement('div');
+        dot.style.width = '6px';
+        dot.style.height = '6px';
+        dot.style.background = c.color || 'var(--a3)';
+        dot.style.borderRadius = '50%';
+        peer.appendChild(dot);
+        peer.appendChild(document.createTextNode((c.name || 'User').slice(0, 20)));
+        list.appendChild(peer);
+      }
     }
 
     const row = document.getElementById('avatarRow');
     if (row) {
-      row.innerHTML = others
-        .slice(0, 4)
-        .map(
-          (c) =>
-            `<div class="av" style="background:${c.color || '#7c6eff'}">` +
-            `${(c.name || 'U').slice(0, 1).toUpperCase()}` +
-            `</div>`,
-        )
-        .join('');
+      row.replaceChildren();
+      for (const c of others.slice(0, 4)) {
+        const av = document.createElement('div');
+        av.className = 'av';
+        av.style.background = c.color || '#7c6eff';
+        av.textContent = (c.name || 'U').slice(0, 1).toUpperCase();
+        row.appendChild(av);
+      }
     }
   }
 
