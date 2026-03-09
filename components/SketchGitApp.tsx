@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import { useSession, signIn, signOut } from "next-auth/react";
+import Link from "next/link";
 import { createSketchGitApp } from "../lib/sketchgit/createSketchGitApp";
 
 type SketchGitAppApi = ReturnType<typeof createSketchGitApp>;
@@ -9,6 +11,7 @@ type SketchGitAppApi = ReturnType<typeof createSketchGitApp>;
 export default function SketchGitApp() {
   const appRef = useRef<SketchGitAppApi | null>(null);
   const [fabricReady, setFabricReady] = useState(false);
+  const { data: session, status } = useSession();
 
   useEffect(() => {
     if (!fabricReady || appRef.current) return;
@@ -47,6 +50,44 @@ export default function SketchGitApp() {
         <button className="topbtn danger" onClick={() => call("openMergeModal")} id="mergeBtn">⇄ Merge</button>
         <button className="topbtn" onClick={() => call("openBranchCreate")}>⎇ Branch</button>
         <button className="topbtn primary" onClick={() => call("openCommitModal")} id="commitBtn">● Commit</button>
+
+        {/* Auth section */}
+        <div className="sep"></div>
+        {status === "loading" ? null : session?.user ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <Link
+              href="/dashboard"
+              style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                background: "var(--bg2)", border: "1px solid var(--bdr1)",
+                borderRadius: "6px", padding: "3px 10px",
+                fontSize: "12px", color: "var(--tx1)", textDecoration: "none",
+                cursor: "pointer",
+              }}
+              title="My Drawings"
+            >
+              <span>👤</span>
+              <span style={{ maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {session.user.name ?? session.user.email}
+              </span>
+            </Link>
+            <button
+              className="topbtn"
+              onClick={() => signOut({ callbackUrl: "/" })}
+              title="Sign out"
+            >
+              ⤴ Sign out
+            </button>
+          </div>
+        ) : (
+          <button
+            className="topbtn"
+            onClick={() => signIn()}
+            title="Sign in or create an account"
+          >
+            👤 Sign in
+          </button>
+        )}
       </div>
 
       <div id="wrap">
