@@ -53,7 +53,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           <h2 style={{ margin: 0, fontSize: "20px" }}>Something went wrong</h2>
           <p style={{ margin: 0, color: "#888", fontSize: "14px", textAlign: "center", maxWidth: "360px" }}>
             An unexpected error occurred in SketchGit.
-            Your work is saved — refreshing the page should restore it.
+            Any uncommitted changes may not be recoverable — try refreshing the page.
           </p>
           {this.state.error && (
             <pre

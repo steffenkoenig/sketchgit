@@ -142,7 +142,7 @@ async function dbEnsureRoom(roomId, ownerId) {
       update: {},
     });
   } catch (err) {
-    logger.error({ roomId, err: err?.message }, "db.ensureRoom failed");
+    logger.error({ roomId, err }, "db.ensureRoom failed");
   }
 }
 
@@ -182,7 +182,7 @@ async function dbSaveCommit(roomId, sha, commitData, userId) {
       }),
     ]);
   } catch (err) {
-    logger.error({ roomId, sha, err: err?.message }, "db.saveCommit failed");
+    logger.error({ roomId, sha, err }, "db.saveCommit failed");
   }
 }
 
@@ -220,7 +220,7 @@ async function dbLoadSnapshot(roomId) {
       detached: state?.isDetached && state.headSha ? state.headSha : null,
     };
   } catch (err) {
-    logger.error({ roomId, err: err?.message }, "db.loadSnapshot failed");
+    logger.error({ roomId, err }, "db.loadSnapshot failed");
     return null;
   }
 }

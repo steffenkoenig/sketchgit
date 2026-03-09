@@ -42,8 +42,12 @@ export class CollaborationManager {
   private readonly cb: CollabCallbacks;
 
   // ─── P006: draw-delta state ───────────────────────────────────────────────
-  /** Last canvas snapshot we broadcast; used to compute deltas. */
-  private lastBroadcastSnapshot: Record<string, Record<string, unknown>> = {};
+  /**
+   * Pre-serialized snapshot of the last broadcast canvas state.
+   * Stored as `id → JSON string` so that diffing is a cheap string comparison
+   * rather than a full re-serialisation on every flush.
+   */
+  private lastBroadcastSnapshot: Record<string, string> = {};
   /** Pending draw-delta flush timer. */
   private drawFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -259,11 +263,16 @@ export class CollaborationManager {
     }
     const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
 
-    // Build current id → object map
-    const current: Record<string, Record<string, unknown>> = {};
+    // Build current id → serialised-object map (string comparison is O(1)).
+    const currentSerialized: Record<string, string> = {};
+    const currentObjects: Record<string, Record<string, unknown>> = {};
     for (const obj of objects) {
       const id = obj._id as string | undefined;
-      if (id) current[id] = obj;
+      if (id) {
+        const serialized = JSON.stringify(obj);
+        currentSerialized[id] = serialized;
+        currentObjects[id] = obj;
+      }
     }
 
     const prev = this.lastBroadcastSnapshot;
@@ -271,29 +280,40 @@ export class CollaborationManager {
     // If we have no prior snapshot, fall back to a full `draw` message.
     if (Object.keys(prev).length === 0 && objects.length > 0) {
       this.ws.send({ type: 'draw', canvas: canvasJson });
-      this.lastBroadcastSnapshot = current;
+      this.lastBroadcastSnapshot = currentSerialized;
       return;
     }
 
     const added: Record<string, unknown>[] = [];
+    // `modified` carries only the _id plus changed properties (minimal patch).
     const modified: Record<string, unknown>[] = [];
     const removed: string[] = [];
 
-    for (const [id, obj] of Object.entries(current)) {
+    for (const [id, serialized] of Object.entries(currentSerialized)) {
       if (!prev[id]) {
-        added.push(obj);
-      } else if (JSON.stringify(prev[id]) !== JSON.stringify(obj)) {
-        modified.push(obj);
+        // New object — send full JSON so the peer can add it.
+        added.push(currentObjects[id]);
+      } else if (prev[id] !== serialized) {
+        // Changed object — send only the id plus every property that differs.
+        const prevObj = JSON.parse(prev[id]) as Record<string, unknown>;
+        const currObj = currentObjects[id];
+        const patch: Record<string, unknown> = { _id: id };
+        for (const [k, v] of Object.entries(currObj)) {
+          if (k !== '_id' && JSON.stringify(prevObj[k]) !== JSON.stringify(v)) {
+            patch[k] = v;
+          }
+        }
+        modified.push(patch);
       }
     }
     for (const id of Object.keys(prev)) {
-      if (!current[id]) removed.push(id);
+      if (!currentSerialized[id]) removed.push(id);
     }
 
     if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
 
     this.ws.send({ type: 'draw-delta', added, modified, removed });
-    this.lastBroadcastSnapshot = current;
+    this.lastBroadcastSnapshot = currentSerialized;
   }
 
   /** Apply an incoming draw-delta from a peer by patching the current canvas. */
@@ -331,6 +351,10 @@ export class CollaborationManager {
 
     parsed.objects = Object.values(objMap);
     this.cb.loadCanvasData(JSON.stringify(parsed));
+
+    // Reset snapshot so the next local broadcast is a full `draw` rather than
+    // diffing against a now-stale pre-peer-update baseline.
+    this.lastBroadcastSnapshot = {};
   }
 
   /**
