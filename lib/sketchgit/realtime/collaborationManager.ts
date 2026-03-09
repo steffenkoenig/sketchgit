@@ -43,11 +43,11 @@ export class CollaborationManager {
 
   // ─── P006: draw-delta state ───────────────────────────────────────────────
   /**
-   * Pre-serialized snapshot of the last broadcast canvas state.
-   * Stored as `id → JSON string` so that diffing is a cheap string comparison
-   * rather than a full re-serialisation on every flush.
+   * Snapshot of the last broadcast canvas state, keyed by object id.
+   * Stores both the serialised string (for O(1) change detection) and the
+   * parsed object (for property-level diff without re-parsing).
    */
-  private lastBroadcastSnapshot: Record<string, string> = {};
+  private lastBroadcastSnapshot: Record<string, { json: string; obj: Record<string, unknown> }> = {};
   /** Pending draw-delta flush timer. */
   private drawFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -263,16 +263,11 @@ export class CollaborationManager {
     }
     const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
 
-    // Build current id → serialised-object map (string comparison is O(1)).
-    const currentSerialized: Record<string, string> = {};
-    const currentObjects: Record<string, Record<string, unknown>> = {};
+    // Build current snapshot: id → { json, obj } in a single pass.
+    const currentSnapshot: Record<string, { json: string; obj: Record<string, unknown> }> = {};
     for (const obj of objects) {
       const id = obj._id as string | undefined;
-      if (id) {
-        const serialized = JSON.stringify(obj);
-        currentSerialized[id] = serialized;
-        currentObjects[id] = obj;
-      }
+      if (id) currentSnapshot[id] = { json: JSON.stringify(obj), obj };
     }
 
     const prev = this.lastBroadcastSnapshot;
@@ -280,7 +275,7 @@ export class CollaborationManager {
     // If we have no prior snapshot, fall back to a full `draw` message.
     if (Object.keys(prev).length === 0 && objects.length > 0) {
       this.ws.send({ type: 'draw', canvas: canvasJson });
-      this.lastBroadcastSnapshot = currentSerialized;
+      this.lastBroadcastSnapshot = currentSnapshot;
       return;
     }
 
@@ -289,31 +284,34 @@ export class CollaborationManager {
     const modified: Record<string, unknown>[] = [];
     const removed: string[] = [];
 
-    for (const [id, serialized] of Object.entries(currentSerialized)) {
+    for (const [id, { json, obj: currObj }] of Object.entries(currentSnapshot)) {
       if (!prev[id]) {
         // New object — send full JSON so the peer can add it.
-        added.push(currentObjects[id]);
-      } else if (prev[id] !== serialized) {
-        // Changed object — send only the id plus every property that differs.
-        const prevObj = JSON.parse(prev[id]) as Record<string, unknown>;
-        const currObj = currentObjects[id];
+        added.push(currObj);
+      } else if (prev[id].json !== json) {
+        // Changed object — diff properties against the stored parsed copy
+        // (no re-parsing needed).
+        const prevObj = prev[id].obj;
         const patch: Record<string, unknown> = { _id: id };
         for (const [k, v] of Object.entries(currObj)) {
-          if (k !== '_id' && JSON.stringify(prevObj[k]) !== JSON.stringify(v)) {
+          if (k === '_id') continue;
+          const pv = prevObj[k];
+          // Fast path: primitive equality; slow path: stringify nested structures.
+          if (pv !== v && (typeof v !== 'object' || typeof pv !== 'object' || JSON.stringify(pv) !== JSON.stringify(v))) {
             patch[k] = v;
           }
         }
-        modified.push(patch);
+        if (Object.keys(patch).length > 1) modified.push(patch);
       }
     }
     for (const id of Object.keys(prev)) {
-      if (!currentSerialized[id]) removed.push(id);
+      if (!currentSnapshot[id]) removed.push(id);
     }
 
     if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
 
     this.ws.send({ type: 'draw-delta', added, modified, removed });
-    this.lastBroadcastSnapshot = currentSerialized;
+    this.lastBroadcastSnapshot = currentSnapshot;
   }
 
   /** Apply an incoming draw-delta from a peer by patching the current canvas. */
