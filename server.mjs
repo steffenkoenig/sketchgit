@@ -26,6 +26,15 @@ if (process.env.DATABASE_URL) {
 // ─── In-memory state ──────────────────────────────────────────────────────────
 const rooms = new Map(); // roomId → Map<clientId, ws>
 
+// Track pending cleanup timers so that a reconnecting client cancels the timer.
+const roomCleanupTimers = new Map(); // roomId → timeout handle
+
+// How long (ms) to keep an empty room alive in case clients reconnect.
+const ROOM_CLEANUP_DELAY_MS = 60_000;
+
+// Server-side heartbeat: broadcast a ping to all clients every 25 s.
+const PING_INTERVAL_MS = 25_000;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function safeRoomId(value) {
@@ -244,6 +253,12 @@ app.prepare().then(() => {
     const room = getRoom(roomId);
     room.set(clientId, ws);
 
+    // Cancel any pending cleanup timer for this room (a client just rejoined)
+    if (roomCleanupTimers.has(roomId)) {
+      clearTimeout(roomCleanupTimers.get(roomId));
+      roomCleanupTimers.delete(roomId);
+    }
+
     // Ensure the room is registered in the database
     await dbEnsureRoom(roomId, ws.userId);
 
@@ -288,6 +303,9 @@ app.prepare().then(() => {
         await dbSaveCommit(roomId, message.sha, message.commit, ws.userId);
       }
 
+      // Relay to peers (drop ping/pong – handled at transport layer only)
+      if (message.type === 'ping' || message.type === 'pong') return;
+
       // Relay to peers
       const relay = {
         ...message,
@@ -304,8 +322,16 @@ app.prepare().then(() => {
       if (!currentRoom) return;
 
       currentRoom.delete(clientId);
+
       if (currentRoom.size === 0) {
-        rooms.delete(roomId);
+        // Delay teardown – reconnecting clients can still receive a fullsync.
+        const timer = setTimeout(() => {
+          if (rooms.get(roomId)?.size === 0) {
+            rooms.delete(roomId);
+          }
+          roomCleanupTimers.delete(roomId);
+        }, ROOM_CLEANUP_DELAY_MS);
+        roomCleanupTimers.set(roomId, timer);
         return;
       }
 
@@ -317,5 +343,16 @@ app.prepare().then(() => {
   server.listen(port, host, () => {
     console.log(`SketchGit Next server listening on http://${host}:${port}`);
   });
+
+  // ─── Server-side heartbeat ─────────────────────────────────────────────────
+  // Broadcast a `ping` to every connected client every 25 seconds so that
+  // clients can detect stale TCP connections (zombie sockets).
+  setInterval(() => {
+    for (const room of rooms.values()) {
+      for (const client of room.values()) {
+        sendTo(client, { type: "ping" });
+      }
+    }
+  }, PING_INTERVAL_MS);
 });
 

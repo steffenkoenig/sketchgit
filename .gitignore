@@ -1,3 +1,4 @@
 node_modules
 .next/
 .env
+lib/sketchgit/createSketchGitApp.legacy.ts

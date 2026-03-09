@@ -216,6 +216,7 @@ canvas{position:absolute;top:0;left:0}
 .peer-status{font-size:10px;color:var(--tx2);margin-top:8px}
 .peer-status.ok{color:var(--a3)}
 .peer-status.err{color:var(--a2)}
+.peer-status.reconnecting{color:var(--a4)}
 .connected-list{margin-top:8px;display:flex;flex-direction:column;gap:4px}
 .connected-peer{font-size:10px;color:var(--a3);display:flex;align-items:center;gap:5px}
 
