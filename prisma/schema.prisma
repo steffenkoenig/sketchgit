@@ -100,6 +100,10 @@ model Commit {
   parents    String[]
   branch     String
   message    String
+  // Stored as TEXT for simplicity and maximum compatibility.
+  // To enable native JSONB operations and indexing, change to `Json` type.
+  // When using `Json`, JSON.parse() / JSON.stringify() must be applied in the
+  // repository layer since Prisma returns parsed objects for Json fields.
   canvasJson String   @db.Text
   isMerge    Boolean  @default(false)
   authorId   String?

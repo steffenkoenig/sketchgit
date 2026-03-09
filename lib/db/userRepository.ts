@@ -1,6 +1,11 @@
 /**
  * userRepository – server-side data access for users.
  * Passwords are stored as bcrypt hashes; raw passwords never leave this module.
+ *
+ * Note: `bcryptjs` is a pure-JavaScript implementation, chosen for its
+ * zero-native-dependency install. For production deployments with higher
+ * throughput requirements, consider switching to the `bcrypt` native package
+ * for significantly faster hashing. The API is identical.
  */
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";

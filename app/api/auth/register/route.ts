@@ -21,9 +21,9 @@ export async function POST(req: NextRequest) {
   if (typeof email !== "string" || !email.includes("@")) {
     return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
   }
-  if (typeof password !== "string" || password.length < 8) {
+  if (typeof password !== "string" || password.length < 12) {
     return NextResponse.json(
-      { error: "Password must be at least 8 characters." },
+      { error: "Password must be at least 12 characters." },
       { status: 400 }
     );
   }

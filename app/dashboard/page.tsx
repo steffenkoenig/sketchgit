@@ -7,18 +7,20 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserRooms } from "@/lib/db/roomRepository";
+import { getAuthSession } from "@/lib/authTypes";
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 
 export default async function DashboardPage() {
   const session = await auth();
+  const authSession = getAuthSession(session);
 
-  // Double-check auth (middleware handles the redirect, but keep this as a guard)
-  if (!session?.user) {
+  // Double-check auth (proxy.ts handles the redirect, but keep this as a guard)
+  if (!authSession) {
     redirect("/auth/signin");
   }
 
-  const userId = (session.user as typeof session.user & { id: string }).id;
+  const userId = authSession.user.id;
   const rooms = await getUserRooms(userId);
 
   return (
@@ -37,7 +39,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-400">{session.user.name ?? session.user.email}</span>
+          <span className="text-sm text-slate-400">{authSession.user.name ?? authSession.user.email}</span>
           <SignOutButton />
         </div>
       </header>

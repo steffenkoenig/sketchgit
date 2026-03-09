@@ -138,14 +138,14 @@ function RegisterForm() {
           <div className="space-y-2">
             <label className="text-xs text-slate-400" htmlFor="password">
               Password
-              <span className="ml-1 text-slate-600">(min. 8 characters)</span>
+              <span className="ml-1 text-slate-600">(min. 12 characters)</span>
             </label>
             <input
               id="password"
               type="password"
               autoComplete="new-password"
               required
-              minLength={8}
+              minLength={12}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-violet-500"
