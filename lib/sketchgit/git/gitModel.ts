@@ -26,11 +26,16 @@ export class GitModel {
   }
 
   /** Generate a random short SHA. */
-  _sha(): string {
+  generateSha(): string {
     return (
       Math.random().toString(36).slice(2, 10) +
       Math.random().toString(36).slice(2, 10)
     );
+  }
+
+  /** @deprecated Use generateSha() instead. */
+  _sha(): string {
+    return this.generateSha();
   }
 
   /** Create the initial commit for a fresh canvas. */

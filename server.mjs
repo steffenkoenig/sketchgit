@@ -298,13 +298,13 @@ app.prepare().then(() => {
         return;
       }
 
+      // Drop ping/pong before any further processing – heartbeat only
+      if (message.type === "ping" || message.type === "pong") return;
+
       // Persist commit messages to the database
       if (message.type === "commit" && message.sha && message.commit) {
         await dbSaveCommit(roomId, message.sha, message.commit, ws.userId);
       }
-
-      // Relay to peers (drop ping/pong – handled at transport layer only)
-      if (message.type === 'ping' || message.type === 'pong') return;
 
       // Relay to peers
       const relay = {

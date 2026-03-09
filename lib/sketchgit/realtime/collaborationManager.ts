@@ -64,7 +64,7 @@ export class CollaborationManager {
           peerStatus.className = 'peer-status ok';
         }
 
-        this.ws.send({ type: 'profile', name: this.ws['myName'], color: this.ws['myColor'] });
+        this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color });
         this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
         break;
       }

@@ -494,7 +494,7 @@ export function createSketchGitApp() {
     const mergedData = JSON.stringify(baseParsed);
 
     const { targetBranch, sourceBranch, targetSHA, sourceSHA } = branchNames;
-    const sha = git._sha();
+    const sha = git.generateSha();
     git.commits[sha] = {
       sha, parent: targetSHA, parents: [targetSHA, sourceSHA],
       message: `Merge '${sourceBranch}' into '${targetBranch}' (${conflicts.length} conflict(s) resolved)`,

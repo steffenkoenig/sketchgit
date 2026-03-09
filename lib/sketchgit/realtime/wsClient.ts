@@ -37,7 +37,11 @@ export class WsClient {
   // ── Reconnection state ────────────────────────────────────────────────────
   private retryCount = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private _intentionalClose = false; // true when disconnect() is called
+  private intentionalClose = false; // true when disconnect() is called
+
+  // ── Public getters for identity fields ───────────────────────────────────
+  get name(): string { return this.myName; }
+  get color(): string { return this.myColor; }
 
   // ── Heartbeat state ───────────────────────────────────────────────────────
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -58,13 +62,13 @@ export class WsClient {
     this.myName = myName;
     this.myColor = myColor;
     this.retryCount = 0;
-    this._intentionalClose = false;
+    this.intentionalClose = false;
     this._openSocket();
   }
 
   /** Close the connection cleanly – no reconnect will be attempted. */
   disconnect(): void {
-    this._intentionalClose = true;
+    this.intentionalClose = true;
     this._clearTimers();
     if (this.socket) {
       try { this.socket.close(); } catch { /* ignore */ }
@@ -109,6 +113,7 @@ export class WsClient {
 
     ws.addEventListener('open', () => {
       this.retryCount = 0;
+      this.intentionalClose = false;
       this._setStatus('connected');
       this._resetHeartbeat();
       document.getElementById('liveInd')?.style.setProperty('display', 'block');
@@ -143,7 +148,7 @@ export class WsClient {
       this._clearHeartbeat();
       document.getElementById('liveInd')?.style.setProperty('display', 'none');
 
-      if (this._intentionalClose) return; // clean disconnect, do not retry
+      if (this.intentionalClose) return; // clean disconnect, do not retry
 
       this._scheduleReconnect(ev.code);
     });
