@@ -234,7 +234,7 @@ export default function SketchGitApp() {
       <div className="overlay" id="mergeModal">
         <div className="modal">
           <h2>⇄ Merge Branch</h2>
-          <div className="info-box">Merge another branch <b>into</b> <span id="mergeTargetName"></span>. Objects sind per UUID verfolgt — Duplikate werden erkannt und Konflikte aufgelöst.</div>
+          <div className="info-box">Merge another branch <b>into</b> <span id="mergeTargetName"></span>. Objects are tracked by UUID — duplicates are detected and conflicts resolved.</div>
           <label>Source branch (merge from)</label>
           <select id="mergeSourceSelect"></select>
           <div className="modal-actions">
@@ -249,16 +249,16 @@ export default function SketchGitApp() {
           <h2>⚡ Merge Conflicts</h2>
           <div className="conflict-header">
             <span>⚠</span>
-            <span id="conflictSummary">Einige Objekte wurden in beiden Branches geändert. Wähle für jeden Konflikt, welche Version übernommen werden soll.</span>
+            <span id="conflictSummary">Some objects were changed in both branches. Choose which version to keep for each conflict.</span>
           </div>
           <div className="conflict-list" id="conflictList"></div>
           <div className="conflict-stats" id="conflictStats"></div>
           <div className="modal-actions">
-            <button className="mbtn" onClick={() => call("resolveAllOurs")}>← Alle: Ours</button>
-            <button className="mbtn" onClick={() => call("resolveAllTheirs")}>Alle: Theirs →</button>
+            <button className="mbtn" onClick={() => call("resolveAllOurs")}>← All: Ours</button>
+            <button className="mbtn" onClick={() => call("resolveAllTheirs")}>All: Theirs →</button>
             <div style={{ flex: 1 }}></div>
             <button className="mbtn" onClick={() => call("closeModal", "conflictModal")}>Cancel</button>
-            <button className="mbtn ok" id="applyMergeBtn" onClick={() => call("applyMergeResolution")}>✓ Merge anwenden</button>
+            <button className="mbtn ok" id="applyMergeBtn" onClick={() => call("applyMergeResolution")}>✓ Apply Merge</button>
           </div>
         </div>
       </div>

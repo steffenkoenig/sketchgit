@@ -1,0 +1,147 @@
+{
+  "toolbar": {
+    "select": "Select (S)",
+    "pen": "Pen (P)",
+    "line": "Line (L)",
+    "arrow": "Arrow (A)",
+    "rect": "Rectangle (R)",
+    "ellipse": "Ellipse (E)",
+    "text": "Text (T)",
+    "eraser": "Eraser (X)",
+    "toggleFill": "Toggle Fill",
+    "zoomIn": "Zoom In (+)",
+    "zoomOut": "Zoom Out (-)",
+    "resetView": "Reset View"
+  },
+  "topbar": {
+    "collab": "⟳ Collab",
+    "merge": "⇄ Merge",
+    "branch": "⎇ Branch",
+    "commit": "● Commit",
+    "signIn": "👤 Sign in",
+    "signOut": "⤴ Sign out",
+    "myDrawings": "My Drawings"
+  },
+  "modal": {
+    "commit": {
+      "title": "● Commit Changes",
+      "label": "Commit message",
+      "placeholder": "Describe what you drew...",
+      "cancel": "Cancel",
+      "confirm": "Commit"
+    },
+    "branch": {
+      "title": "⎇ Branches",
+      "close": "Close",
+      "newBranch": "+ New Branch"
+    },
+    "branchCreate": {
+      "title": "⎇ New Branch",
+      "label": "Branch name",
+      "placeholder": "feature/my-idea",
+      "cancel": "Cancel",
+      "confirm": "Create Branch"
+    },
+    "merge": {
+      "title": "⇄ Merge Branch",
+      "description": "Merge another branch {bold_into} {target}. Objects are tracked by UUID — duplicates are detected and conflicts resolved.",
+      "label": "Source branch (merge from)",
+      "cancel": "Cancel",
+      "confirm": "Merge"
+    },
+    "conflict": {
+      "title": "⚡ Merge Conflicts",
+      "summary": "Some objects were changed in both branches. Choose which version to keep for each conflict.",
+      "allOurs": "← All: Ours",
+      "allTheirs": "All: Theirs →",
+      "cancel": "Cancel",
+      "apply": "✓ Apply Merge"
+    },
+    "name": {
+      "title": "👤 Welcome to SketchGit",
+      "label": "Your display name",
+      "placeholder": "e.g. Alice",
+      "confirm": "Start Drawing"
+    }
+  },
+  "collab": {
+    "title": "⟳ Live Collaboration",
+    "currentRoom": "Current room (click to copy invite link)",
+    "notConnected": "Not connected",
+    "roomIdLabel": "Room ID",
+    "roomPlaceholder": "e.g. sketch-session",
+    "joinRoom": "Join Room"
+  },
+  "timeline": {
+    "title": "⌥ Version Timeline"
+  },
+  "commitPopup": {
+    "headBadge": "◉ HEAD",
+    "view": "⤵ View this commit",
+    "newBranch": "⎇ New branch from here",
+    "rollback": "⚠ Rollback branch to here"
+  },
+  "objectTypes": {
+    "rect": "▭ Rectangle",
+    "ellipse": "○ Ellipse",
+    "circle": "○ Circle",
+    "line": "― Line",
+    "path": "✏ Path",
+    "i-text": "T Text",
+    "text": "T Text",
+    "group": "⊞ Group",
+    "polygon": "⬡ Polygon"
+  },
+  "propLabels": {
+    "stroke": "Stroke color",
+    "fill": "Fill",
+    "strokeWidth": "Stroke width",
+    "left": "X position",
+    "top": "Y position",
+    "width": "Width",
+    "height": "Height",
+    "scaleX": "Scale X",
+    "scaleY": "Scale Y",
+    "angle": "Rotation",
+    "rx": "Radius X",
+    "ry": "Radius Y",
+    "x1": "Start X",
+    "y1": "Start Y",
+    "x2": "End X",
+    "y2": "End Y",
+    "path": "Path",
+    "text": "Text",
+    "fontSize": "Font size",
+    "fontFamily": "Font family",
+    "opacity": "Opacity",
+    "flipX": "Flip X",
+    "flipY": "Flip Y"
+  },
+  "toast": {
+    "committed": "✓ Committed: {message}",
+    "branchCreated": "✓ Created & switched to '{name}'",
+    "branchSwitched": "Switched to branch '{name}'",
+    "merged": "✓ Merged '{branch}' into '{target}'",
+    "mergeConflicts": "⚡ {count} conflict(s) — please resolve",
+    "mergeComplete": "✓ Merge complete — {count} conflict(s) resolved",
+    "alreadyUpToDate": "Already up to date",
+    "noOtherBranches": "No other branches to merge",
+    "nothingToCommit": "Nothing new to commit",
+    "commitReceived": "📥 Commit received: {message}",
+    "inviteCopied": "✓ Invite link copied",
+    "alreadyConnected": "Already connected to this room",
+    "connectionLost": "🔴 Connection lost. Please refresh.",
+    "disconnected": "🟡 Disconnected — reconnecting…",
+    "detachedHead": "⤵ Viewing commit {sha} — detached HEAD",
+    "notOnBranch": "⚠ Not on a branch",
+    "rolledBack": "Rolled back to {sha}",
+    "alreadyAtCommit": "Already at this commit"
+  },
+  "errors": {
+    "detachedHeadCommit": "⚠ Detached HEAD — create a branch first!",
+    "detachedHeadMerge": "⚠ Cannot merge in detached HEAD",
+    "branchExists": "Branch already exists",
+    "sourceBranchNotFound": "Source branch not found",
+    "cannotMergeModal": "⚠ Cannot merge in detached HEAD"
+  }
+}

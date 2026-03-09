@@ -7,6 +7,14 @@ import { WsMessage, PresenceClient } from '../types';
 import { WsClient } from './wsClient';
 import { showToast } from '../ui/toast';
 
+// ─── Throttle constants (P006) ────────────────────────────────────────────────
+
+/** Max cursor broadcast frequency: 10 updates / second = 100 ms minimum interval. */
+const CURSOR_THROTTLE_MS = 100;
+
+/** Max draw-delta broadcast frequency during active drawing: ~10 frames / second. */
+const DRAW_THROTTLE_MS = 100;
+
 // ─── Callbacks injected by the orchestrator ───────────────────────────────────
 
 export interface CollabCallbacks {
@@ -32,6 +40,19 @@ export class CollaborationManager {
 
   private readonly ws: WsClient;
   private readonly cb: CollabCallbacks;
+
+  // ─── P006: draw-delta state ───────────────────────────────────────────────
+  /**
+   * Snapshot of the last broadcast canvas state, keyed by object id.
+   * Stores both the serialised string (for O(1) change detection) and the
+   * parsed object (for property-level diff without re-parsing).
+   */
+  private lastBroadcastSnapshot: Record<string, { json: string; obj: Record<string, unknown> }> = {};
+  /** Pending draw-delta flush timer. */
+  private drawFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ─── P006: cursor throttle state ─────────────────────────────────────────
+  private lastCursorSent = 0;
 
   constructor(ws: WsClient, callbacks: CollabCallbacks) {
     this.ws = ws;
@@ -110,6 +131,16 @@ export class CollaborationManager {
         break;
       }
 
+      case 'draw-delta': {
+        // Apply an incremental canvas delta from a peer (P006).
+        this._applyDrawDelta(
+          data.added as Record<string, unknown>[] | undefined,
+          data.modified as Record<string, unknown>[] | undefined,
+          data.removed as string[] | undefined,
+        );
+        break;
+      }
+
       case 'commit': {
         this.cb.receiveCommit(data.sha as string, data.commit);
         this.cb.renderTimeline();
@@ -138,6 +169,8 @@ export class CollaborationManager {
           HEAD: data.HEAD as string,
           detached: (data.detached as string | null) ?? null,
         });
+        // Reset delta snapshot so the next broadcast is a full draw.
+        this.lastBroadcastSnapshot = {};
         this.cb.renderTimeline();
         this.cb.updateUI();
         break;
@@ -175,22 +208,162 @@ export class CollaborationManager {
       layer.appendChild(el);
       this.remoteCursors[clientId] = el.id;
     }
-    el.innerHTML =
-      `<div class="rcursor-tip" style="border-bottom-color:${data.color}"></div>` +
-      `<div class="rcursor-name" style="background:${data.color}">${data.name}</div>`;
+    el.replaceChildren();
+    const tip = document.createElement('div');
+    tip.className = 'rcursor-tip';
+    tip.style.borderBottomColor = data.color;
+    const nameEl = document.createElement('div');
+    nameEl.className = 'rcursor-name';
+    nameEl.style.background = data.color;
+    nameEl.textContent = data.name;
+    el.appendChild(tip);
+    el.appendChild(nameEl);
     el.style.left = data.x + 'px';
     el.style.top = data.y + 'px';
   }
 
-  // ─── Broadcast helpers ────────────────────────────────────────────────────
+  // ─── Broadcast helpers (P006) ─────────────────────────────────────────────
 
-  broadcastDraw(): void {
+  /**
+   * Schedule a draw-delta broadcast.  Calls are coalesced: at most one flush
+   * fires every DRAW_THROTTLE_MS milliseconds.  Pass `immediate = true` on
+   * mouse-up / end-of-stroke to send the final state right away.
+   */
+  broadcastDraw(immediate = false): void {
     if (!this.ws.isConnected()) return;
-    this.ws.send({ type: 'draw', canvas: this.cb.getCanvasData() });
+
+    if (immediate) {
+      if (this.drawFlushTimer !== null) {
+        clearTimeout(this.drawFlushTimer);
+        this.drawFlushTimer = null;
+      }
+      this._flushDrawDelta();
+      return;
+    }
+
+    if (this.drawFlushTimer === null) {
+      this.drawFlushTimer = setTimeout(() => {
+        this.drawFlushTimer = null;
+        this._flushDrawDelta();
+      }, DRAW_THROTTLE_MS);
+    }
   }
 
+  /** Compute and transmit a draw-delta (or full `draw` if snapshot is empty). */
+  private _flushDrawDelta(): void {
+    if (!this.ws.isConnected()) return;
+
+    const canvasJson = this.cb.getCanvasData();
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(canvasJson) as Record<string, unknown>;
+    } catch {
+      console.warn('[CollabManager] Failed to parse canvas JSON for delta');
+      return;
+    }
+    const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
+
+    // Build current snapshot: id → { json, obj } in a single pass.
+    const currentSnapshot: Record<string, { json: string; obj: Record<string, unknown> }> = {};
+    for (const obj of objects) {
+      const id = obj._id as string | undefined;
+      if (id) currentSnapshot[id] = { json: JSON.stringify(obj), obj };
+    }
+
+    const prev = this.lastBroadcastSnapshot;
+
+    // If we have no prior snapshot, fall back to a full `draw` message.
+    if (Object.keys(prev).length === 0 && objects.length > 0) {
+      this.ws.send({ type: 'draw', canvas: canvasJson });
+      this.lastBroadcastSnapshot = currentSnapshot;
+      return;
+    }
+
+    const added: Record<string, unknown>[] = [];
+    // `modified` carries only the _id plus changed properties (minimal patch).
+    const modified: Record<string, unknown>[] = [];
+    const removed: string[] = [];
+
+    for (const [id, { json, obj: currObj }] of Object.entries(currentSnapshot)) {
+      if (!prev[id]) {
+        // New object — send full JSON so the peer can add it.
+        added.push(currObj);
+      } else if (prev[id].json !== json) {
+        // Changed object — diff properties against the stored parsed copy
+        // (no re-parsing needed).
+        const prevObj = prev[id].obj;
+        const patch: Record<string, unknown> = { _id: id };
+        for (const [k, v] of Object.entries(currObj)) {
+          if (k === '_id') continue;
+          const pv = prevObj[k];
+          // Fast path: primitive equality; slow path: stringify nested structures.
+          if (pv !== v && (typeof v !== 'object' || typeof pv !== 'object' || JSON.stringify(pv) !== JSON.stringify(v))) {
+            patch[k] = v;
+          }
+        }
+        if (Object.keys(patch).length > 1) modified.push(patch);
+      }
+    }
+    for (const id of Object.keys(prev)) {
+      if (!currentSnapshot[id]) removed.push(id);
+    }
+
+    if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
+
+    this.ws.send({ type: 'draw-delta', added, modified, removed });
+    this.lastBroadcastSnapshot = currentSnapshot;
+  }
+
+  /** Apply an incoming draw-delta from a peer by patching the current canvas. */
+  private _applyDrawDelta(
+    added: Record<string, unknown>[] = [],
+    modified: Record<string, unknown>[] = [],
+    removed: string[] = [],
+  ): void {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(this.cb.getCanvasData()) as Record<string, unknown>;
+    } catch {
+      console.warn('[CollabManager] Failed to parse canvas JSON for delta apply');
+      return;
+    }
+
+    const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
+    const objMap: Record<string, Record<string, unknown>> = {};
+    for (const obj of objects) {
+      const id = obj._id as string | undefined;
+      if (id) objMap[id] = obj;
+    }
+
+    for (const obj of added) {
+      const id = obj._id as string | undefined;
+      if (id) objMap[id] = obj;
+    }
+    for (const obj of modified) {
+      const id = obj._id as string | undefined;
+      if (id) objMap[id] = { ...(objMap[id] ?? {}), ...obj };
+    }
+    for (const id of removed) {
+      delete objMap[id];
+    }
+
+    parsed.objects = Object.values(objMap);
+    this.cb.loadCanvasData(JSON.stringify(parsed));
+
+    // Reset snapshot so the next local broadcast is a full `draw` rather than
+    // diffing against a now-stale pre-peer-update baseline.
+    this.lastBroadcastSnapshot = {};
+  }
+
+  /**
+   * Throttled cursor broadcast: at most one message every CURSOR_THROTTLE_MS.
+   */
   broadcastCursor(e: { e: MouseEvent }): void {
     if (!this.ws.isConnected()) return;
+    const now = Date.now();
+    if (now - this.lastCursorSent < CURSOR_THROTTLE_MS) return;
+    this.lastCursorSent = now;
+
     const rect = document.getElementById('canvas-wrap')?.getBoundingClientRect();
     if (!rect) return;
     this.ws.send({
@@ -207,28 +380,31 @@ export class CollaborationManager {
 
     const list = document.getElementById('connectedList');
     if (list) {
-      list.innerHTML = others
-        .map(
-          (c) =>
-            `<div class="connected-peer">` +
-            `<div style="width:6px;height:6px;background:${c.color || 'var(--a3)'};border-radius:50%"></div>` +
-            `${(c.name || 'User').slice(0, 20)}` +
-            `</div>`,
-        )
-        .join('');
+      list.replaceChildren();
+      for (const c of others) {
+        const peer = document.createElement('div');
+        peer.className = 'connected-peer';
+        const dot = document.createElement('div');
+        dot.style.width = '6px';
+        dot.style.height = '6px';
+        dot.style.background = c.color || 'var(--a3)';
+        dot.style.borderRadius = '50%';
+        peer.appendChild(dot);
+        peer.appendChild(document.createTextNode((c.name || 'User').slice(0, 20)));
+        list.appendChild(peer);
+      }
     }
 
     const row = document.getElementById('avatarRow');
     if (row) {
-      row.innerHTML = others
-        .slice(0, 4)
-        .map(
-          (c) =>
-            `<div class="av" style="background:${c.color || '#7c6eff'}">` +
-            `${(c.name || 'U').slice(0, 1).toUpperCase()}` +
-            `</div>`,
-        )
-        .join('');
+      row.replaceChildren();
+      for (const c of others.slice(0, 4)) {
+        const av = document.createElement('div');
+        av.className = 'av';
+        av.style.background = c.color || '#7c6eff';
+        av.textContent = (c.name || 'U').slice(0, 1).toUpperCase();
+        row.appendChild(av);
+      }
     }
   }
 

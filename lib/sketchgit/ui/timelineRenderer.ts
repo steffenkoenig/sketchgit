@@ -60,7 +60,7 @@ export function renderTimeline(
   if (!svg) return;
   svg.setAttribute('width', String(svgW));
   svg.setAttribute('height', String(svgH));
-  svg.innerHTML = '';
+  svg.replaceChildren();
 
   function cx(sha: string): number {
     return TL.PAD_X + (shaCol[sha] ?? 0) * TL.COL_W + TL.COL_W / 2;

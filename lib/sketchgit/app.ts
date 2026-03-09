@@ -51,12 +51,13 @@ export function createSketchGitApp() {
   });
 
   const canvas = new CanvasEngine(
-    () => collab.broadcastDraw(),
+    (immediate) => collab.broadcastDraw(immediate),
     (e) => collab.broadcastCursor(e),
   );
 
   // ── User identity ──────────────────────────────────────────────────────────
   let myName = 'User';
+  // Pick a random avatar color (non-sensitive, Math.random() is appropriate here).
   let myColor = BRANCH_COLORS[Math.floor(Math.random() * BRANCH_COLORS.length)];
 
   // ── Commit popup state ────────────────────────────────────────────────────
@@ -200,15 +201,31 @@ export function createSketchGitApp() {
   function openBranchModal(): void {
     const list = document.getElementById('branchListEl');
     if (!list) return;
-    list.innerHTML = '';
+    list.replaceChildren();
     for (const [name, sha] of Object.entries(git.branches)) {
       const color = git.branchColor(name);
       const item = document.createElement('div');
       item.className = 'branch-item' + (name === git.HEAD ? ' active-branch' : '');
-      item.innerHTML =
-        `<div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>` +
-        `<span class="bname">${name}</span>` +
-        `<span class="bsha">${sha ? sha.slice(0, 7) : ''}</span>`;
+
+      const dot = document.createElement('div');
+      dot.style.width = '10px';
+      dot.style.height = '10px';
+      dot.style.borderRadius = '50%';
+      dot.style.background = color;
+      dot.style.flexShrink = '0';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'bname';
+      nameSpan.textContent = name;
+
+      const shaSpan = document.createElement('span');
+      shaSpan.className = 'bsha';
+      shaSpan.textContent = sha ? sha.slice(0, 7) : '';
+
+      item.appendChild(dot);
+      item.appendChild(nameSpan);
+      item.appendChild(shaSpan);
+
       item.addEventListener('click', () => {
         git.checkout(name);
         const c = git.commits[git.branches[name]];
@@ -226,8 +243,15 @@ export function createSketchGitApp() {
     const c = branchFromSHA ? git.commits[branchFromSHA] : null;
     const infoEl = document.getElementById('branchFromInfo');
     if (infoEl) {
-      infoEl.innerHTML =
-        `<b>From:</b> ${branchFromSHA ? branchFromSHA.slice(0, 7) : '?'} — ${c ? c.message : ''}`;
+      infoEl.replaceChildren();
+      const boldEl = document.createElement('b');
+      boldEl.textContent = 'From:';
+      infoEl.appendChild(boldEl);
+      infoEl.appendChild(
+        document.createTextNode(
+          ' ' + (branchFromSHA ? branchFromSHA.slice(0, 7) : '?') + ' — ' + (c ? c.message : ''),
+        ),
+      );
     }
     const nameEl = document.getElementById('newBranchName') as HTMLInputElement | null;
     if (nameEl) nameEl.value = '';
@@ -256,7 +280,7 @@ export function createSketchGitApp() {
     if (targetEl) targetEl.textContent = git.HEAD;
     const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement | null;
     if (!sel) return;
-    sel.innerHTML = '';
+    sel.replaceChildren();
     for (const b of Object.keys(git.branches).filter((b) => b !== git.HEAD)) {
       const o = document.createElement('option');
       o.value = b; o.textContent = b;
@@ -294,20 +318,50 @@ export function createSketchGitApp() {
 
   // ─── Conflict resolution UI ────────────────────────────────────────────────
 
-  function formatPropValue(prop: string, val: unknown): string {
-    if (val === undefined || val === null) return '<i style="opacity:.4">—</i>';
+  /** Build a DOM element representing a property value (safe – no innerHTML). */
+  function createPropValueElement(prop: string, val: unknown): HTMLElement {
+    const container = document.createElement('span');
+    if (val === undefined || val === null) {
+      const i = document.createElement('i');
+      i.style.opacity = '0.4';
+      i.textContent = '—';
+      container.appendChild(i);
+      return container;
+    }
     const v = String(val);
     if (prop === 'stroke' || prop === 'fill') {
       const isColor = /^#[0-9a-fA-F]{3,8}$/.test(v) || v.startsWith('rgb');
       if (isColor && v !== 'transparent') {
-        return `<span class="color-swatch" style="background:${v}"></span>${v}`;
+        const swatch = document.createElement('span');
+        swatch.className = 'color-swatch';
+        swatch.style.background = v;
+        container.appendChild(swatch);
+        container.appendChild(document.createTextNode(v));
+        return container;
       }
-      return v || '<i style="opacity:.4">transparent</i>';
+      if (!v) {
+        const i = document.createElement('i');
+        i.style.opacity = '0.4';
+        i.textContent = 'transparent';
+        container.appendChild(i);
+        return container;
+      }
+      container.textContent = v;
+      return container;
     }
-    if (typeof val === 'number') return String(Math.round((val as number) * 100) / 100);
-    if (prop === 'path' || prop === '_groupObjects') return '<i style="opacity:.5">[complex data]</i>';
-    if (v.length > 40) return v.slice(0, 38) + '…';
-    return v;
+    if (typeof val === 'number') {
+      container.textContent = String(Math.round((val as number) * 100) / 100);
+      return container;
+    }
+    if (prop === 'path' || prop === '_groupObjects') {
+      const i = document.createElement('i');
+      i.style.opacity = '0.5';
+      i.textContent = '[complex data]';
+      container.appendChild(i);
+      return container;
+    }
+    container.textContent = v.length > 40 ? v.slice(0, 38) + '…' : v;
+    return container;
   }
 
   function getPropLabel(prop: string): string {
@@ -333,7 +387,7 @@ export function createSketchGitApp() {
 
     const list = document.getElementById('conflictList');
     if (!list) return;
-    list.innerHTML = '';
+    list.replaceChildren();
 
     const totalConflicts = conflicts.reduce((s, c) => s + c.propConflicts.length, 0);
     const summaryEl = document.getElementById('conflictSummary');
@@ -349,9 +403,17 @@ export function createSketchGitApp() {
 
       const header = document.createElement('div');
       header.className = 'conflict-obj-header';
-      header.innerHTML =
-        `<span>⊞</span><b>${conflict.label}</b>` +
-        `<span style="margin-left:auto;color:var(--tx3)">${conflict.propConflicts.length} conflict(s)</span>`;
+      const iconSpan = document.createElement('span');
+      iconSpan.textContent = '⊞';
+      const labelBold = document.createElement('b');
+      labelBold.textContent = conflict.label;
+      const countSpan = document.createElement('span');
+      countSpan.style.marginLeft = 'auto';
+      countSpan.style.color = 'var(--tx3)';
+      countSpan.textContent = `${conflict.propConflicts.length} conflict(s)`;
+      header.appendChild(iconSpan);
+      header.appendChild(labelBold);
+      header.appendChild(countSpan);
       objEl.appendChild(header);
 
       conflict.propConflicts.forEach((pc, pi) => {
@@ -363,10 +425,10 @@ export function createSketchGitApp() {
         nameSpan.textContent = getPropLabel(pc.prop);
         propEl.appendChild(nameSpan);
 
-        const oursBtn = createConflictOption('ours', `← Ours (${branchNames.ours})`, formatPropValue(pc.prop, pc.ours), pc.chosen === 'ours', ci, pi);
+        const oursBtn = createConflictOption('ours', `← Ours (${branchNames.ours})`, pc.prop, pc.ours, pc.chosen === 'ours', ci, pi);
         const vsSpan = document.createElement('span');
         vsSpan.className = 'prop-vs'; vsSpan.textContent = 'vs';
-        const theirsBtn = createConflictOption('theirs', `Theirs (${branchNames.theirs}) →`, formatPropValue(pc.prop, pc.theirs), pc.chosen === 'theirs', ci, pi);
+        const theirsBtn = createConflictOption('theirs', `Theirs (${branchNames.theirs}) →`, pc.prop, pc.theirs, pc.chosen === 'theirs', ci, pi);
 
         propEl.appendChild(oursBtn);
         propEl.appendChild(vsSpan);
@@ -384,16 +446,26 @@ export function createSketchGitApp() {
   function createConflictOption(
     choice: 'ours' | 'theirs',
     labelText: string,
-    valHtml: string,
+    propName: string,
+    val: unknown,
     selected: boolean,
     ci: number,
     pi: number,
   ): HTMLElement {
     const el = document.createElement('div');
     el.className = 'prop-option' + (selected ? ` selected-${choice}` : '');
-    el.innerHTML =
-      `<div class="opt-label" style="color:var(${choice === 'ours' ? '--a1' : '--a3'})">${labelText}</div>` +
-      `<div class="opt-val">${valHtml}</div>`;
+
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'opt-label';
+    labelDiv.style.color = `var(${choice === 'ours' ? '--a1' : '--a3'})`;
+    labelDiv.textContent = labelText;
+
+    const valDiv = document.createElement('div');
+    valDiv.className = 'opt-val';
+    valDiv.appendChild(createPropValueElement(propName, val));
+
+    el.appendChild(labelDiv);
+    el.appendChild(valDiv);
     el.addEventListener('click', () => selectConflictChoice(ci, pi, choice, el));
     return el;
   }
@@ -467,8 +539,11 @@ export function createSketchGitApp() {
     });
     const statsEl = document.getElementById('conflictStats');
     if (statsEl) {
-      statsEl.innerHTML =
-        `<b>${oursCount}</b> ours · <b>${theirsCount}</b> theirs · <b>${total}</b> total`;
+      statsEl.replaceChildren();
+      const b1 = document.createElement('b'); b1.textContent = String(oursCount);
+      const b2 = document.createElement('b'); b2.textContent = String(theirsCount);
+      const b3 = document.createElement('b'); b3.textContent = String(total);
+      statsEl.append(b1, ' ours · ', b2, ' theirs · ', b3, ' total');
     }
   }
 
