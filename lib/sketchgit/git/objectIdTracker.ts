@@ -10,7 +10,7 @@ import { MERGE_PROPS } from '../types';
 /** Assign a stable UUID to a canvas object if it doesn't already have one. */
 export function ensureObjId(obj: Record<string, unknown>): string {
   if (!obj._id) {
-    obj._id = 'obj_' + Math.random().toString(36).slice(2, 12);
+    obj._id = 'obj_' + crypto.randomUUID().replace(/-/g, '');
   }
   return obj._id as string;
 }

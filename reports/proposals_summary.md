@@ -24,8 +24,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P003 | Add a Persistence Layer | Reliability | [P003](proposals/done/P003_add-persistence-layer.md) |
 | P004 | WebSocket Reconnection & Connection Resilience | Reliability | [P004](proposals/done/P004_websocket-reconnection-resilience.md) |
 | P005 | Enable TypeScript Strict Mode and Remove `@ts-nocheck` | Maintainability | [P005](proposals/done/P005_enable-typescript-strict-mode.md) |
+| P006 | Optimize Real-time Collaboration Throughput | Performance | [P006](proposals/done/P006_optimize-realtime-collaboration-throughput.md) |
 | P007 | Implement Authentication & Authorization | Reliability, Security | [P007](proposals/done/P007_authentication-and-authorization.md) |
 | P008 | Replace `innerHTML` with Safe DOM Manipulation | Security, Maintainability | [P008](proposals/done/P008_replace-innerhtml-safe-dom.md) |
+| P009 | Internationalization (i18n) Support | Maintainability | [P009](proposals/done/P009_internationalization-i18n.md) |
+| P010 | Improve Error Handling & Observability | Reliability, Maintainability | [P010](proposals/done/P010_error-handling-and-observability.md) |
 
 ---
 
@@ -37,11 +40,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 ## Proposals – Not Started
 
-| ID | Title | Dimension(s) | File |
-|----|-------|--------------|------|
-| P006 | Optimize Real-time Collaboration Throughput | Performance | [P006](proposals/P006_optimize-realtime-collaboration-throughput.md) |
-| P009 | Internationalization (i18n) Support | Maintainability | [P009](proposals/P009_internationalization-i18n.md) |
-| P010 | Improve Error Handling & Observability | Reliability, Maintainability | [P010](proposals/P010_error-handling-and-observability.md) |
+*All proposals have been implemented.*
 
 ---
 
@@ -68,9 +67,9 @@ Some proposals build on or benefit from others. The table below shows key depend
 5. ~~**P005** – TypeScript strict (new module files are clean; legacy `@ts-nocheck` files remain)~~ ✅ **Done**
 6. ~~**P008** – innerHTML fix (quick security win)~~ ✅ **Done**
 7. ~~**P002** – Test suite (merge engine + git model are now independently unit-testable)~~ ✅ **Done**
-8. **P006** – Throughput optimization (builds on P003)
-9. **P009** – i18n (standalone)
-10. **P010** – Observability (ongoing companion)
+8. ~~**P006** – Throughput optimization (builds on P003)~~ ✅ **Done**
+9. ~~**P009** – i18n (standalone)~~ ✅ **Done**
+10. ~~**P010** – Observability (ongoing companion)~~ ✅ **Done**
 
 ---
 

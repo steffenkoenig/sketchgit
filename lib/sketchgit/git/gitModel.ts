@@ -25,12 +25,9 @@ export class GitModel {
     this.onError = onError;
   }
 
-  /** Generate a random short SHA. */
+  /** Generate a random short SHA using crypto.randomUUID(). */
   generateSha(): string {
-    return (
-      Math.random().toString(36).slice(2, 10) +
-      Math.random().toString(36).slice(2, 10)
-    );
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   }
 
   /** @deprecated Use generateSha() instead. */

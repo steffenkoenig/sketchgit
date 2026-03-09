@@ -3,10 +3,17 @@ import { randomUUID } from "node:crypto";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import { PrismaClient } from "@prisma/client";
+import pino from "pino";
 
 const dev = process.env.NODE_ENV !== "production";
 const host = "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
+
+// ─── Structured logger ────────────────────────────────────────────────────────
+const logger = pino({
+  level: process.env.LOG_LEVEL || "info",
+  transport: dev ? { target: "pino-pretty", options: { colorize: true } } : undefined,
+});
 
 const app = next({ dev, hostname: host, port });
 const handle = app.getRequestHandler();
@@ -17,8 +24,8 @@ let prisma = null;
 if (process.env.DATABASE_URL) {
   prisma = new PrismaClient({ log: ["warn", "error"] });
 } else {
-  console.warn(
-    "[SketchGit] DATABASE_URL is not set – running without persistence. " +
+  logger.warn(
+    "DATABASE_URL is not set – running without persistence. " +
     "Copy .env.example to .env and start a PostgreSQL instance to enable it."
   );
 }
@@ -135,7 +142,7 @@ async function dbEnsureRoom(roomId, ownerId) {
       update: {},
     });
   } catch (err) {
-    console.error("[db] ensureRoom error:", err?.message);
+    logger.error({ roomId, err: err?.message }, "db.ensureRoom failed");
   }
 }
 
@@ -175,7 +182,7 @@ async function dbSaveCommit(roomId, sha, commitData, userId) {
       }),
     ]);
   } catch (err) {
-    console.error("[db] saveCommit error:", err?.message);
+    logger.error({ roomId, sha, err: err?.message }, "db.saveCommit failed");
   }
 }
 
@@ -213,7 +220,7 @@ async function dbLoadSnapshot(roomId) {
       detached: state?.isDetached && state.headSha ? state.headSha : null,
     };
   } catch (err) {
-    console.error("[db] loadSnapshot error:", err?.message);
+    logger.error({ roomId, err: err?.message }, "db.loadSnapshot failed");
     return null;
   }
 }
@@ -262,6 +269,8 @@ app.prepare().then(() => {
     // Ensure the room is registered in the database
     await dbEnsureRoom(roomId, ws.userId);
 
+    logger.info({ clientId, roomId, userId: ws.userId || null }, "ws: client connected");
+
     sendTo(ws, { type: "welcome", roomId, clientId });
     pushPresence(roomId);
 
@@ -285,7 +294,7 @@ app.prepare().then(() => {
       try {
         message = JSON.parse(raw.toString());
       } catch {
-        console.warn("[ws] Failed to parse message from", clientId);
+        logger.warn({ clientId, roomId }, "ws: failed to parse message");
         return;
       }
 
@@ -303,6 +312,7 @@ app.prepare().then(() => {
 
       // Persist commit messages to the database
       if (message.type === "commit" && message.sha && message.commit) {
+        logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
         await dbSaveCommit(roomId, message.sha, message.commit, ws.userId);
       }
 
@@ -318,6 +328,7 @@ app.prepare().then(() => {
     });
 
     ws.on("close", () => {
+      logger.info({ clientId, roomId }, "ws: client disconnected");
       const currentRoom = rooms.get(roomId);
       if (!currentRoom) return;
 
@@ -341,7 +352,7 @@ app.prepare().then(() => {
   });
 
   server.listen(port, host, () => {
-    console.log(`SketchGit Next server listening on http://${host}:${port}`);
+    logger.info({ host, port }, "SketchGit server listening");
   });
 
   // ─── Server-side heartbeat ─────────────────────────────────────────────────
