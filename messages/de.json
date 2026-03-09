@@ -1,0 +1,147 @@
+{
+  "toolbar": {
+    "select": "Auswählen (S)",
+    "pen": "Stift (P)",
+    "line": "Linie (L)",
+    "arrow": "Pfeil (A)",
+    "rect": "Rechteck (R)",
+    "ellipse": "Ellipse (E)",
+    "text": "Text (T)",
+    "eraser": "Radierer (X)",
+    "toggleFill": "Füllung umschalten",
+    "zoomIn": "Vergrößern (+)",
+    "zoomOut": "Verkleinern (-)",
+    "resetView": "Ansicht zurücksetzen"
+  },
+  "topbar": {
+    "collab": "⟳ Zusammenarbeit",
+    "merge": "⇄ Zusammenführen",
+    "branch": "⎇ Branch",
+    "commit": "● Commit",
+    "signIn": "👤 Anmelden",
+    "signOut": "⤴ Abmelden",
+    "myDrawings": "Meine Zeichnungen"
+  },
+  "modal": {
+    "commit": {
+      "title": "● Änderungen committen",
+      "label": "Commit-Nachricht",
+      "placeholder": "Beschreibe, was du gezeichnet hast...",
+      "cancel": "Abbrechen",
+      "confirm": "Committen"
+    },
+    "branch": {
+      "title": "⎇ Branches",
+      "close": "Schließen",
+      "newBranch": "+ Neuer Branch"
+    },
+    "branchCreate": {
+      "title": "⎇ Neuer Branch",
+      "label": "Branch-Name",
+      "placeholder": "feature/meine-idee",
+      "cancel": "Abbrechen",
+      "confirm": "Branch erstellen"
+    },
+    "merge": {
+      "title": "⇄ Branch zusammenführen",
+      "description": "Einen anderen Branch {bold_into} {target} mergen. Objekte werden per UUID verfolgt — Duplikate werden erkannt und Konflikte aufgelöst.",
+      "label": "Quell-Branch (Merge von)",
+      "cancel": "Abbrechen",
+      "confirm": "Mergen"
+    },
+    "conflict": {
+      "title": "⚡ Merge-Konflikte",
+      "summary": "Einige Objekte wurden in beiden Branches geändert. Wähle für jeden Konflikt, welche Version übernommen werden soll.",
+      "allOurs": "← Alle: Unsere",
+      "allTheirs": "Alle: Ihre →",
+      "cancel": "Abbrechen",
+      "apply": "✓ Merge anwenden"
+    },
+    "name": {
+      "title": "👤 Willkommen bei SketchGit",
+      "label": "Dein Anzeigename",
+      "placeholder": "z.B. Alice",
+      "confirm": "Zeichnen starten"
+    }
+  },
+  "collab": {
+    "title": "⟳ Live-Zusammenarbeit",
+    "currentRoom": "Aktueller Raum (klicken zum Kopieren des Einladungslinks)",
+    "notConnected": "Nicht verbunden",
+    "roomIdLabel": "Raum-ID",
+    "roomPlaceholder": "z.B. sketch-session",
+    "joinRoom": "Raum beitreten"
+  },
+  "timeline": {
+    "title": "⌥ Versions-Timeline"
+  },
+  "commitPopup": {
+    "headBadge": "◉ HEAD",
+    "view": "⤵ Diesen Commit ansehen",
+    "newBranch": "⎇ Neuer Branch von hier",
+    "rollback": "⚠ Branch auf diesen Commit zurücksetzen"
+  },
+  "objectTypes": {
+    "rect": "▭ Rechteck",
+    "ellipse": "○ Ellipse",
+    "circle": "○ Kreis",
+    "line": "― Linie",
+    "path": "✏ Pfad",
+    "i-text": "T Text",
+    "text": "T Text",
+    "group": "⊞ Gruppe",
+    "polygon": "⬡ Polygon"
+  },
+  "propLabels": {
+    "stroke": "Randfarbe",
+    "fill": "Füllung",
+    "strokeWidth": "Randbreite",
+    "left": "X-Position",
+    "top": "Y-Position",
+    "width": "Breite",
+    "height": "Höhe",
+    "scaleX": "Skalierung X",
+    "scaleY": "Skalierung Y",
+    "angle": "Drehung",
+    "rx": "Radius X",
+    "ry": "Radius Y",
+    "x1": "Start X",
+    "y1": "Start Y",
+    "x2": "Ende X",
+    "y2": "Ende Y",
+    "path": "Pfad",
+    "text": "Text",
+    "fontSize": "Schriftgröße",
+    "fontFamily": "Schriftart",
+    "opacity": "Deckkraft",
+    "flipX": "Spiegeln X",
+    "flipY": "Spiegeln Y"
+  },
+  "toast": {
+    "committed": "✓ Committet: {message}",
+    "branchCreated": "✓ Erstellt & gewechselt zu '{name}'",
+    "branchSwitched": "Gewechselt zu Branch '{name}'",
+    "merged": "✓ '{branch}' in '{target}' gemergt",
+    "mergeConflicts": "⚡ {count} Konflikt(e) — bitte auflösen",
+    "mergeComplete": "✓ Merge abgeschlossen — {count} Konflikt(e) aufgelöst",
+    "alreadyUpToDate": "Bereits aktuell",
+    "noOtherBranches": "Keine anderen Branches zum Mergen",
+    "nothingToCommit": "Keine neuen Änderungen zu committen",
+    "commitReceived": "📥 Commit empfangen: {message}",
+    "inviteCopied": "✓ Einladungslink kopiert",
+    "alreadyConnected": "Bereits mit diesem Raum verbunden",
+    "connectionLost": "🔴 Verbindung verloren. Bitte neu laden.",
+    "disconnected": "🟡 Getrennt — verbinde erneut…",
+    "detachedHead": "⤵ Commit {sha} wird angezeigt — Detached HEAD",
+    "notOnBranch": "⚠ Nicht auf einem Branch",
+    "rolledBack": "Zurückgesetzt auf {sha}",
+    "alreadyAtCommit": "Bereits an diesem Commit"
+  },
+  "errors": {
+    "detachedHeadCommit": "⚠ Detached HEAD — erst einen Branch erstellen!",
+    "detachedHeadMerge": "⚠ Mergen im Detached HEAD nicht möglich",
+    "branchExists": "Branch existiert bereits",
+    "sourceBranchNotFound": "Quell-Branch nicht gefunden",
+    "cannotMergeModal": "⚠ Mergen im Detached HEAD nicht möglich"
+  }
+}
