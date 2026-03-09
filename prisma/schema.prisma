@@ -1,0 +1,130 @@
+// This is the Prisma schema for SketchGit.
+// Run `npm run db:migrate:dev` to apply changes to a local dev database.
+// Run `npm run db:generate` to regenerate the Prisma Client after schema changes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth (NextAuth / Auth.js v5) ────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts    Account[]
+  ownedRooms  Room[]           @relation("RoomOwner")
+  memberships RoomMembership[]
+  commits     Commit[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Rooms ────────────────────────────────────────────────────────────────────
+
+model Room {
+  id        String   @id
+  slug      String?  @unique
+  ownerId   String?
+  isPublic  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner       User?            @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  memberships RoomMembership[]
+  commits     Commit[]
+  branches    Branch[]
+  state       RoomState?
+}
+
+model RoomMembership {
+  roomId   String
+  userId   String
+  role     MemberRole @default(EDITOR)
+  joinedAt DateTime   @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+}
+
+enum MemberRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+// ─── Git model ────────────────────────────────────────────────────────────────
+
+model Commit {
+  sha        String   @id
+  roomId     String
+  parentSha  String?
+  parents    String[]
+  branch     String
+  message    String
+  canvasJson String   @db.Text
+  isMerge    Boolean  @default(false)
+  authorId   String?
+  createdAt  DateTime @default(now())
+
+  room   Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+}
+
+model Branch {
+  roomId  String
+  name    String
+  headSha String
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, name])
+}
+
+model RoomState {
+  roomId      String   @id
+  headSha     String?
+  headBranch  String?
+  isDetached  Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
