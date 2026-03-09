@@ -34,11 +34,11 @@ export class CanvasEngine {
   isDirty = false;
 
   // ── Callbacks provided by the orchestrator ────────────────────────────────
-  private readonly onBroadcastDraw: () => void;
+  private readonly onBroadcastDraw: (immediate?: boolean) => void;
   private readonly onBroadcastCursor: (e: any) => void;
 
   constructor(
-    onBroadcastDraw: () => void,
+    onBroadcastDraw: (immediate?: boolean) => void,
     onBroadcastCursor: (e: any) => void,
   ) {
     this.onBroadcastDraw = onBroadcastDraw;
@@ -62,7 +62,7 @@ export class CanvasEngine {
     this.canvas.on('mouse:down', (e: any) => this.onMouseDown(e));
     this.canvas.on('mouse:move', (e: any) => this.onMouseMove(e));
     this.canvas.on('mouse:up', (e: any) => this.onMouseUp(e));
-    this.canvas.on('object:modified', () => { this.markDirty(); this.onBroadcastDraw(); });
+    this.canvas.on('object:modified', () => { this.markDirty(); this.onBroadcastDraw(true); });
     this.canvas.on('object:added', (e: any) => { if (e.target) ensureObjId(e.target); });
     this.canvas.on('mouse:wheel', (opt: any) => this.onWheel(opt));
 
@@ -198,6 +198,7 @@ export class CanvasEngine {
       });
       ensureObjId(this.activeObj);
       this.canvas.add(this.activeObj);
+      this.onBroadcastDraw(); // throttled mid-stroke broadcast
       return;
     }
 
@@ -253,7 +254,7 @@ export class CanvasEngine {
 
     this.canvas.selection = true;
     this.canvas.renderAll();
-    if (this.currentTool !== 'select') this.onBroadcastDraw();
+    if (this.currentTool !== 'select') this.onBroadcastDraw(true);
   }
 
   private drawArrowhead(line: any): void {
@@ -311,7 +312,7 @@ export class CanvasEngine {
       this.markDirty();
     } else if (k === 'delete' || k === 'backspace') {
       const obj = this.canvas.getActiveObject();
-      if (obj) { this.canvas.remove(obj); this.markDirty(); this.onBroadcastDraw(); }
+      if (obj) { this.canvas.remove(obj); this.markDirty(); this.onBroadcastDraw(true); }
     }
   }
 

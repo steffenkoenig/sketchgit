@@ -51,7 +51,7 @@ export function createSketchGitApp() {
   });
 
   const canvas = new CanvasEngine(
-    () => collab.broadcastDraw(),
+    (immediate) => collab.broadcastDraw(immediate),
     (e) => collab.broadcastCursor(e),
   );
 

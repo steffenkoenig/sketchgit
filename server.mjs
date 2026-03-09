@@ -222,7 +222,7 @@ async function dbLoadSnapshot(roomId) {
 
 app.prepare().then(() => {
   const server = createServer((req, res) => handle(req, res));
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
 
   server.on("upgrade", async (req, socket, head) => {
     const reqUrl = new URL(req.url || "/", `http://${req.headers.host}`);

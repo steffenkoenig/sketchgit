@@ -7,6 +7,14 @@ import { WsMessage, PresenceClient } from '../types';
 import { WsClient } from './wsClient';
 import { showToast } from '../ui/toast';
 
+// ─── Throttle constants (P006) ────────────────────────────────────────────────
+
+/** Max cursor broadcast frequency: 10 updates / second = 100 ms minimum interval. */
+const CURSOR_THROTTLE_MS = 100;
+
+/** Max draw-delta broadcast frequency during active drawing: ~10 frames / second. */
+const DRAW_THROTTLE_MS = 100;
+
 // ─── Callbacks injected by the orchestrator ───────────────────────────────────
 
 export interface CollabCallbacks {
@@ -32,6 +40,15 @@ export class CollaborationManager {
 
   private readonly ws: WsClient;
   private readonly cb: CollabCallbacks;
+
+  // ─── P006: draw-delta state ───────────────────────────────────────────────
+  /** Last canvas snapshot we broadcast; used to compute deltas. */
+  private lastBroadcastSnapshot: Record<string, Record<string, unknown>> = {};
+  /** Pending draw-delta flush timer. */
+  private drawFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ─── P006: cursor throttle state ─────────────────────────────────────────
+  private lastCursorSent = 0;
 
   constructor(ws: WsClient, callbacks: CollabCallbacks) {
     this.ws = ws;
@@ -110,6 +127,16 @@ export class CollaborationManager {
         break;
       }
 
+      case 'draw-delta': {
+        // Apply an incremental canvas delta from a peer (P006).
+        this._applyDrawDelta(
+          data.added as Record<string, unknown>[] | undefined,
+          data.modified as Record<string, unknown>[] | undefined,
+          data.removed as string[] | undefined,
+        );
+        break;
+      }
+
       case 'commit': {
         this.cb.receiveCommit(data.sha as string, data.commit);
         this.cb.renderTimeline();
@@ -138,6 +165,8 @@ export class CollaborationManager {
           HEAD: data.HEAD as string,
           detached: (data.detached as string | null) ?? null,
         });
+        // Reset delta snapshot so the next broadcast is a full draw.
+        this.lastBroadcastSnapshot = {};
         this.cb.renderTimeline();
         this.cb.updateUI();
         break;
@@ -189,15 +218,130 @@ export class CollaborationManager {
     el.style.top = data.y + 'px';
   }
 
-  // ─── Broadcast helpers ────────────────────────────────────────────────────
+  // ─── Broadcast helpers (P006) ─────────────────────────────────────────────
 
-  broadcastDraw(): void {
+  /**
+   * Schedule a draw-delta broadcast.  Calls are coalesced: at most one flush
+   * fires every DRAW_THROTTLE_MS milliseconds.  Pass `immediate = true` on
+   * mouse-up / end-of-stroke to send the final state right away.
+   */
+  broadcastDraw(immediate = false): void {
     if (!this.ws.isConnected()) return;
-    this.ws.send({ type: 'draw', canvas: this.cb.getCanvasData() });
+
+    if (immediate) {
+      if (this.drawFlushTimer !== null) {
+        clearTimeout(this.drawFlushTimer);
+        this.drawFlushTimer = null;
+      }
+      this._flushDrawDelta();
+      return;
+    }
+
+    if (this.drawFlushTimer === null) {
+      this.drawFlushTimer = setTimeout(() => {
+        this.drawFlushTimer = null;
+        this._flushDrawDelta();
+      }, DRAW_THROTTLE_MS);
+    }
   }
 
+  /** Compute and transmit a draw-delta (or full `draw` if snapshot is empty). */
+  private _flushDrawDelta(): void {
+    if (!this.ws.isConnected()) return;
+
+    const canvasJson = this.cb.getCanvasData();
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(canvasJson) as Record<string, unknown>;
+    } catch {
+      console.warn('[CollabManager] Failed to parse canvas JSON for delta');
+      return;
+    }
+    const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
+
+    // Build current id → object map
+    const current: Record<string, Record<string, unknown>> = {};
+    for (const obj of objects) {
+      const id = obj._id as string | undefined;
+      if (id) current[id] = obj;
+    }
+
+    const prev = this.lastBroadcastSnapshot;
+
+    // If we have no prior snapshot, fall back to a full `draw` message.
+    if (Object.keys(prev).length === 0 && objects.length > 0) {
+      this.ws.send({ type: 'draw', canvas: canvasJson });
+      this.lastBroadcastSnapshot = current;
+      return;
+    }
+
+    const added: Record<string, unknown>[] = [];
+    const modified: Record<string, unknown>[] = [];
+    const removed: string[] = [];
+
+    for (const [id, obj] of Object.entries(current)) {
+      if (!prev[id]) {
+        added.push(obj);
+      } else if (JSON.stringify(prev[id]) !== JSON.stringify(obj)) {
+        modified.push(obj);
+      }
+    }
+    for (const id of Object.keys(prev)) {
+      if (!current[id]) removed.push(id);
+    }
+
+    if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
+
+    this.ws.send({ type: 'draw-delta', added, modified, removed });
+    this.lastBroadcastSnapshot = current;
+  }
+
+  /** Apply an incoming draw-delta from a peer by patching the current canvas. */
+  private _applyDrawDelta(
+    added: Record<string, unknown>[] = [],
+    modified: Record<string, unknown>[] = [],
+    removed: string[] = [],
+  ): void {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(this.cb.getCanvasData()) as Record<string, unknown>;
+    } catch {
+      console.warn('[CollabManager] Failed to parse canvas JSON for delta apply');
+      return;
+    }
+
+    const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
+    const objMap: Record<string, Record<string, unknown>> = {};
+    for (const obj of objects) {
+      const id = obj._id as string | undefined;
+      if (id) objMap[id] = obj;
+    }
+
+    for (const obj of added) {
+      const id = obj._id as string | undefined;
+      if (id) objMap[id] = obj;
+    }
+    for (const obj of modified) {
+      const id = obj._id as string | undefined;
+      if (id) objMap[id] = { ...(objMap[id] ?? {}), ...obj };
+    }
+    for (const id of removed) {
+      delete objMap[id];
+    }
+
+    parsed.objects = Object.values(objMap);
+    this.cb.loadCanvasData(JSON.stringify(parsed));
+  }
+
+  /**
+   * Throttled cursor broadcast: at most one message every CURSOR_THROTTLE_MS.
+   */
   broadcastCursor(e: { e: MouseEvent }): void {
     if (!this.ws.isConnected()) return;
+    const now = Date.now();
+    if (now - this.lastCursorSent < CURSOR_THROTTLE_MS) return;
+    this.lastCursorSent = now;
+
     const rect = document.getElementById('canvas-wrap')?.getBoundingClientRect();
     if (!rect) return;
     this.ws.send({
