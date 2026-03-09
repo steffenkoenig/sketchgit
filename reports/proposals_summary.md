@@ -20,9 +20,12 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
 | P001 | Decompose the Monolithic Engine into Modules | Maintainability, Performance | [P001](proposals/done/P001_decompose-monolithic-engine.md) |
+| P002 | Add an Automated Test Suite | Reliability, Maintainability | [P002](proposals/done/P002_add-automated-test-suite.md) |
 | P003 | Add a Persistence Layer | Reliability | [P003](proposals/done/P003_add-persistence-layer.md) |
 | P004 | WebSocket Reconnection & Connection Resilience | Reliability | [P004](proposals/done/P004_websocket-reconnection-resilience.md) |
+| P005 | Enable TypeScript Strict Mode and Remove `@ts-nocheck` | Maintainability | [P005](proposals/done/P005_enable-typescript-strict-mode.md) |
 | P007 | Implement Authentication & Authorization | Reliability, Security | [P007](proposals/done/P007_authentication-and-authorization.md) |
+| P008 | Replace `innerHTML` with Safe DOM Manipulation | Security, Maintainability | [P008](proposals/done/P008_replace-innerhtml-safe-dom.md) |
 
 ---
 
@@ -36,10 +39,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
-| P002 | Add an Automated Test Suite | Reliability, Maintainability | [P002](proposals/P002_add-automated-test-suite.md) |
-| P005 | Enable TypeScript Strict Mode and Remove `@ts-nocheck` | Maintainability | [P005](proposals/P005_enable-typescript-strict-mode.md) |
 | P006 | Optimize Real-time Collaboration Throughput | Performance | [P006](proposals/P006_optimize-realtime-collaboration-throughput.md) |
-| P008 | Replace `innerHTML` with Safe DOM Manipulation | Security, Maintainability | [P008](proposals/P008_replace-innerhtml-safe-dom.md) |
 | P009 | Internationalization (i18n) Support | Maintainability | [P009](proposals/P009_internationalization-i18n.md) |
 | P010 | Improve Error Handling & Observability | Reliability, Maintainability | [P010](proposals/P010_error-handling-and-observability.md) |
 
@@ -65,9 +65,9 @@ Some proposals build on or benefit from others. The table below shows key depend
 2. ~~**P007** – Auth/authz (anonymous-first + optional accounts)~~ ✅ **Done**
 3. ~~**P001** – Module decomposition~~ ✅ **Done**
 4. ~~**P004** – WebSocket resilience~~ ✅ **Done**
-5. **P005** – TypeScript strict (new module files are clean; legacy `@ts-nocheck` files remain)
-6. **P008** – innerHTML fix (quick security win)
-7. **P002** – Test suite (merge engine + git model are now independently unit-testable)
+5. ~~**P005** – TypeScript strict (new module files are clean; legacy `@ts-nocheck` files remain)~~ ✅ **Done**
+6. ~~**P008** – innerHTML fix (quick security win)~~ ✅ **Done**
+7. ~~**P002** – Test suite (merge engine + git model are now independently unit-testable)~~ ✅ **Done**
 8. **P006** – Throughput optimization (builds on P003)
 9. **P009** – i18n (standalone)
 10. **P010** – Observability (ongoing companion)
