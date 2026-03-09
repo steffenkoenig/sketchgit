@@ -198,7 +198,7 @@ export class CanvasEngine {
       });
       ensureObjId(this.activeObj);
       this.canvas.add(this.activeObj);
-      this.onBroadcastDraw(); // throttled mid-stroke broadcast
+      this.onBroadcastDraw(false); // throttled mid-stroke delta (immediate=false)
       return;
     }
 

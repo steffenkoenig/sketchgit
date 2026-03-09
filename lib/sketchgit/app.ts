@@ -57,9 +57,8 @@ export function createSketchGitApp() {
 
   // ── User identity ──────────────────────────────────────────────────────────
   let myName = 'User';
-  // Use a cryptographically random index to pick an initial avatar color.
-  const colorSeed = crypto.getRandomValues(new Uint32Array(1))[0];
-  let myColor = BRANCH_COLORS[colorSeed % BRANCH_COLORS.length];
+  // Pick a random avatar color (non-sensitive, Math.random() is appropriate here).
+  let myColor = BRANCH_COLORS[Math.floor(Math.random() * BRANCH_COLORS.length)];
 
   // ── Commit popup state ────────────────────────────────────────────────────
   let popupSHA: string | null = null;
