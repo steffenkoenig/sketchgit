@@ -31,7 +31,8 @@ describe('renderTimeline', () => {
   let onCommitClick: ReturnType<typeof vi.fn>;
   let onBranchClick: ReturnType<typeof vi.fn>;
 
-  // Wrapper to avoid TypeScript mismatch between vi.fn() and exact callback signatures
+  // Vitest's MockInstance<T> is not structurally assignable to T in TypeScript's type
+  // system, so we bridge with a local helper that contains the cast in one place.
   const tl = (g?: GitModel) => renderTimeline(g ?? git, onCommitClick as any, onBranchClick as any);
 
   beforeEach(() => {
