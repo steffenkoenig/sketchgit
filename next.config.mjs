@@ -33,7 +33,9 @@ const nextConfig = {
 							"style-src 'self' 'unsafe-inline'",
 							"img-src 'self' data: https:",
 							"font-src 'self'",
-							// WebSocket connection to the same host (ws:// dev, wss:// prod).
+							// WebSocket connections. `ws:` and `wss:` allow any host over the
+							// respective schemes; tighten to explicit URL(s) if you need stricter
+							// same-host enforcement (dynamic in Next.js config is non-trivial).
 							"connect-src 'self' ws: wss:",
 							"frame-ancestors 'none'",
 						].join('; '),

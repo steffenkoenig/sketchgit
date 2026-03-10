@@ -56,11 +56,23 @@ export function middleware(req: NextRequest) {
   const { max, windowMs } = getRateLimit();
   const now = Date.now();
 
-  // Opportunistic cleanup: sweep expired entries when the store grows large to
-  // prevent unbounded memory growth over a long-lived process lifetime.
+  // Opportunistic cleanup: when the store is over the cap, first evict all
+  // expired entries.  If it is still over the cap afterwards (e.g. under an
+  // IP-spoofing flood where all keys are within an active window), evict entries
+  // in insertion order (oldest first – Map preserves insertion order) until we
+  // are back under the limit.  This is O(n) and avoids a sort.
   if (store.size > MAX_STORE_ENTRIES) {
     for (const [k, v] of store) {
       if (now >= v.resetAt) store.delete(k);
+    }
+    // If expired-entry removal was insufficient, drop the oldest active entries.
+    if (store.size > MAX_STORE_ENTRIES) {
+      const overflow = store.size - MAX_STORE_ENTRIES;
+      let removed = 0;
+      for (const k of store.keys()) {
+        store.delete(k);
+        if (++removed >= overflow) break;
+      }
     }
   }
 

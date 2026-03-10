@@ -73,7 +73,10 @@ const PING_INTERVAL_MS = 25_000;
 // Origins are normalised via `new URL(...).origin` so that trailing slashes
 // or differences in case do not cause legitimate upgrades to be rejected.
 const ALLOWED_ORIGINS: Set<string> = (() => {
-  const raw = process.env.WS_ALLOWED_ORIGINS ?? env.NEXTAUTH_URL;
+  // Treat an empty/whitespace-only WS_ALLOWED_ORIGINS as unset so we always
+  // fall back to NEXTAUTH_URL rather than producing an empty allow-list that
+  // would reject all browser upgrades.
+  const raw = process.env.WS_ALLOWED_ORIGINS?.trim() || env.NEXTAUTH_URL;
   return new Set(
     raw
       .split(",")
@@ -341,25 +344,29 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
 
 app.prepare().then(() => {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    // P023 – liveness probe: is the process alive and not deadlocked?
+    // P023 – liveness probe: always returns 200 as long as the process is alive.
+    // Orchestrators use this to decide whether to restart the container; a DB
+    // outage should NOT trigger a restart (the process itself is healthy).
     if (req.url === "/api/health") {
       const dbOk = await checkDbHealth();
       const payload = JSON.stringify({
-        status: dbOk ? "ok" : "degraded",
+        status: "ok",
         uptime: process.uptime(),
         rooms: rooms.size,
         clients: wss.clients.size,
         database: dbOk ? "ok" : "unreachable",
       });
-      res.writeHead(dbOk ? 200 : 503, { "Content-Type": "application/json" });
+      res.writeHead(200, { "Content-Type": "application/json" });
       res.end(payload);
       return;
     }
 
-    // P023 – readiness probe: is the server ready to accept traffic?
+    // P023 – readiness probe: 503 until the HTTP server is listening AND the
+    // database is reachable.  Only then is the instance ready for traffic.
     if (req.url === "/api/ready") {
-      res.writeHead(isReady ? 200 : 503, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ready: isReady }));
+      const canAcceptTraffic = isReady && (await checkDbHealth());
+      res.writeHead(canAcceptTraffic ? 200 : 503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ready: canAcceptTraffic }));
       return;
     }
 
@@ -368,7 +375,26 @@ app.prepare().then(() => {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
 
   server.on("upgrade", async (req: IncomingMessage, socket, head) => {
-    const reqUrl = new URL(req.url ?? "/", `http://${req.headers.host}`);
+    // Reject immediately if the Host header is absent – without it we cannot
+    // construct a valid URL, and a missing Host is itself a malformed request.
+    if (!req.headers.host) {
+      logger.warn("ws: rejected upgrade – missing Host header");
+      socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    // Guard against a malformed URL that would cause URL() to throw.
+    let reqUrl: URL;
+    try {
+      reqUrl = new URL(req.url ?? "/", `http://${req.headers.host}`);
+    } catch {
+      logger.warn({ url: req.url }, "ws: rejected upgrade – invalid request URL");
+      socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
     if (reqUrl.pathname !== "/ws") {
       socket.destroy();
       return;
@@ -376,12 +402,22 @@ app.prepare().then(() => {
 
     // P019 – reject upgrades from disallowed origins (CSWSH prevention).
     // Browsers always set Origin; server-side tools typically omit it (allowed).
-    const origin = req.headers["origin"];
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
-      logger.warn({ origin }, "ws: rejected upgrade from disallowed origin");
-      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-      socket.destroy();
-      return;
+    // Normalize the incoming header via new URL().origin to match the allow-list
+    // (which was also normalized) and avoid false rejections from trailing slashes.
+    const rawOrigin = req.headers["origin"];
+    if (rawOrigin) {
+      let normalizedOrigin: string;
+      try {
+        normalizedOrigin = new URL(rawOrigin).origin;
+      } catch {
+        normalizedOrigin = rawOrigin;
+      }
+      if (!ALLOWED_ORIGINS.has(normalizedOrigin)) {
+        logger.warn({ origin: rawOrigin }, "ws: rejected upgrade from disallowed origin");
+        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+        socket.destroy();
+        return;
+      }
     }
 
     // P015 – check per-IP connection limit before accepting the upgrade
@@ -471,8 +507,14 @@ app.prepare().then(() => {
       }
 
       if (message.type === "profile") {
-        client.displayName = safeName((message.name as string | null) ?? null);
-        client.displayColor = safeColor((message.color as string | null) ?? null);
+        // Guard against non-string values from malicious clients; safeName/safeColor
+        // call .trim() internally and would throw on numbers/objects.
+        client.displayName = safeName(
+          typeof message.name === "string" ? message.name : null,
+        );
+        client.displayColor = safeColor(
+          typeof message.color === "string" ? message.color : null,
+        );
         pushPresence(roomId);
         return;
       }

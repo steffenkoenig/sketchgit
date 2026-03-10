@@ -17,9 +17,9 @@ const RegisterSchema = z.object({
     .max(128, "Password must be at most 128 characters."),
   name: z
     .string()
+    .trim()
     .min(1, "A display name is required.")
-    .max(50, "Display name must be at most 50 characters.")
-    .transform((v) => v.trim()),
+    .max(50, "Display name must be at most 50 characters."),
 });
 
 export type RegisterInput = z.infer<typeof RegisterSchema>;
