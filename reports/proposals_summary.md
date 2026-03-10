@@ -39,6 +39,9 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P023 | Add a Health Check Endpoint and Implement Graceful Shutdown | Reliability | [P023](proposals/P023_health-check-graceful-shutdown.md) |
 | P020 | Prevent Memory Leaks by Implementing Proper Resource Cleanup | Reliability, Performance | [P020](proposals/P020_memory-leak-resource-cleanup.md) |
 | P027 | Fail Fast on Misconfiguration: Validate Required Environment Variables at Application Startup | Reliability | [P027](proposals/P027_env-validation-startup.md) |
+| P017 | Further Decompose the app.ts Orchestrator into Feature-Focused Coordinators | Maintainability | [P017](proposals/done/P017_decompose-app-orchestrator.md) |
+| P026 | Add a Dockerfile and Multi-Stage Build for Reproducible Container Deployments | Reliability, Maintainability | [P026](proposals/done/P026_dockerfile-containerization.md) |
+| P028 | Expand Automated Test Coverage to Canvas, Collaboration, and API Layers | Reliability, Maintainability | [P028](proposals/done/P028_expanded-test-coverage.md) |
 
 ---
 
@@ -53,13 +56,10 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
 | P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/P012_horizontal-scalability-redis-pubsub.md) |
-| P017 | Further Decompose the app.ts Orchestrator into Feature-Focused Coordinators | Maintainability | [P017](proposals/P017_decompose-app-orchestrator.md) |
 | P021 | Reduce Unnecessary React Re-Renders with useCallback, useMemo, and Component Splitting | Performance | [P021](proposals/P021_react-performance-optimizations.md) |
 | P022 | Improve Canvas Rendering Performance: Batch Renders, Reduce Object Churn, and Cache Arrows | Performance | [P022](proposals/P022_canvas-rendering-performance.md) |
 | P024 | Virtualize the Commit Timeline SVG to Support Large Commit Histories | Performance | [P024](proposals/P024_timeline-virtualization.md) |
 | P025 | Improve Application Accessibility: ARIA Roles, Keyboard Navigation, and Screen Reader Support | Maintainability | [P025](proposals/P025_accessibility-aria-keyboard.md) |
-| P026 | Add a Dockerfile and Multi-Stage Build for Reproducible Container Deployments | Reliability, Maintainability | [P026](proposals/P026_dockerfile-containerization.md) |
-| P028 | Expand Automated Test Coverage to Canvas, Collaboration, and API Layers | Reliability, Maintainability | [P028](proposals/P028_expanded-test-coverage.md) |
 
 ---
 
@@ -118,14 +118,14 @@ Some proposals build on or benefit from others. The table below shows key depend
 18. ~~**P019** – Security headers & CSRF (CSP, X-Frame-Options, Origin validation in WS upgrade)~~ ✅ **Done**
 19. ~~**P023** – Health check & graceful shutdown (/api/health, /api/ready, SIGTERM handler)~~ ✅ **Done**
 20. ~~**P020** – Memory leak prevention (destroy() in CanvasEngine, CollabManager, app; useEffect cleanup)~~ ✅ **Done**
+21. ~~**P017** – Decompose app.ts orchestrator (5 coordinators + AppContext; app.ts slimmed to ~185 lines)~~ ✅ **Done**
+22. ~~**P026** – Dockerfile & containerization (multi-stage Dockerfile, .dockerignore, .nvmrc, docker-compose app service)~~ ✅ **Done**
+23. ~~**P028** – Expanded test coverage (register route tests, coordinator tests, vitest config updated)~~ ✅ **Done**
 
-### Next wave (P017, P012)
-21. **P017** – Decompose app.ts orchestrator into feature-focused coordinators
-22. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
+### Next wave (P012)
+24. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
 
-### Third wave (P021–P028)
-23. **P026** – Dockerfile & containerization (enables container-based deployment)
-24. **P028** – Expanded test coverage (collab, wsClient, API routes)
+### Third wave (P021–P025)
 25. **P021** – React performance optimizations (measure first with Profiler)
 26. **P022** – Canvas rendering performance (measure first with DevTools)
 27. **P024** – Timeline virtualization (needed when commit count > 200)

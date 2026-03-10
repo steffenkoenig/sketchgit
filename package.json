@@ -38,6 +38,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/fabric": "^5.3.11",
     "@types/node": "^25.4.0",

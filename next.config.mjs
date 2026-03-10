@@ -2,6 +2,11 @@
 const nextConfig = {
 	reactStrictMode: true,
 
+	// P026 – Produce a minimal self-contained build artefact for the Docker
+	// runner stage. next build outputs .next/standalone/ with only the files
+	// required at runtime plus a trimmed node_modules copy.
+	output: 'standalone',
+
 	// P018 – Fabric.js 5.x ships CommonJS; Next.js needs to transpile it so
 	// the ESM bundle can import it without module-resolution errors.
 	transpilePackages: ['fabric'],
