@@ -114,6 +114,6 @@ export type WsMessageType =
   | "user-left";
 
 export interface WsMessage {
-  type: string;
+  type: WsMessageType;
   [key: string]: unknown;
 }

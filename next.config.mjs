@@ -25,8 +25,10 @@ const nextConfig = {
 						key: 'Content-Security-Policy',
 						value: [
 							"default-src 'self'",
-							// Fabric.js is now bundled (P018) – no CDN script-src needed.
-							"script-src 'self'",
+							// Next.js injects inline scripts for hydration/bootstrapping;
+							// 'unsafe-inline' is required unless a nonce-based CSP is
+							// implemented end-to-end (middleware + _document nonce prop).
+							"script-src 'self' 'unsafe-inline'",
 							// Tailwind JIT injects inline styles at runtime.
 							"style-src 'self' 'unsafe-inline'",
 							"img-src 'self' data: https:",

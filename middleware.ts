@@ -18,7 +18,13 @@ interface WindowEntry {
 }
 
 // In-process sliding window store keyed by `ip:endpoint`.
+// NOTE: In multi-instance deployments this state is not shared across instances.
+// Replace with a Redis-backed counter (see P012/P015 proposals) for clustering.
 const store = new Map<string, WindowEntry>();
+
+// Sweep out expired entries when the store exceeds this size to bound memory
+// usage without a background timer (opportunistic GC on each request).
+const MAX_STORE_ENTRIES = 10_000;
 
 function getRateLimit(): { max: number; windowMs: number } {
   const max = parseInt(process.env.RATE_LIMIT_MAX ?? "10", 10);
@@ -34,6 +40,10 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // NOTE: IP resolution relies on proxy-set headers (x-forwarded-for / x-real-ip),
+  // which can be spoofed in setups where the proxy does not strip and re-set them.
+  // In production, ensure your reverse proxy (nginx, Caddy, ALB, etc.) is configured
+  // to overwrite these headers from the trusted upstream network address only.
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??
@@ -45,6 +55,14 @@ export function middleware(req: NextRequest) {
   const key = `${ip}:${req.nextUrl.pathname}`;
   const { max, windowMs } = getRateLimit();
   const now = Date.now();
+
+  // Opportunistic cleanup: sweep expired entries when the store grows large to
+  // prevent unbounded memory growth over a long-lived process lifetime.
+  if (store.size > MAX_STORE_ENTRIES) {
+    for (const [k, v] of store) {
+      if (now >= v.resetAt) store.delete(k);
+    }
+  }
 
   const entry = store.get(key);
   if (!entry || now >= entry.resetAt) {

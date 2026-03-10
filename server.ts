@@ -70,9 +70,23 @@ const PING_INTERVAL_MS = 25_000;
 // P019 – allowed WebSocket origins (CSRF protection)
 // Browsers always send the Origin header on WebSocket upgrades.
 // Server-to-server / CLI tools typically omit it (we allow those through).
+// Origins are normalised via `new URL(...).origin` so that trailing slashes
+// or differences in case do not cause legitimate upgrades to be rejected.
 const ALLOWED_ORIGINS: Set<string> = (() => {
   const raw = process.env.WS_ALLOWED_ORIGINS ?? env.NEXTAUTH_URL;
-  return new Set(raw.split(",").map((o) => o.trim()).filter(Boolean));
+  return new Set(
+    raw
+      .split(",")
+      .map((o) => {
+        const trimmed = o.trim();
+        try {
+          return new URL(trimmed).origin;
+        } catch {
+          return trimmed;
+        }
+      })
+      .filter(Boolean),
+  );
 })();
 
 // P023 – readiness flag: false until the HTTP server is fully listening
@@ -212,6 +226,17 @@ async function dbSaveCommit(
   commitData: CommitData,
   userId: string | null,
 ): Promise<void> {
+  // Validate canvas JSON before entering the transaction. An invalid payload
+  // means the commit is unrenderable – log and skip rather than persisting
+  // a silent empty fallback that would confuse clients.
+  let canvasObj: object;
+  try {
+    canvasObj = JSON.parse(commitData.canvas) as object;
+  } catch (err) {
+    logger.warn({ roomId, sha, err }, "db.saveCommit: invalid canvas JSON; skipping persistence");
+    return;
+  }
+
   try {
     await prisma.$transaction([
       prisma.commit.upsert({
@@ -224,11 +249,7 @@ async function dbSaveCommit(
           branch: commitData.branch,
           message: commitData.message,
           // P011: canvasJson is now Json (JSONB) – pass a parsed object, not a string.
-          // Guard against invalid JSON to prevent transaction failure.
-          canvasJson: (() => {
-            try { return JSON.parse(commitData.canvas) as object; }
-            catch { return {} as object; }
-          })(),
+          canvasJson: canvasObj,
           isMerge: commitData.isMerge ?? false,
           authorId: userId ?? null,
         },
@@ -265,11 +286,13 @@ interface RoomSnapshot {
 async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
   try {
     const [commits, branches, state] = await Promise.all([
-      // P011: Load most-recent 100 commits (pagination). Clients request older
-      // pages on demand via GET /api/rooms/:id/commits?cursor=<sha>.
+      // P011: Load the 100 most-recent commits (DESC) then reverse so clients
+      // receive them in chronological order for correct parent-chain replay.
+      // Rooms with >100 commits will serve only recent history; full history
+      // can be fetched via GET /api/rooms/:id/commits?cursor=<sha>.
       prisma.commit.findMany({
         where: { roomId },
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: "desc" },
         take: 100,
       }),
       prisma.branch.findMany({ where: { roomId } }),
@@ -277,6 +300,9 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
     ]);
 
     if (commits.length === 0) return null;
+
+    // Reverse to restore chronological (oldest-first) order for client replay.
+    commits.reverse();
 
     const commitsMap: Record<string, unknown> = {};
     for (const c of commits) {
