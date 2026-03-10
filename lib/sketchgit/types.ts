@@ -99,7 +99,21 @@ export interface PresenceClient {
 
 // ─── WebSocket messages ───────────────────────────────────────────────────────
 
+export type WsMessageType =
+  | "welcome"
+  | "presence"
+  | "profile"
+  | "draw"
+  | "draw-delta"
+  | "commit"
+  | "cursor"
+  | "ping"
+  | "pong"
+  | "fullsync-request"
+  | "fullsync"
+  | "user-left";
+
 export interface WsMessage {
-  type: string;
+  type: WsMessageType;
   [key: string]: unknown;
 }

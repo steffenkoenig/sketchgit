@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "node16",
+    "noEmit": true,
+    "target": "ES2022"
+  },
+  "include": ["server.ts", "lib/**/*.ts"],
+  "exclude": ["lib/**/*.test.ts", "node_modules"]
+}

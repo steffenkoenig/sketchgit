@@ -83,6 +83,8 @@ model RoomMembership {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([roomId, userId])
+  // P011: index on userId enables fast per-user membership lookups
+  @@index([userId])
 }
 
 enum MemberRole {
@@ -100,17 +102,22 @@ model Commit {
   parents    String[]
   branch     String
   message    String
-  // Stored as TEXT for simplicity and maximum compatibility.
-  // To enable native JSONB operations and indexing, change to `Json` type.
-  // When using `Json`, JSON.parse() / JSON.stringify() must be applied in the
-  // repository layer since Prisma returns parsed objects for Json fields.
-  canvasJson String   @db.Text
+  // P011: Changed from String @db.Text to Json (maps to JSONB in PostgreSQL).
+  // JSONB enables native JSON operators, index-on-path, and 20-40% smaller
+  // on-disk storage. All read/write sites must use parsed objects (no
+  // JSON.stringify / JSON.parse at the Prisma layer).
+  canvasJson Json
   isMerge    Boolean  @default(false)
   authorId   String?
   createdAt  DateTime @default(now())
 
   room   Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  // P011: indices for the most frequent query patterns
+  @@index([roomId])
+  @@index([authorId])
+  @@index([roomId, createdAt])
 }
 
 model Branch {

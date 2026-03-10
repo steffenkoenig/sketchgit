@@ -7,11 +7,32 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: Unit tests & type check
+  ci:
+    name: Lint, type check, test & build
     runs-on: ubuntu-latest
     permissions:
       contents: read
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sketchgit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sketchgit_test
+      AUTH_SECRET: ci-test-secret-do-not-use-in-production-padding
+      NEXTAUTH_URL: http://localhost:3000
+      SKIP_ENV_VALIDATION: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -25,8 +46,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+
       - name: Run tests
         run: npm test
+
+      - name: Collect coverage report
+        run: npm run test:coverage
+        continue-on-error: true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Build Next.js
+        run: npm run build

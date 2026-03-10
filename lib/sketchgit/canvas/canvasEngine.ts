@@ -1,13 +1,19 @@
 /**
  * canvasEngine – encapsulates Fabric.js canvas setup and all drawing tools.
  *
- * Fabric.js is loaded via a CDN `<Script>` tag and exposed as `window.fabric`.
- * This module declares it as an ambient global so TypeScript is satisfied
- * without needing a package import.
+ * P018 – Fabric.js is now imported as an npm package instead of being loaded
+ * from a CDN at runtime. This eliminates the CDN dependency, enables TypeScript
+ * type-checking of all Fabric.js API calls, and allows npm audit / Dependabot
+ * to track the library for security updates.
+ *
+ * Known: fabric@5.3.0 has a reported XSS vulnerability in its SVG *export*
+ * path. SketchGit does not expose SVG export to users, so this application is
+ * not affected. Upgrading to fabric@7.x (patched) requires a full API rewrite
+ * and is tracked as a separate work item.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-declare const fabric: any;
+import { fabric } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
 import { showToast } from '../ui/toast';
@@ -32,6 +38,10 @@ export class CanvasEngine {
 
   // ── Dirty flag ────────────────────────────────────────────────────────────
   isDirty = false;
+
+  // ── P020: Bound listener references for proper cleanup ───────────────────
+  private boundResize: (() => void) | null = null;
+  private boundKeydown: ((e: KeyboardEvent) => void) | null = null;
 
   // ── Callbacks provided by the orchestrator ────────────────────────────────
   private readonly onBroadcastDraw: (immediate?: boolean) => void;
@@ -66,13 +76,33 @@ export class CanvasEngine {
     this.canvas.on('object:added', (e: any) => { if (e.target) ensureObjId(e.target); });
     this.canvas.on('mouse:wheel', (opt: any) => this.onWheel(opt));
 
-    window.addEventListener('resize', () => {
+    // P020: store bound references so they can be removed in destroy()
+    this.boundResize = () => {
       this.canvas.setWidth(wrap.clientWidth);
       this.canvas.setHeight(wrap.clientHeight);
       this.canvas.renderAll();
-    });
+    };
+    this.boundKeydown = (e: KeyboardEvent) => this.onKey(e);
 
-    window.addEventListener('keydown', (e) => this.onKey(e));
+    window.addEventListener('resize', this.boundResize);
+    window.addEventListener('keydown', this.boundKeydown);
+  }
+
+  // ── P020: Resource cleanup ────────────────────────────────────────────────
+
+  destroy(): void {
+    if (this.boundResize) {
+      window.removeEventListener('resize', this.boundResize);
+      this.boundResize = null;
+    }
+    if (this.boundKeydown) {
+      window.removeEventListener('keydown', this.boundKeydown);
+      this.boundKeydown = null;
+    }
+    if (this.canvas) {
+      this.canvas.dispose(); // Fabric.js built-in: removes internal listeners & clears element
+      this.canvas = null;
+    }
   }
 
   // ── Serialisation ─────────────────────────────────────────────────────────
@@ -128,7 +158,7 @@ export class CanvasEngine {
         fontFamily: 'Fira Code',
         selectable: true, editable: true,
       });
-      ensureObjId(t);
+      ensureObjId(t as any);
       this.canvas.add(t);
       this.canvas.setActiveObject(t);
       t.enterEditing();
@@ -158,12 +188,13 @@ export class CanvasEngine {
     } else if (this.currentTool === 'arrow') {
       this.activeObj = new fabric.Line([p.x, p.y, p.x, p.y], {
         stroke: this.strokeColor, strokeWidth: this.strokeWidth,
-        selectable: false, evented: false, strokeLineCap: 'round', _isArrow: true,
-      });
+        selectable: false, evented: false, strokeLineCap: 'round',
+        ...({ _isArrow: true } as Record<string, unknown>),
+      } as any);
     }
 
     if (this.activeObj) {
-      ensureObjId(this.activeObj);
+      ensureObjId(this.activeObj as any);
       this.canvas.add(this.activeObj);
     }
   }
@@ -270,11 +301,11 @@ export class CanvasEngine {
       [{ x: x2, y: y2 }, { x: p1x, y: p1y }, { x: p2x, y: p2y }],
       { fill: line.stroke, stroke: line.stroke, strokeWidth: 1, selectable: false, evented: false },
     );
-    ensureObjId(head);
+    ensureObjId(head as any);
     this.canvas.add(head);
 
     const grp = new fabric.Group([line, head], { selectable: true, evented: true });
-    ensureObjId(grp);
+    ensureObjId(grp as any);
     this.canvas.remove(line);
     this.canvas.remove(head);
     this.canvas.add(grp);
