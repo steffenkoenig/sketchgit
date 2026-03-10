@@ -11,11 +11,13 @@ describe('cn (class name utility)', () => {
   });
 
   it('handles conditional classes (truthy)', () => {
-    expect(cn('base', true && 'active')).toBe('base active');
+    const isActive = true;
+    expect(cn('base', isActive && 'active')).toBe('base active');
   });
 
   it('handles conditional classes (falsy)', () => {
-    expect(cn('base', false && 'active')).toBe('base');
+    const isActive = false;
+    expect(cn('base', isActive && 'active')).toBe('base');
   });
 
   it('deduplicates Tailwind classes (last wins)', () => {

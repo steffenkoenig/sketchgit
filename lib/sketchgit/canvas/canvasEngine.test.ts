@@ -106,7 +106,7 @@ function resetMocks() {
   // Clear call histories (NOT implementations) on fabric constructors
   [fabricLib.Canvas, fabricLib.Rect, fabricLib.Ellipse, fabricLib.Line,
     fabricLib.Path, fabricLib.IText, fabricLib.Polygon, fabricLib.Group,
-  ].forEach((f) => (f as ReturnType<typeof vi.fn>).mockClear());
+  ].forEach((f) => (f as unknown as ReturnType<typeof vi.fn>).mockClear());
 
   // Clear and restore mockCanvasInstance method state
   mockCanvasInstance.add.mockClear();
@@ -163,7 +163,7 @@ describe('CanvasEngine – lifecycle', () => {
     document.body.innerHTML = '';
     const { engine } = makeEngine();
     const fabric = fabricLib;
-    (fabric.Canvas as ReturnType<typeof vi.fn>).mockClear();
+    (fabric.Canvas as unknown as ReturnType<typeof vi.fn>).mockClear();
     engine.init();
     expect(fabric.Canvas).not.toHaveBeenCalled();
   });
@@ -503,18 +503,18 @@ describe('CanvasEngine – mouse events', () => {
 
   it('mouse:down with "text" creates IText and enters editing', async () => {
     const fabric = fabricLib;
-    (fabric.IText as ReturnType<typeof vi.fn>).mockClear();
+    (fabric.IText as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('text', engine);
     expect(fabric.IText).toHaveBeenCalled();
-    const iTextInst = (fabric.IText as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+    const iTextInst = (fabric.IText as unknown as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
     expect(iTextInst?.enterEditing).toHaveBeenCalled();
   });
 
   it('mouse:down with "pen" starts path drawing', async () => {
     const fabric = fabricLib;
-    (fabric.Path as ReturnType<typeof vi.fn>).mockClear();
+    (fabric.Path as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('pen', engine);
@@ -530,7 +530,7 @@ describe('CanvasEngine – mouse events', () => {
 
   it('mouse:move with "eraser" removes objects at pointer', () => {
     const obj = makeFabricObject();
-    (obj.containsPoint as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (obj.containsPoint as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
     mockCanvasInstance.getObjects.mockReturnValue([obj]);
     const { engine } = makeEngine();
     engine.init();
@@ -542,7 +542,7 @@ describe('CanvasEngine – mouse events', () => {
 
   it('mouse:move with "pen" updates the path while drawing', async () => {
     const fabric = fabricLib;
-    (fabric.Path as ReturnType<typeof vi.fn>).mockClear();
+    (fabric.Path as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('pen', engine);

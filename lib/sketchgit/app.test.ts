@@ -300,7 +300,7 @@ describe('createSketchGitApp', () => {
     const app = createSketchGitApp();
     app.setName();
     expect(closeModal).toHaveBeenCalledWith('nameModal');
-    expect(mocks.mockWs.connect).toHaveBeenCalledWith('room1', 'Bob', expect.any(String));
+    expect(mocks.mockWs.send).toHaveBeenCalledWith({ type: 'profile', name: 'Bob', color: expect.any(String) });
   });
 
   it('tlScrollLeft and tlScrollRight do not throw', () => {

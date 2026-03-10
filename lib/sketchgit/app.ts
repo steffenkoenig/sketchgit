@@ -646,16 +646,16 @@ export function createSketchGitApp() {
     // Close panel / popup on outside click
     document.addEventListener('click', (e) => {
       const panel = document.getElementById('collab-panel');
-      const target = e.target as HTMLElement;
+      const target = e.target as EventTarget;
       if (
         panel?.classList.contains('open') &&
-        !panel.contains(target) &&
-        !target.closest('#topbar')
+        !(target instanceof Node && panel.contains(target)) &&
+        !(target instanceof Element && target.closest('#topbar'))
       ) {
         collab.toggleCollabPanel();
       }
       const popup = document.getElementById('commit-popup');
-      if (popup?.classList.contains('open') && !popup.contains(target)) {
+      if (popup?.classList.contains('open') && !(target instanceof Node && popup.contains(target))) {
         closeCommitPopup();
       }
     });
