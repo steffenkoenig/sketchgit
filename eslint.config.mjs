@@ -25,7 +25,7 @@ export default [
   {
     files: [
       "server.ts",
-      "middleware.ts",
+      "proxy.ts",
       "lib/env.ts",
       "lib/auth.ts",
       "lib/db/**/*.ts",
