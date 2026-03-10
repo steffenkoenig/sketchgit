@@ -33,6 +33,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P014 | Add Structured Input Validation to All API Endpoints with Zod | Reliability, Security | [P014](proposals/P014_input-validation-zod.md) |
 | P015 | Add Rate Limiting and Brute-Force Protection to API Endpoints | Security, Reliability | [P015](proposals/P015_rate-limiting-brute-force-protection.md) |
 | P016 | Add a Continuous Integration and Continuous Deployment Pipeline Using GitHub Actions | Maintainability, Reliability | [P016](proposals/P016_cicd-pipeline-github-actions.md) |
+| P018 | Replace CDN-Loaded Fabric.js with a Bundled npm Dependency | Reliability, Maintainability, Security | [P018](proposals/P018_replace-cdn-fabric-npm.md) |
+| P011 | Database Performance Optimization: JSONB Storage, Missing Indices, and Query Improvements | Performance | [P011](proposals/P011_database-performance-optimization.md) |
+| P019 | Add HTTP Security Headers and CSRF Protection | Security | [P019](proposals/P019_security-headers-csrf.md) |
+| P023 | Add a Health Check Endpoint and Implement Graceful Shutdown | Reliability | [P023](proposals/P023_health-check-graceful-shutdown.md) |
+| P020 | Prevent Memory Leaks by Implementing Proper Resource Cleanup | Reliability, Performance | [P020](proposals/P020_memory-leak-resource-cleanup.md) |
 | P027 | Fail Fast on Misconfiguration: Validate Required Environment Variables at Application Startup | Reliability | [P027](proposals/P027_env-validation-startup.md) |
 
 ---
@@ -47,19 +52,13 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
-| P011 | Database Performance Optimization: JSONB Storage, Missing Indices, and Query Improvements | Performance | [P011](proposals/P011_database-performance-optimization.md) |
 | P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/P012_horizontal-scalability-redis-pubsub.md) |
 | P017 | Further Decompose the app.ts Orchestrator into Feature-Focused Coordinators | Maintainability | [P017](proposals/P017_decompose-app-orchestrator.md) |
-| P018 | Replace CDN-Loaded Fabric.js with a Bundled npm Dependency | Reliability, Maintainability, Security | [P018](proposals/P018_replace-cdn-fabric-npm.md) |
-| P019 | Add HTTP Security Headers and CSRF Protection | Security | [P019](proposals/P019_security-headers-csrf.md) |
-| P020 | Prevent Memory Leaks by Implementing Proper Resource Cleanup | Reliability, Performance | [P020](proposals/P020_memory-leak-resource-cleanup.md) |
 | P021 | Reduce Unnecessary React Re-Renders with useCallback, useMemo, and Component Splitting | Performance | [P021](proposals/P021_react-performance-optimizations.md) |
 | P022 | Improve Canvas Rendering Performance: Batch Renders, Reduce Object Churn, and Cache Arrows | Performance | [P022](proposals/P022_canvas-rendering-performance.md) |
-| P023 | Add a Health Check Endpoint and Implement Graceful Shutdown | Reliability | [P023](proposals/P023_health-check-graceful-shutdown.md) |
 | P024 | Virtualize the Commit Timeline SVG to Support Large Commit Histories | Performance | [P024](proposals/P024_timeline-virtualization.md) |
 | P025 | Improve Application Accessibility: ARIA Roles, Keyboard Navigation, and Screen Reader Support | Maintainability | [P025](proposals/P025_accessibility-aria-keyboard.md) |
 | P026 | Add a Dockerfile and Multi-Stage Build for Reproducible Container Deployments | Reliability, Maintainability | [P026](proposals/P026_dockerfile-containerization.md) |
-| P027 | Fail Fast on Misconfiguration: Validate Required Environment Variables at Application Startup | Reliability | [P027](proposals/P027_env-validation-startup.md) |
 | P028 | Expand Automated Test Coverage to Canvas, Collaboration, and API Layers | Reliability, Maintainability | [P028](proposals/P028_expanded-test-coverage.md) |
 
 ---
@@ -114,18 +113,18 @@ Some proposals build on or benefit from others. The table below shows key depend
 13. ~~**P014** – Input validation with Zod (lib/api/validate.ts, register route schema)~~ ✅ **Done**
 14. ~~**P015** – Rate limiting (middleware.ts for auth routes, per-IP WebSocket limits)~~ ✅ **Done**
 15. ~~**P027** – Env validation on startup (lib/env.ts, validateEnv(), fail-fast on misconfiguration)~~ ✅ **Done**
+16. ~~**P018** – Replace CDN Fabric.js with npm (import { fabric }, destroy(), transpilePackages)~~ ✅ **Done**
+17. ~~**P011** – Database performance (JSONB canvasJson, 4 indices, pagination take:100)~~ ✅ **Done**
+18. ~~**P019** – Security headers & CSRF (CSP, X-Frame-Options, Origin validation in WS upgrade)~~ ✅ **Done**
+19. ~~**P023** – Health check & graceful shutdown (/api/health, /api/ready, SIGTERM handler)~~ ✅ **Done**
+20. ~~**P020** – Memory leak prevention (destroy() in CanvasEngine, CollabManager, app; useEffect cleanup)~~ ✅ **Done**
 
-### Next wave (P018–P012)
-16. **P018** – Replace CDN Fabric.js with npm (quick security and reliability win)
-17. **P011** – Database performance (JSONB, indices, pagination)
-18. **P017** – Decompose app.ts orchestrator (builds on P001 pattern)
-19. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
+### Next wave (P017, P012)
+21. **P017** – Decompose app.ts orchestrator into feature-focused coordinators
+22. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
 
-### Third wave (P019–P028)
-20. **P019** – Security headers & CSRF (quick win after P018 tightens CSP)
-21. **P023** – Health check & graceful shutdown (prerequisite for P026 Docker)
-22. **P026** – Dockerfile & containerization (enables container-based deployment)
-23. **P020** – Memory leak & resource cleanup (small effort, improves all future refactors)
+### Third wave (P021–P028)
+23. **P026** – Dockerfile & containerization (enables container-based deployment)
 24. **P028** – Expanded test coverage (collab, wsClient, API routes)
 25. **P021** – React performance optimizations (measure first with Profiler)
 26. **P022** – Canvas rendering performance (measure first with DevTools)
@@ -141,18 +140,10 @@ The following items from the proposals can be implemented quickly and independen
 | Quick Win | Parent Proposal | Estimated Effort |
 |-----------|-----------------|------------------|
 | Replace German object-type labels with English | P009 | 5 minutes |
-| Enable `perMessageDeflate` on the WebSocket server | P006 | 5 minutes |
-| Throttle cursor broadcast to 10 updates/second | P006 | 30 minutes |
 | Remove unused `scrollToCommit()` function | P010 | 5 minutes |
 | Replace `Math.random()` IDs with `crypto.randomUUID()` | P001 / P005 | 15 minutes |
 | Replace empty `catch (_) {}` blocks with `console.warn` | P010 | 30 minutes |
 | Add React error boundary wrapping `<SketchGitApp />` | P010 | 1 hour |
-| Add `integrity` SRI hash to CDN Fabric.js script tag | P018 | 15 minutes |
-| Add `@@index([roomId])` to Commit model | P011 | 15 minutes |
-| Add `transpilePackages: ['fabric']` to next.config.mjs | P018 | 5 minutes |
-| Add `X-Frame-Options: DENY` header to next.config.mjs | P019 | 5 minutes |
-| Add Origin validation to WebSocket upgrade handler | P019 | 30 minutes |
-| Add `SIGTERM` handler calling `prisma.$disconnect()` | P020 / P023 | 30 minutes |
 | Add `aria-label` to all toolbar buttons | P025 | 1 hour |
 | Add `.nvmrc` pinning Node.js to version 22 | P026 | 5 minutes |
 | Add `output: 'standalone'` to `next.config.mjs` | P026 | 5 minutes |

@@ -464,4 +464,19 @@ export class CollaborationManager {
     }
     this.remoteCursors = {};
   }
+
+  // P020: Release all resources held by this manager.
+  destroy(): void {
+    // Cancel any pending draw-delta flush timer.
+    if (this.drawFlushTimer !== null) {
+      clearTimeout(this.drawFlushTimer);
+      this.drawFlushTimer = null;
+    }
+    // Remove all remote cursor DOM elements.
+    for (const elId of Object.values(this.remoteCursors)) {
+      document.getElementById(elId)?.remove();
+    }
+    this.remoteCursors = {};
+    this.lastBroadcastSnapshot = {};
+  }
 }

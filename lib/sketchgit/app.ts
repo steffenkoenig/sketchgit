@@ -695,5 +695,12 @@ export function createSketchGitApp() {
     openBranchModal,
     tlScrollLeft,
     tlScrollRight,
+    // P020: Tear down all subsystems (canvas, WebSocket, collaboration manager)
+    // Called by the React useEffect cleanup to prevent resource leaks on unmount.
+    destroy(): void {
+      ws.disconnect();
+      collab.destroy();
+      canvas.destroy();
+    },
   };
 }

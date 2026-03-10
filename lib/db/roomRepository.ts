@@ -62,7 +62,7 @@ export async function saveCommit(
         parents: commit.parents,
         branch: commit.branch,
         message: commit.message,
-        canvasJson: commit.canvas,
+        canvasJson: JSON.parse(commit.canvas) as object,
         isMerge: commit.isMerge,
         authorId: userId ?? null,
       },
@@ -111,7 +111,7 @@ export async function loadRoomSnapshot(
       parents: c.parents,
       message: c.message,
       ts: c.createdAt.getTime(),
-      canvas: c.canvasJson,
+      canvas: JSON.stringify(c.canvasJson),
       branch: c.branch,
       isMerge: c.isMerge,
     };

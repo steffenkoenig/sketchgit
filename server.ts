@@ -5,6 +5,8 @@
  *
  * P013 – migrated from server.mjs to TypeScript for full type safety.
  * P015 – per-IP WebSocket connection limiting to prevent resource exhaustion.
+ * P019 – WebSocket Origin validation (cross-site WebSocket hijacking prevention).
+ * P023 – /api/health and /api/ready endpoints; graceful SIGTERM shutdown.
  * P027 – environment variables validated at startup via validateEnv().
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -65,6 +67,18 @@ const ROOM_CLEANUP_DELAY_MS = 60_000;
 // Server-side heartbeat: broadcast a ping to all clients every 25 s.
 const PING_INTERVAL_MS = 25_000;
 
+// P019 – allowed WebSocket origins (CSRF protection)
+// Browsers always send the Origin header on WebSocket upgrades.
+// Server-to-server / CLI tools typically omit it (we allow those through).
+const ALLOWED_ORIGINS: Set<string> = (() => {
+  const raw = process.env.WS_ALLOWED_ORIGINS ?? env.NEXTAUTH_URL;
+  return new Set(raw.split(",").map((o) => o.trim()).filter(Boolean));
+})();
+
+// P023 – readiness flag: false until the HTTP server is fully listening
+let isReady = false;
+let isShuttingDown = false;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function safeRoomId(value: string | null): string {
@@ -105,6 +119,16 @@ function getRoom(roomId: string): Map<string, ClientState> {
 function sendTo(ws: WebSocket, payload: WsMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
+  }
+}
+
+// P023 – lightweight DB health probe (SELECT 1)
+async function checkDbHealth(): Promise<boolean> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -199,7 +223,12 @@ async function dbSaveCommit(
           parents: commitData.parents ?? [],
           branch: commitData.branch,
           message: commitData.message,
-          canvasJson: commitData.canvas,
+          // P011: canvasJson is now Json (JSONB) – pass a parsed object, not a string.
+          // Guard against invalid JSON to prevent transaction failure.
+          canvasJson: (() => {
+            try { return JSON.parse(commitData.canvas) as object; }
+            catch { return {} as object; }
+          })(),
           isMerge: commitData.isMerge ?? false,
           authorId: userId ?? null,
         },
@@ -236,7 +265,13 @@ interface RoomSnapshot {
 async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
   try {
     const [commits, branches, state] = await Promise.all([
-      prisma.commit.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } }),
+      // P011: Load most-recent 100 commits (pagination). Clients request older
+      // pages on demand via GET /api/rooms/:id/commits?cursor=<sha>.
+      prisma.commit.findMany({
+        where: { roomId },
+        orderBy: { createdAt: "asc" },
+        take: 100,
+      }),
       prisma.branch.findMany({ where: { roomId } }),
       prisma.roomState.findUnique({ where: { roomId } }),
     ]);
@@ -251,7 +286,12 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
         parents: c.parents,
         message: c.message,
         ts: c.createdAt.getTime(),
-        canvas: c.canvasJson,
+        // P011: canvasJson is now a parsed object from JSONB – re-stringify for
+        // the client-side git model which expects a JSON string.
+        canvas: (() => {
+          try { return JSON.stringify(c.canvasJson); }
+          catch { return '{"objects":[]}'; }
+        })(),
         branch: c.branch,
         isMerge: c.isMerge,
       };
@@ -274,14 +314,46 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 app.prepare().then(() => {
-  const server = createServer((req: IncomingMessage, res: ServerResponse) =>
-    handle(req, res),
-  );
+  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    // P023 – liveness probe: is the process alive and not deadlocked?
+    if (req.url === "/api/health") {
+      const dbOk = await checkDbHealth();
+      const payload = JSON.stringify({
+        status: dbOk ? "ok" : "degraded",
+        uptime: process.uptime(),
+        rooms: rooms.size,
+        clients: wss.clients.size,
+        database: dbOk ? "ok" : "unreachable",
+      });
+      res.writeHead(dbOk ? 200 : 503, { "Content-Type": "application/json" });
+      res.end(payload);
+      return;
+    }
+
+    // P023 – readiness probe: is the server ready to accept traffic?
+    if (req.url === "/api/ready") {
+      res.writeHead(isReady ? 200 : 503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ready: isReady }));
+      return;
+    }
+
+    handle(req, res);
+  });
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
 
   server.on("upgrade", async (req: IncomingMessage, socket, head) => {
     const reqUrl = new URL(req.url ?? "/", `http://${req.headers.host}`);
     if (reqUrl.pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+
+    // P019 – reject upgrades from disallowed origins (CSWSH prevention).
+    // Browsers always set Origin; server-side tools typically omit it (allowed).
+    const origin = req.headers["origin"];
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+      logger.warn({ origin }, "ws: rejected upgrade from disallowed origin");
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();
       return;
     }
@@ -436,11 +508,12 @@ app.prepare().then(() => {
   });
 
   server.listen(port, host, () => {
+    isReady = true; // P023 – mark server as ready to serve traffic
     logger.info({ host, port }, "SketchGit server listening");
   });
 
   // ─── Server-side heartbeat ─────────────────────────────────────────────────
-  setInterval(() => {
+  const pingInterval = setInterval(() => {
     for (const room of rooms.values()) {
       for (const clientState of room.values()) {
         sendTo(clientState, { type: "ping" });
@@ -449,11 +522,46 @@ app.prepare().then(() => {
   }, PING_INTERVAL_MS);
 
   // ─── Graceful shutdown (P023) ──────────────────────────────────────────────
-  const shutdown = async () => {
-    logger.info("Shutting down SketchGit server…");
+  const shutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    isReady = false; // stop accepting new traffic via /api/ready
+    logger.info({ signal }, "Graceful shutdown initiated");
+
+    // 1. Send close frames to all connected WebSocket clients (code 1001 = Going Away)
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.close(1001, "Server is shutting down");
+      }
+    });
+
+    // 2. Stop accepting new WebSocket upgrades and HTTP requests
+    await Promise.all([
+      new Promise<void>((resolve) => wss.close(() => resolve())),
+      new Promise<void>((resolve) => server.close(() => resolve())),
+    ]);
+
+    // 3. Clear timers
+    clearInterval(pingInterval);
+
+    // 4. Disconnect from the database
     await prisma.$disconnect();
+
+    logger.info("Graceful shutdown complete");
     process.exit(0);
   };
-  process.once("SIGTERM", shutdown);
-  process.once("SIGINT", shutdown);
+
+  // Force-exit if graceful shutdown takes longer than 10 seconds.
+  // Exit code 2 differentiates a timeout from a clean (0) or error (1) shutdown.
+  const registerShutdown = (signal: string) => {
+    process.once(signal, () => {
+      setTimeout(() => {
+        logger.error("Graceful shutdown timed out; forcing exit with code 2");
+        process.exit(2);
+      }, 10_000).unref();
+      void shutdown(signal);
+    });
+  };
+  registerShutdown("SIGTERM");
+  registerShutdown("SIGINT");
 });

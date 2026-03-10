@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Script from "next/script";
+import { useEffect, useRef } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 import { createSketchGitApp } from "../lib/sketchgit/createSketchGitApp";
@@ -10,13 +9,21 @@ type SketchGitAppApi = ReturnType<typeof createSketchGitApp>;
 
 export default function SketchGitApp() {
   const appRef = useRef<SketchGitAppApi | null>(null);
-  const [fabricReady, setFabricReady] = useState(false);
   const { data: session, status } = useSession();
 
+  // P018: Fabric.js is now bundled via npm – no CDN Script tag needed.
+  // P020: Return a cleanup function so the engine is destroyed on unmount,
+  //       preventing duplicate WebSocket connections and stacked event listeners
+  //       in React Strict Mode and during component re-mounts.
   useEffect(() => {
-    if (!fabricReady || appRef.current) return;
-    appRef.current = createSketchGitApp();
-  }, [fabricReady]);
+    if (appRef.current) return;
+    const app = createSketchGitApp();
+    appRef.current = app;
+    return () => {
+      app.destroy();
+      appRef.current = null;
+    };
+  }, []);
 
   const call = (method: keyof SketchGitAppApi, ...args: any[]) => {
     const app = appRef.current;
@@ -26,12 +33,6 @@ export default function SketchGitApp() {
 
   return (
     <>
-      <Script
-        src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"
-        strategy="beforeInteractive"
-        onLoad={() => setFabricReady(true)}
-      />
-
       <div id="topbar">
         <div className="logo">
           <div className="logo-badge">⌥</div>

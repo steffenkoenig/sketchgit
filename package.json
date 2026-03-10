@@ -25,6 +25,7 @@
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fabric": "^5.3.0",
     "next": "^16.0.0",
     "next-auth": "^5.0.0-beta.30",
     "pino": "^10.3.1",

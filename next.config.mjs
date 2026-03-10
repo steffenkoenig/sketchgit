@@ -1,6 +1,53 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-	reactStrictMode: true
+	reactStrictMode: true,
+
+	// P018 – Fabric.js 5.x ships CommonJS; Next.js needs to transpile it so
+	// the ESM bundle can import it without module-resolution errors.
+	transpilePackages: ['fabric'],
+
+	// P019 – HTTP security headers returned on every response.
+	// Note: HSTS is only set in production to avoid confusing localhost dev.
+	async headers() {
+		const isProd = process.env.NODE_ENV === 'production';
+		return [
+			{
+				source: '/(.*)',
+				headers: [
+					{ key: 'X-Frame-Options',        value: 'DENY' },
+					{ key: 'X-Content-Type-Options',  value: 'nosniff' },
+					{ key: 'Referrer-Policy',         value: 'strict-origin-when-cross-origin' },
+					{
+						key: 'Permissions-Policy',
+						value: 'camera=(), microphone=(), geolocation=()',
+					},
+					{
+						key: 'Content-Security-Policy',
+						value: [
+							"default-src 'self'",
+							// Fabric.js is now bundled (P018) – no CDN script-src needed.
+							"script-src 'self'",
+							// Tailwind JIT injects inline styles at runtime.
+							"style-src 'self' 'unsafe-inline'",
+							"img-src 'self' data: https:",
+							"font-src 'self'",
+							// WebSocket connection to the same host (ws:// dev, wss:// prod).
+							"connect-src 'self' ws: wss:",
+							"frame-ancestors 'none'",
+						].join('; '),
+					},
+					...(isProd
+						? [
+								{
+									key: 'Strict-Transport-Security',
+									value: 'max-age=63072000; includeSubDomains; preload',
+								},
+							]
+						: []),
+				],
+			},
+		];
+	},
 };
 
 export default nextConfig;
