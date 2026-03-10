@@ -12,13 +12,14 @@ class MockWebSocket {
 
   private listeners: Record<string, EventListener[]> = {};
 
-  // Track instances for test inspection
   static lastInstance: MockWebSocket | null = null;
 
   constructor(url: string) {
     this.url = url;
     MockWebSocket.lastInstance = this;
-    // Simulate async open so we can attach listeners first
+    // Trigger 'open' asynchronously so listeners can be attached first.
+    // Uses a 0ms timer so vi.runOnlyPendingTimers() can fire it without
+    // also firing the heartbeat (35 s) that is scheduled inside the open handler.
     setTimeout(() => this._emit('open', new Event('open')), 0);
   }
 
@@ -32,124 +33,170 @@ class MockWebSocket {
 
   send = vi.fn();
 
-  close() {
+  close(code = 1000) {
     this.readyState = MockWebSocket.CLOSED;
-    this._emit('close', new CloseEvent('close', { code: 1000 }));
+    this._emit('close', new CloseEvent('close', { code }));
   }
 
-  /** Helper: trigger an event on this socket */
   _emit(type: string, event: Event) {
-    for (const l of this.listeners[type] || []) l(event);
+    for (const l of (this.listeners[type] || [])) l(event);
   }
 }
 
-// Patch global WebSocket before importing WsClient
+// Install mock before WsClient is imported so it captures the global.
 globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 
 import { WsClient } from './wsClient';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeClient() {
   return new WsClient();
 }
 
+/** Fire only the 0-ms "open" timer created by MockWebSocket. */
+function openSocket() {
+  vi.runOnlyPendingTimers();
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
 describe('WsClient', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     MockWebSocket.lastInstance = null;
-    document.body.innerHTML = '<div id="liveInd" style="display:none"></div><div id="peerStatus"></div>';
+    document.body.innerHTML = [
+      '<div id="liveInd" style="display:none"></div>',
+      '<div id="peerStatus"></div>',
+      '<div id="toast"></div>',
+    ].join('');
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('exposes name and color getters', () => {
+  // ── Getters ──────────────────────────────────────────────────────────────
+
+  it('exposes name and color via getters', () => {
     const client = makeClient();
     client.connect('room1', 'Alice', '#ff0000');
     expect(client.name).toBe('Alice');
     expect(client.color).toBe('#ff0000');
   });
 
-  it('isConnected() returns true when socket is OPEN', () => {
-    const client = makeClient();
-    client.connect('room1', 'Alice', '#blue');
-    expect(client.isConnected()).toBe(true);
-  });
+  // ── isConnected ──────────────────────────────────────────────────────────
 
-  it('isConnected() returns false before connect', () => {
+  it('isConnected() is false before connect()', () => {
     const client = makeClient();
     expect(client.isConnected()).toBe(false);
   });
 
-  it('fires onStatusChange with "connecting" then "connected" on connect', () => {
+  it('isConnected() is true immediately after the socket opens', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    // Socket is OPEN (default readyState) before open event fires
+    expect(client.isConnected()).toBe(true);
+  });
+
+  // ── Status callbacks ─────────────────────────────────────────────────────
+
+  it('fires onStatusChange("connecting") synchronously on connect()', () => {
     const statuses: string[] = [];
     const client = makeClient();
     client.onStatusChange = (s) => statuses.push(s);
     client.connect('room1', 'Alice', '#blue');
     expect(statuses).toContain('connecting');
-    // Simulate socket open
-    vi.runAllTimers();
+  });
+
+  it('fires onStatusChange("connected") when the socket open event fires', () => {
+    const statuses: string[] = [];
+    const client = makeClient();
+    client.onStatusChange = (s) => statuses.push(s);
+    client.connect('room1', 'Alice', '#blue');
+    openSocket(); // fire the 0-ms open timer; does NOT fire the 35-s heartbeat
     expect(statuses).toContain('connected');
   });
 
-  it('fires onClientId callback from welcome message if set via onMessage', async () => {
+  // ── Message handling ─────────────────────────────────────────────────────
+
+  it('routes non-ping messages to onMessage', () => {
+    const received: unknown[] = [];
     const client = makeClient();
-    const messages: string[] = [];
-    client.onMessage = (msg) => {
-      if (msg.type === 'welcome') messages.push(msg.clientId as string);
-    };
+    client.onMessage = (msg) => received.push(msg);
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers();
+    openSocket();
 
     const ws = MockWebSocket.lastInstance!;
-    ws._emit('message', new MessageEvent('message', { data: JSON.stringify({ type: 'welcome', clientId: 'c1', roomId: 'room1' }) }));
-    expect(messages).toContain('c1');
+    ws._emit('message', new MessageEvent('message', {
+      data: JSON.stringify({ type: 'welcome', clientId: 'c1', roomId: 'room1' }),
+    }));
+    expect(received).toHaveLength(1);
+    expect((received[0] as { type: string }).type).toBe('welcome');
   });
 
-  it('responds to ping with pong', () => {
+  it('responds to server ping with pong', () => {
     const client = makeClient();
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers();
+    openSocket();
 
     const ws = MockWebSocket.lastInstance!;
-    ws._emit('message', new MessageEvent('message', { data: JSON.stringify({ type: 'ping' }) }));
+    ws._emit('message', new MessageEvent('message', {
+      data: JSON.stringify({ type: 'ping' }),
+    }));
     expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'pong' }));
   });
 
-  it('queues messages sent while socket is not open and flushes on connect', () => {
+  it('silently ignores malformed JSON in incoming messages', () => {
     const client = makeClient();
-    // Socket not yet connected
-    client.send({ type: 'profile', name: 'Alice', color: '#blue' });
-
-    // Now connect and open
+    client.onMessage = vi.fn();
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers();
+    openSocket();
 
     const ws = MockWebSocket.lastInstance!;
-    // Queued message should have been flushed
+    expect(() => {
+      ws._emit('message', new MessageEvent('message', { data: 'not-json' }));
+    }).not.toThrow();
+    expect(client.onMessage).not.toHaveBeenCalled();
+  });
+
+  // ── Message queue ────────────────────────────────────────────────────────
+
+  it('queues messages sent while offline and flushes them on connect', () => {
+    const client = makeClient();
+    client.send({ type: 'profile', name: 'Alice', color: '#blue' });
+
+    client.connect('room1', 'Alice', '#blue');
+    openSocket();
+
+    const ws = MockWebSocket.lastInstance!;
     expect(ws.send).toHaveBeenCalledWith(
       JSON.stringify({ type: 'profile', name: 'Alice', color: '#blue' }),
     );
   });
 
-  it('disconnect() clears the socket and sets status to offline', () => {
+  // ── disconnect ───────────────────────────────────────────────────────────
+
+  it('disconnect() fires onStatusChange("offline") and isConnected becomes false', () => {
     const statuses: string[] = [];
     const client = makeClient();
     client.onStatusChange = (s) => statuses.push(s);
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers();
+    openSocket();
 
     client.disconnect();
     expect(statuses).toContain('offline');
     expect(client.isConnected()).toBe(false);
   });
 
-  it('schedules reconnect on unintentional close', () => {
+  // ── Reconnection ─────────────────────────────────────────────────────────
+
+  it('schedules a reconnect (status=reconnecting) on an unintentional close', () => {
     const statuses: string[] = [];
     const client = makeClient();
     client.onStatusChange = (s) => statuses.push(s);
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers(); // triggers open
+    openSocket();
 
     const ws = MockWebSocket.lastInstance!;
     ws.readyState = MockWebSocket.CLOSED;
@@ -158,48 +205,50 @@ describe('WsClient', () => {
     expect(statuses).toContain('reconnecting');
   });
 
-  it('does not reconnect after intentional disconnect', () => {
+  it('does NOT reconnect after intentional disconnect()', () => {
     const statuses: string[] = [];
     const client = makeClient();
     client.onStatusChange = (s) => statuses.push(s);
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers();
-    statuses.length = 0; // reset
+    openSocket();
+    statuses.length = 0;
 
-    client.disconnect(); // intentional
-    vi.runAllTimers(); // advance to any pending reconnect timers
+    client.disconnect();
+    // Fire only timers that were pending before disconnect — there should be none.
+    vi.runOnlyPendingTimers();
 
-    // Should not re-connect
     expect(statuses.filter((s) => s === 'connecting' || s === 'reconnecting')).toHaveLength(0);
   });
 
-  it('shows offline toast and stops retrying after MAX_RETRIES', () => {
-    document.body.innerHTML += '<div id="toast"></div>';
+  it('shows an offline toast and stops retrying after MAX_RETRIES (10)', () => {
     const client = makeClient();
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers();
+    openSocket();
 
-    // Exhaust all 10 retries
-    for (let i = 0; i < 11; i++) {
-      const ws = MockWebSocket.lastInstance!;
+    const ws = MockWebSocket.lastInstance!;
+    // Emit 11 close events from the same socket instance.
+    // Each call to _scheduleReconnect increments retryCount.
+    // On the 11th call retryCount >= MAX_RETRIES → offline toast shown.
+    for (let i = 0; i <= 10; i++) {
       ws.readyState = MockWebSocket.CLOSED;
       ws._emit('close', new CloseEvent('close', { code: 1006 }));
-      vi.runAllTimers();
     }
 
     expect(document.getElementById('toast')?.classList.contains('show')).toBe(true);
   });
 
-  it('ignores malformed JSON in incoming messages', () => {
+  it('fires reconnect timer via runOnlyPendingTimers and opens a new socket', () => {
     const client = makeClient();
-    client.onMessage = vi.fn();
     client.connect('room1', 'Alice', '#blue');
-    vi.runAllTimers();
+    openSocket();
 
-    const ws = MockWebSocket.lastInstance!;
-    expect(() => {
-      ws._emit('message', new MessageEvent('message', { data: 'not-json' }));
-    }).not.toThrow();
-    expect(client.onMessage).not.toHaveBeenCalled();
+    const firstWs = MockWebSocket.lastInstance!;
+    firstWs.readyState = MockWebSocket.CLOSED;
+    firstWs._emit('close', new CloseEvent('close', { code: 1006 }));
+    // Fire the reconnect delay timer (not the heartbeat).
+    vi.runOnlyPendingTimers();
+
+    // A new MockWebSocket should have been created.
+    expect(MockWebSocket.lastInstance).not.toBe(firstWs);
   });
 });
