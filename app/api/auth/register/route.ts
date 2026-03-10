@@ -5,38 +5,42 @@
  * Returns the new user's public profile on success.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createUser } from "@/lib/db/userRepository";
+import { validate } from "@/lib/api/validate";
+
+const RegisterSchema = z.object({
+  email: z.string().email("A valid email address is required.").max(254),
+  password: z
+    .string()
+    .min(12, "Password must be at least 12 characters.")
+    .max(128, "Password must be at most 128 characters."),
+  name: z
+    .string()
+    .min(1, "A display name is required.")
+    .max(50, "Display name must be at most 50 characters.")
+    .transform((v) => v.trim()),
+});
+
+export type RegisterInput = z.infer<typeof RegisterSchema>;
 
 export async function POST(req: NextRequest) {
-  let body: { email?: unknown; password?: unknown; name?: unknown };
-  try {
-    body = await req.json();
-  } catch {
+  const body: unknown = await req.json().catch(() => null);
+  if (body === null) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { email, password, name } = body;
+  const v = validate(RegisterSchema, body);
+  if (!v.success) return v.response;
 
-  // ── Validate inputs ────────────────────────────────────────────────────────
-  if (typeof email !== "string" || !email.includes("@")) {
-    return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
-  }
-  if (typeof password !== "string" || password.length < 12) {
-    return NextResponse.json(
-      { error: "Password must be at least 12 characters." },
-      { status: 400 }
-    );
-  }
-  if (typeof name !== "string" || name.trim().length < 1) {
-    return NextResponse.json({ error: "A display name is required." }, { status: 400 });
-  }
+  const { email, password, name } = v.data;
 
   // ── Create user ────────────────────────────────────────────────────────────
   try {
     const user = await createUser({
       email: email.toLowerCase().trim(),
       password,
-      name: name.trim().slice(0, 50),
+      name,
     });
 
     return NextResponse.json(

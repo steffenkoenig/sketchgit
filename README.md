@@ -1,5 +1,7 @@
 # SketchGit
 
+[![CI](https://github.com/steffenkoenig/sketchgit/actions/workflows/ci.yml/badge.svg)](https://github.com/steffenkoenig/sketchgit/actions/workflows/ci.yml)
+
 SketchGit is a Next.js 16 collaborative whiteboard that feels like a lightweight Git client for drawings.
 It combines freeform sketching with version control concepts such as commits, branches, checkout, rollback, and merges.
 
@@ -27,7 +29,7 @@ It combines freeform sketching with version control concepts such as commits, br
 - `app/page.tsx`: page entry rendering the app component
 - `components/SketchGitApp.tsx`: React UI component tree
 - `lib/sketchgit/createSketchGitApp.ts`: app engine initializer
-- `server.mjs`: Next + WebSocket room server
+- `server.ts`: Next + WebSocket room server
 
 ## Run Locally
 

@@ -3,3 +3,5 @@ node_modules
 .env
 lib/sketchgit/createSketchGitApp.legacy.ts
 tsconfig.tsbuildinfo
+dist/
+coverage/

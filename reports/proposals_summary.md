@@ -29,6 +29,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P008 | Replace `innerHTML` with Safe DOM Manipulation | Security, Maintainability | [P008](proposals/done/P008_replace-innerhtml-safe-dom.md) |
 | P009 | Internationalization (i18n) Support | Maintainability | [P009](proposals/done/P009_internationalization-i18n.md) |
 | P010 | Improve Error Handling & Observability | Reliability, Maintainability | [P010](proposals/done/P010_error-handling-and-observability.md) |
+| P013 | Migrate the Custom WebSocket Server from JavaScript to TypeScript | Maintainability, Reliability | [P013](proposals/P013_migrate-server-to-typescript.md) |
+| P014 | Add Structured Input Validation to All API Endpoints with Zod | Reliability, Security | [P014](proposals/P014_input-validation-zod.md) |
+| P015 | Add Rate Limiting and Brute-Force Protection to API Endpoints | Security, Reliability | [P015](proposals/P015_rate-limiting-brute-force-protection.md) |
+| P016 | Add a Continuous Integration and Continuous Deployment Pipeline Using GitHub Actions | Maintainability, Reliability | [P016](proposals/P016_cicd-pipeline-github-actions.md) |
+| P027 | Fail Fast on Misconfiguration: Validate Required Environment Variables at Application Startup | Reliability | [P027](proposals/P027_env-validation-startup.md) |
 
 ---
 
@@ -44,10 +49,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 |----|-------|--------------|------|
 | P011 | Database Performance Optimization: JSONB Storage, Missing Indices, and Query Improvements | Performance | [P011](proposals/P011_database-performance-optimization.md) |
 | P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/P012_horizontal-scalability-redis-pubsub.md) |
-| P013 | Migrate the Custom WebSocket Server from JavaScript to TypeScript | Maintainability, Reliability | [P013](proposals/P013_migrate-server-to-typescript.md) |
-| P014 | Add Structured Input Validation to All API Endpoints with Zod | Reliability, Security | [P014](proposals/P014_input-validation-zod.md) |
-| P015 | Add Rate Limiting and Brute-Force Protection to API Endpoints | Security, Reliability | [P015](proposals/P015_rate-limiting-brute-force-protection.md) |
-| P016 | Add a Continuous Integration and Continuous Deployment Pipeline Using GitHub Actions | Maintainability, Reliability | [P016](proposals/P016_cicd-pipeline-github-actions.md) |
 | P017 | Further Decompose the app.ts Orchestrator into Feature-Focused Coordinators | Maintainability | [P017](proposals/P017_decompose-app-orchestrator.md) |
 | P018 | Replace CDN-Loaded Fabric.js with a Bundled npm Dependency | Reliability, Maintainability, Security | [P018](proposals/P018_replace-cdn-fabric-npm.md) |
 | P019 | Add HTTP Security Headers and CSRF Protection | Security | [P019](proposals/P019_security-headers-csrf.md) |
@@ -108,19 +109,19 @@ Some proposals build on or benefit from others. The table below shows key depend
 8. ~~**P006** – Throughput optimization (builds on P003)~~ ✅ **Done**
 9. ~~**P009** – i18n (standalone)~~ ✅ **Done**
 10. ~~**P010** – Observability (ongoing companion)~~ ✅ **Done**
+11. ~~**P016** – CI/CD pipeline (lint, coverage, deploy workflow, dependabot)~~ ✅ **Done**
+12. ~~**P013** – Migrate server to TypeScript (tsx, tsconfig.server.json, full type safety)~~ ✅ **Done**
+13. ~~**P014** – Input validation with Zod (lib/api/validate.ts, register route schema)~~ ✅ **Done**
+14. ~~**P015** – Rate limiting (middleware.ts for auth routes, per-IP WebSocket limits)~~ ✅ **Done**
+15. ~~**P027** – Env validation on startup (lib/env.ts, validateEnv(), fail-fast on misconfiguration)~~ ✅ **Done**
 
-### Next wave (P011–P018)
-11. **P016** – CI/CD pipeline (unblocks safe delivery of all subsequent changes)
-12. **P013** – Migrate server to TypeScript (low-risk, high-maintainability win)
-13. **P018** – Replace CDN Fabric.js with npm (quick security and reliability win)
-14. **P014** – Input validation with Zod (security hardening; enables P027)
-15. **P015** – Rate limiting (builds on P014; security hardening)
-16. **P011** – Database performance (JSONB, indices, pagination)
-17. **P017** – Decompose app.ts orchestrator (builds on P001 pattern)
-18. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
+### Next wave (P018–P012)
+16. **P018** – Replace CDN Fabric.js with npm (quick security and reliability win)
+17. **P011** – Database performance (JSONB, indices, pagination)
+18. **P017** – Decompose app.ts orchestrator (builds on P001 pattern)
+19. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
 
 ### Third wave (P019–P028)
-19. **P027** – Env validation on startup (small effort, high safety gain; use Zod from P014)
 20. **P019** – Security headers & CSRF (quick win after P018 tightens CSP)
 21. **P023** – Health check & graceful shutdown (prerequisite for P026 Docker)
 22. **P026** – Dockerfile & containerization (enables container-based deployment)

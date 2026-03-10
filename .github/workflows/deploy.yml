@@ -1,0 +1,42 @@
+name: Deploy
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Build Next.js
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+
+      # Deployment step – adapt to your hosting provider:
+      # For Railway/Render: trigger a deploy webhook
+      # For a VPS: use appleboy/ssh-action to pull and restart
+      - name: Trigger production deploy
+        if: ${{ secrets.DEPLOY_WEBHOOK_URL != '' }}
+        run: curl -fsS -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}"

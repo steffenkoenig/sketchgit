@@ -1,17 +1,31 @@
-import { createServer } from "node:http";
+/**
+ * SketchGit custom Node.js server.
+ *
+ * Combines the Next.js request handler with a WebSocket room server.
+ *
+ * P013 – migrated from server.mjs to TypeScript for full type safety.
+ * P015 – per-IP WebSocket connection limiting to prevent resource exhaustion.
+ * P027 – environment variables validated at startup via validateEnv().
+ */
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import { PrismaClient } from "@prisma/client";
 import pino from "pino";
+import { validateEnv } from "./lib/env.js";
+import type { WsMessage } from "./lib/sketchgit/types.js";
 
-const dev = process.env.NODE_ENV !== "production";
+// ─── Startup env validation ───────────────────────────────────────────────────
+const env = validateEnv();
+
+const dev = env.NODE_ENV !== "production";
 const host = "0.0.0.0";
-const port = Number(process.env.PORT || 3000);
+const port = env.PORT;
 
 // ─── Structured logger ────────────────────────────────────────────────────────
 const logger = pino({
-  level: process.env.LOG_LEVEL || "info",
+  level: env.LOG_LEVEL,
   transport: dev ? { target: "pino-pretty", options: { colorize: true } } : undefined,
 });
 
@@ -19,22 +33,31 @@ const app = next({ dev, hostname: host, port });
 const handle = app.getRequestHandler();
 
 // ─── Database ────────────────────────────────────────────────────────────────
-// Prisma client is only used when DATABASE_URL is configured.
-let prisma = null;
-if (process.env.DATABASE_URL) {
-  prisma = new PrismaClient({ log: ["warn", "error"] });
-} else {
-  logger.warn(
-    "DATABASE_URL is not set – running without persistence. " +
-    "Copy .env.example to .env and start a PostgreSQL instance to enable it."
-  );
-}
+// DATABASE_URL is guaranteed to be present (validated above).
+const prisma = new PrismaClient({ log: ["warn", "error"] });
 
 // ─── In-memory state ──────────────────────────────────────────────────────────
-const rooms = new Map(); // roomId → Map<clientId, ws>
+
+type ClientState = WebSocket & {
+  clientId: string;
+  roomId: string;
+  userId: string | null;
+  displayName: string;
+  displayColor: string;
+  /** Internal: user id resolved during WebSocket upgrade */
+  _userId?: string | null;
+  /** Internal: remote IP captured during the HTTP upgrade */
+  _ip: string;
+};
+
+const rooms = new Map<string, Map<string, ClientState>>();
 
 // Track pending cleanup timers so that a reconnecting client cancels the timer.
-const roomCleanupTimers = new Map(); // roomId → timeout handle
+const roomCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// P015 – per-IP WebSocket connection counter
+const connectionsPerIp = new Map<string, number>();
+const MAX_CONNECTIONS_PER_IP = 20;
 
 // How long (ms) to keep an empty room alive in case clients reconnect.
 const ROOM_CLEANUP_DELAY_MS = 60_000;
@@ -44,44 +67,52 @@ const PING_INTERVAL_MS = 25_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function safeRoomId(value) {
-  const trimmed = (value || "default").trim().slice(0, 40);
+function safeRoomId(value: string | null): string {
+  const trimmed = (value ?? "default").trim().slice(0, 40);
   return trimmed.replace(/[^a-zA-Z0-9_-]/g, "-") || "default";
 }
 
-function safeName(value) {
-  return (value || "User").trim().slice(0, 24) || "User";
+function safeName(value: string | null): string {
+  return (value ?? "User").trim().slice(0, 24) || "User";
 }
 
-function safeColor(value) {
-  const c = (value || "").trim();
+function safeColor(value: string | null): string {
+  const c = (value ?? "").trim();
   return /^#[0-9a-fA-F]{6}$/.test(c) ? c : "#7c6eff";
 }
 
-function parseCookies(cookieHeader) {
-  const map = {};
-  for (const part of (cookieHeader || "").split(";")) {
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const part of (cookieHeader ?? "").split(";")) {
     const idx = part.indexOf("=");
     if (idx < 0) continue;
     const key = part.slice(0, idx).trim();
     const val = part.slice(idx + 1).trim();
-    try { map[key] = decodeURIComponent(val); } catch { map[key] = val; }
+    try {
+      map[key] = decodeURIComponent(val);
+    } catch {
+      map[key] = val;
+    }
   }
   return map;
 }
 
-function getRoom(roomId) {
+function getRoom(roomId: string): Map<string, ClientState> {
   if (!rooms.has(roomId)) rooms.set(roomId, new Map());
-  return rooms.get(roomId);
+  return rooms.get(roomId)!;
 }
 
-function sendTo(ws, payload) {
+function sendTo(ws: WebSocket, payload: WsMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   }
 }
 
-function broadcastRoom(roomId, payload, excludeClientId = null) {
+function broadcastRoom(
+  roomId: string,
+  payload: WsMessage,
+  excludeClientId: string | null = null,
+): void {
   const room = rooms.get(roomId);
   if (!room) return;
   for (const [clientId, client] of room.entries()) {
@@ -90,7 +121,7 @@ function broadcastRoom(roomId, payload, excludeClientId = null) {
   }
 }
 
-function pushPresence(roomId) {
+function pushPresence(roomId: string): void {
   const room = rooms.get(roomId);
   if (!room) return;
   const clients = [];
@@ -99,33 +130,30 @@ function pushPresence(roomId) {
       clientId,
       name: client.displayName,
       color: client.displayColor,
-      userId: client.userId || null,
+      userId: client.userId ?? null,
     });
   }
   broadcastRoom(roomId, { type: "presence", roomId, clients });
 }
 
 // ─── Session parsing ──────────────────────────────────────────────────────────
-// Read the NextAuth JWT from the request cookies and return the user id if valid.
-// Falls back gracefully if AUTH_SECRET is not configured.
 
-async function resolveUserId(req) {
-  if (!process.env.AUTH_SECRET) return null;
+async function resolveUserId(req: IncomingMessage): Promise<string | null> {
   try {
     const { decode } = await import("@auth/core/jwt");
     const cookies = parseCookies(req.headers["cookie"]);
     const tokenName =
-      process.env.NODE_ENV === "production"
+      env.NODE_ENV === "production"
         ? "__Secure-authjs.session-token"
         : "authjs.session-token";
     const token = cookies[tokenName];
     if (!token) return null;
     const decoded = await decode({
       token,
-      secret: process.env.AUTH_SECRET,
+      secret: env.AUTH_SECRET,
       salt: tokenName,
     });
-    return decoded?.sub ?? null;
+    return (decoded as { sub?: string } | null)?.sub ?? null;
   } catch {
     return null;
   }
@@ -133,12 +161,11 @@ async function resolveUserId(req) {
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 
-async function dbEnsureRoom(roomId, ownerId) {
-  if (!prisma) return;
+async function dbEnsureRoom(roomId: string, ownerId: string | null): Promise<void> {
   try {
     await prisma.room.upsert({
       where: { id: roomId },
-      create: { id: roomId, ownerId: ownerId || null },
+      create: { id: roomId, ownerId: ownerId ?? null },
       update: {},
     });
   } catch (err) {
@@ -146,8 +173,21 @@ async function dbEnsureRoom(roomId, ownerId) {
   }
 }
 
-async function dbSaveCommit(roomId, sha, commitData, userId) {
-  if (!prisma) return;
+interface CommitData {
+  parent?: string | null;
+  parents?: string[];
+  branch: string;
+  message: string;
+  canvas: string;
+  isMerge?: boolean;
+}
+
+async function dbSaveCommit(
+  roomId: string,
+  sha: string,
+  commitData: CommitData,
+  userId: string | null,
+): Promise<void> {
   try {
     await prisma.$transaction([
       prisma.commit.upsert({
@@ -161,7 +201,7 @@ async function dbSaveCommit(roomId, sha, commitData, userId) {
           message: commitData.message,
           canvasJson: commitData.canvas,
           isMerge: commitData.isMerge ?? false,
-          authorId: userId || null,
+          authorId: userId ?? null,
         },
         update: {},
       }),
@@ -186,8 +226,14 @@ async function dbSaveCommit(roomId, sha, commitData, userId) {
   }
 }
 
-async function dbLoadSnapshot(roomId) {
-  if (!prisma) return null;
+interface RoomSnapshot {
+  commits: Record<string, unknown>;
+  branches: Record<string, string>;
+  HEAD: string;
+  detached: string | null;
+}
+
+async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
   try {
     const [commits, branches, state] = await Promise.all([
       prisma.commit.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } }),
@@ -197,7 +243,7 @@ async function dbLoadSnapshot(roomId) {
 
     if (commits.length === 0) return null;
 
-    const commitsMap = {};
+    const commitsMap: Record<string, unknown> = {};
     for (const c of commits) {
       commitsMap[c.sha] = {
         sha: c.sha,
@@ -210,7 +256,7 @@ async function dbLoadSnapshot(roomId) {
         isMerge: c.isMerge,
       };
     }
-    const branchesMap = {};
+    const branchesMap: Record<string, string> = {};
     for (const b of branches) branchesMap[b.name] = b.headSha;
 
     return {
@@ -228,12 +274,24 @@ async function dbLoadSnapshot(roomId) {
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 app.prepare().then(() => {
-  const server = createServer((req, res) => handle(req, res));
+  const server = createServer((req: IncomingMessage, res: ServerResponse) =>
+    handle(req, res),
+  );
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
 
-  server.on("upgrade", async (req, socket, head) => {
-    const reqUrl = new URL(req.url || "/", `http://${req.headers.host}`);
+  server.on("upgrade", async (req: IncomingMessage, socket, head) => {
+    const reqUrl = new URL(req.url ?? "/", `http://${req.headers.host}`);
     if (reqUrl.pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+
+    // P015 – check per-IP connection limit before accepting the upgrade
+    const ip = (req.socket.remoteAddress ?? "unknown").replace(/^::ffff:/, "");
+    const currentCount = connectionsPerIp.get(ip) ?? 0;
+    if (currentCount >= MAX_CONNECTIONS_PER_IP) {
+      logger.warn({ ip }, "ws: connection limit reached, rejecting upgrade");
+      socket.write("HTTP/1.1 429 Too Many Connections\r\n\r\n");
       socket.destroy();
       return;
     }
@@ -242,43 +300,50 @@ app.prepare().then(() => {
     const userId = await resolveUserId(req);
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      ws._userId = userId;
+      const typedWs = ws as ClientState;
+      typedWs._userId = userId;
+      typedWs._ip = ip;
       wss.emit("connection", ws, reqUrl);
     });
   });
 
-  wss.on("connection", async (ws, reqUrl) => {
+  wss.on("connection", async (ws: WebSocket, reqUrl: URL) => {
+    const client = ws as ClientState;
     const roomId = safeRoomId(reqUrl.searchParams.get("room"));
     const clientId = randomUUID().slice(0, 8);
 
-    ws.clientId = clientId;
-    ws.roomId = roomId;
-    ws.userId = ws._userId ?? null;
-    ws.displayName = safeName(reqUrl.searchParams.get("name"));
-    ws.displayColor = safeColor(reqUrl.searchParams.get("color"));
+    client.clientId = clientId;
+    client.roomId = roomId;
+    client.userId = client._userId ?? null;
+    client.displayName = safeName(reqUrl.searchParams.get("name"));
+    client.displayColor = safeColor(reqUrl.searchParams.get("color"));
+
+    // P015 – increment per-IP connection counter
+    const ip = client._ip ?? "unknown";
+    connectionsPerIp.set(ip, (connectionsPerIp.get(ip) ?? 0) + 1);
 
     const room = getRoom(roomId);
-    room.set(clientId, ws);
+    room.set(clientId, client);
 
     // Cancel any pending cleanup timer for this room (a client just rejoined)
     if (roomCleanupTimers.has(roomId)) {
-      clearTimeout(roomCleanupTimers.get(roomId));
+      clearTimeout(roomCleanupTimers.get(roomId)!);
       roomCleanupTimers.delete(roomId);
     }
 
     // Ensure the room is registered in the database
-    await dbEnsureRoom(roomId, ws.userId);
+    await dbEnsureRoom(roomId, client.userId);
 
-    logger.info({ clientId, roomId, userId: ws.userId || null }, "ws: client connected");
+    logger.info({ clientId, roomId, userId: client.userId ?? null }, "ws: client connected");
 
-    sendTo(ws, { type: "welcome", roomId, clientId });
+    sendTo(client, { type: "welcome", roomId, clientId });
     pushPresence(roomId);
 
     // If this is the only client in the room, serve historical state from DB
     if (room.size === 1) {
       const snapshot = await dbLoadSnapshot(roomId);
       if (snapshot) {
-        sendTo(ws, {
+        sendTo(client, {
           type: "fullsync",
           targetId: clientId,
           commits: snapshot.commits,
@@ -289,20 +354,27 @@ app.prepare().then(() => {
       }
     }
 
-    ws.on("message", async (raw) => {
-      let message;
+    client.on("message", async (raw) => {
+      let message: WsMessage;
       try {
-        message = JSON.parse(raw.toString());
+        const parsed: unknown = JSON.parse(raw.toString());
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          typeof (parsed as Record<string, unknown>).type !== "string"
+        ) {
+          logger.warn({ clientId, roomId }, "ws: received message without type field");
+          return;
+        }
+        message = parsed as WsMessage;
       } catch {
         logger.warn({ clientId, roomId }, "ws: failed to parse message");
         return;
       }
 
-      if (!message || typeof message.type !== "string") return;
-
       if (message.type === "profile") {
-        ws.displayName = safeName(message.name);
-        ws.displayColor = safeColor(message.color);
+        client.displayName = safeName((message.name as string | null) ?? null);
+        client.displayColor = safeColor((message.color as string | null) ?? null);
         pushPresence(roomId);
         return;
       }
@@ -313,22 +385,34 @@ app.prepare().then(() => {
       // Persist commit messages to the database
       if (message.type === "commit" && message.sha && message.commit) {
         logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
-        await dbSaveCommit(roomId, message.sha, message.commit, ws.userId);
+        await dbSaveCommit(
+          roomId,
+          message.sha as string,
+          message.commit as CommitData,
+          client.userId,
+        );
       }
 
       // Relay to peers
-      const relay = {
+      const relay: WsMessage = {
         ...message,
-        senderId: ws.clientId,
-        senderName: ws.displayName,
-        senderColor: ws.displayColor,
+        senderId: client.clientId,
+        senderName: client.displayName,
+        senderColor: client.displayColor,
         roomId,
       };
-      broadcastRoom(roomId, relay, ws.clientId);
+      broadcastRoom(roomId, relay, client.clientId);
     });
 
-    ws.on("close", () => {
+    client.on("close", () => {
       logger.info({ clientId, roomId }, "ws: client disconnected");
+
+      // P015 – decrement per-IP connection counter
+      const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
+      remaining > 0
+        ? connectionsPerIp.set(ip, remaining)
+        : connectionsPerIp.delete(ip);
+
       const currentRoom = rooms.get(roomId);
       if (!currentRoom) return;
 
@@ -356,14 +440,20 @@ app.prepare().then(() => {
   });
 
   // ─── Server-side heartbeat ─────────────────────────────────────────────────
-  // Broadcast a `ping` to every connected client every 25 seconds so that
-  // clients can detect stale TCP connections (zombie sockets).
   setInterval(() => {
     for (const room of rooms.values()) {
-      for (const client of room.values()) {
-        sendTo(client, { type: "ping" });
+      for (const clientState of room.values()) {
+        sendTo(clientState, { type: "ping" });
       }
     }
   }, PING_INTERVAL_MS);
-});
 
+  // ─── Graceful shutdown (P023) ──────────────────────────────────────────────
+  const shutdown = async () => {
+    logger.info("Shutting down SketchGit server…");
+    await prisma.$disconnect();
+    process.exit(0);
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+});
