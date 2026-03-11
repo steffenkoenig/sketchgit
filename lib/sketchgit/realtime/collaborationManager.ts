@@ -429,7 +429,7 @@ export class CollaborationManager {
 
   copyPeerId(): void {
     const link = this.roomInviteLink(this.currentRoomId || 'default');
-    navigator.clipboard.writeText(link).then(() => showToast('✓ Invite link copied'));
+    void navigator.clipboard.writeText(link).then(() => showToast('✓ Invite link copied'));
   }
 
   toggleCollabPanel(): void {

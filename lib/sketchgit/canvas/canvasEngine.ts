@@ -108,7 +108,7 @@ export class CanvasEngine {
       this.boundKeydown = null;
     }
     if (this.canvas) {
-      this.canvas.dispose(); // Fabric.js built-in: removes internal listeners & clears element
+      void this.canvas.dispose(); // Fabric.js built-in: removes internal listeners & clears element
       this.canvas = null;
     }
   }
@@ -129,7 +129,7 @@ export class CanvasEngine {
     // P022: requestRenderAll() in the loadFromJSON callback schedules a single
     // frame render rather than forcing a synchronous repaint.
     // Fabric v7: loadFromJSON is promise-based; use .then() instead of a callback.
-    this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
+    void this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
       this.canvas?.requestRenderAll();
     });
   }

@@ -34,6 +34,12 @@ const EnvSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_WINDOW: z.coerce.number().int().positive().default(60),
 
+  // ── Optional – presence debouncing (P044) ────────────────────────────────
+  // Milliseconds to wait before broadcasting a presence update after a
+  // burst of connects or disconnects.  Coalesces rapid successive
+  // events into a single broadcast that reflects the stable final state.
+  PRESENCE_DEBOUNCE_MS: z.coerce.number().int().min(0).max(1000).default(80),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

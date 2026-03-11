@@ -58,6 +58,19 @@ export default [
       "@typescript-eslint/no-explicit-any": "warn",
       // Prefer structured logging (console.log is fine in tests / scripts)
       "no-console": ["warn", { allow: ["warn", "error"] }],
+      // P042 – Prevent silent async failures: every Promise must be awaited,
+      // .catch()-handled, or explicitly void-prefixed (intentional fire-and-forget).
+      "@typescript-eslint/no-floating-promises": ["error", {
+        ignoreVoid: true,   // `void someAsync()` is allowed for intentional fire-and-forget
+        ignoreIIFE: true,   // `(async () => { … })()` at module top-level is allowed
+      }],
+      // Companion rule: prevent passing async functions to callbacks that don't
+      // handle returned promises (e.g. array.forEach(async fn)).
+      "@typescript-eslint/no-misused-promises": ["error", {
+        checksVoidReturn: {
+          attributes: false, // don't require awaiting JSX event handlers (common React pattern)
+        },
+      }],
     },
   },
   {
@@ -71,6 +84,9 @@ export default [
       // Allow console in tests
       "no-console": "off",
       "@typescript-eslint/no-explicit-any": "off",
+      // Test files commonly use async mock implementations which trigger
+      // no-misused-promises; suppress it for test code.
+      "@typescript-eslint/no-misused-promises": "off",
     },
   },
   {

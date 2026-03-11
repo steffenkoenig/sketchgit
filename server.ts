@@ -138,6 +138,12 @@ const rooms = new Map<string, Map<string, ClientState>>();
 // Track pending cleanup timers so that a reconnecting client cancels the timer.
 const roomCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+// P044 – per-room debounce timers for presence broadcasts.
+const presenceDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// P044 – configurable debounce window; expose via env: PRESENCE_DEBOUNCE_MS (default: 80).
+const PRESENCE_DEBOUNCE_MS = env.PRESENCE_DEBOUNCE_MS;
+
 // P015 – per-IP WebSocket connection counter
 const connectionsPerIp = new Map<string, number>();
 const MAX_CONNECTIONS_PER_IP = 20;
@@ -289,6 +295,24 @@ function pushPresence(roomId: string): void {
   // The full-mesh cross-instance presence (via Redis HSET) is a future enhancement;
   // for now each instance broadcasts presence for its locally-connected clients.
   broadcastLocalRoom(roomId, { type: "presence", roomId, clients });
+}
+
+/**
+ * P044 – Schedule a debounced presence broadcast for the given room.
+ * Multiple calls within PRESENCE_DEBOUNCE_MS are coalesced into a single
+ * broadcast, which reflects the stable room state after a burst of joins or
+ * disconnects.  Immediate welcome delivery is unaffected (no delay on "welcome").
+ */
+function schedulePushPresence(roomId: string): void {
+  const existing = presenceDebounceTimers.get(roomId);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    presenceDebounceTimers.delete(roomId);
+    pushPresence(roomId);
+  }, PRESENCE_DEBOUNCE_MS);
+
+  presenceDebounceTimers.set(roomId, timer);
 }
 
 // ─── Session parsing ──────────────────────────────────────────────────────────
@@ -463,245 +487,275 @@ void initRedis().catch((err) =>
   logger.error({ err }, "redis: initRedis failed – running in local-only mode"),
 );
 
-app.prepare().then(() => {
-  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    // P023 – liveness probe: always returns 200 as long as the process is alive.
-    // Orchestrators use this to decide whether to restart the container; a DB
-    // outage should NOT trigger a restart (the process itself is healthy).
-    if (req.url === "/api/health") {
-      const dbOk = await checkDbHealth();
-      const payload = JSON.stringify({
-        status: "ok",
-        uptime: process.uptime(),
-        rooms: rooms.size,
-        clients: wss.clients.size,
-        database: dbOk ? "ok" : "unreachable",
-        // P012: include Redis status for ops visibility
-        redis: env.REDIS_URL ? (redisReady ? "ok" : "connecting") : "disabled",
-      });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(payload);
-      return;
-    }
-
-    // P023 – readiness probe: 503 until the HTTP server is listening AND the
-    // database is reachable.  Only then is the instance ready for traffic.
-    if (req.url === "/api/ready") {
-      const canAcceptTraffic = isReady && (await checkDbHealth());
-      res.writeHead(canAcceptTraffic ? 200 : 503, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ready: canAcceptTraffic }));
-      return;
-    }
-
-    handle(req, res);
-  });
-  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
-
-  server.on("upgrade", async (req: IncomingMessage, socket, head) => {
-    // Reject immediately if the Host header is absent – without it we cannot
-    // construct a valid URL, and a missing Host is itself a malformed request.
-    if (!req.headers.host) {
-      logger.warn("ws: rejected upgrade – missing Host header");
-      socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-
-    // Guard against a malformed URL that would cause URL() to throw.
-    let reqUrl: URL;
-    try {
-      reqUrl = new URL(req.url ?? "/", `http://${req.headers.host}`);
-    } catch {
-      logger.warn({ url: req.url }, "ws: rejected upgrade – invalid request URL");
-      socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-
-    if (reqUrl.pathname !== "/ws") {
-      socket.destroy();
-      return;
-    }
-
-    // P019 – reject upgrades from disallowed origins (CSWSH prevention).
-    // Browsers always set Origin; server-side tools typically omit it (allowed).
-    // Normalize the incoming header via new URL().origin to match the allow-list
-    // (which was also normalized) and avoid false rejections from trailing slashes.
-    const rawOrigin = req.headers["origin"];
-    if (rawOrigin) {
-      let normalizedOrigin: string;
-      try {
-        normalizedOrigin = new URL(rawOrigin).origin;
-      } catch {
-        normalizedOrigin = rawOrigin;
-      }
-      if (!ALLOWED_ORIGINS.has(normalizedOrigin)) {
-        logger.warn({ origin: rawOrigin }, "ws: rejected upgrade from disallowed origin");
-        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-        socket.destroy();
-        return;
-      }
-    }
-
-    // P015 – check per-IP connection limit before accepting the upgrade
-    const ip = (req.socket.remoteAddress ?? "unknown").replace(/^::ffff:/, "");
-    const currentCount = connectionsPerIp.get(ip) ?? 0;
-    if (currentCount >= MAX_CONNECTIONS_PER_IP) {
-      logger.warn({ ip }, "ws: connection limit reached, rejecting upgrade");
-      socket.write("HTTP/1.1 429 Too Many Connections\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-
-    // Resolve the authenticated user id from the NextAuth session cookie (may be null)
-    const userId = await resolveUserId(req);
-
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      const typedWs = ws as ClientState;
-      typedWs._userId = userId;
-      typedWs._ip = ip;
-      wss.emit("connection", ws, reqUrl);
+/**
+ * P042 – Helper to wrap an async event-handler in a synchronous callback.
+ * Catches any rejection from the async body and logs it, preventing unhandled
+ * promise rejections from silently crashing the server.
+ */
+function asyncHandler<T extends unknown[]>(
+  label: string,
+  fn: (...args: T) => Promise<void>,
+): (...args: T) => void {
+  return (...args: T) => {
+    fn(...args).catch((err: unknown) => {
+      logger.error({ err }, `${label}: unhandled error`);
     });
-  });
+  };
+}
 
-  wss.on("connection", async (ws: WebSocket, reqUrl: URL) => {
-    const client = ws as ClientState;
-    const roomId = safeRoomId(reqUrl.searchParams.get("room"));
-    const clientId = randomUUID().slice(0, 8);
-
-    client.clientId = clientId;
-    client.roomId = roomId;
-    client.userId = client._userId ?? null;
-    client.displayName = safeName(reqUrl.searchParams.get("name"));
-    client.displayColor = safeColor(reqUrl.searchParams.get("color"));
-
-    // P015 – increment per-IP connection counter
-    const ip = client._ip ?? "unknown";
-    connectionsPerIp.set(ip, (connectionsPerIp.get(ip) ?? 0) + 1);
-
-    const room = getRoom(roomId);
-    room.set(clientId, client);
-
-    // Cancel any pending cleanup timer for this room (a client just rejoined)
-    if (roomCleanupTimers.has(roomId)) {
-      clearTimeout(roomCleanupTimers.get(roomId)!);
-      roomCleanupTimers.delete(roomId);
-    }
-
-    // Ensure the room is registered in the database
-    await dbEnsureRoom(roomId, client.userId);
-
-    logger.info({ clientId, roomId, userId: client.userId ?? null }, "ws: client connected");
-
-    sendTo(client, { type: "welcome", roomId, clientId });
-    pushPresence(roomId);
-
-    // If this is the only client in the room, serve historical state from DB
-    if (room.size === 1) {
-      const snapshot = await dbLoadSnapshot(roomId);
-      if (snapshot) {
-        sendTo(client, {
-          type: "fullsync",
-          targetId: clientId,
-          commits: snapshot.commits,
-          branches: snapshot.branches,
-          HEAD: snapshot.HEAD,
-          detached: snapshot.detached,
-        });
-      }
-    }
-
-    client.on("message", async (raw) => {
-      let message: WsMessage;
-      try {
-        const parsed: unknown = JSON.parse(raw.toString());
-        if (
-          typeof parsed !== "object" ||
-          parsed === null ||
-          typeof (parsed as Record<string, unknown>).type !== "string"
-        ) {
-          logger.warn({ clientId, roomId }, "ws: received message without type field");
+void app.prepare()
+  .then(() => {
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      void (async () => {
+        // P023 – liveness probe: always returns 200 as long as the process is alive.
+        // Orchestrators use this to decide whether to restart the container; a DB
+        // outage should NOT trigger a restart (the process itself is healthy).
+        if (req.url === "/api/health") {
+          const dbOk = await checkDbHealth();
+          const payload = JSON.stringify({
+            status: "ok",
+            uptime: process.uptime(),
+            rooms: rooms.size,
+            clients: wss.clients.size,
+            database: dbOk ? "ok" : "unreachable",
+            // P012: include Redis status for ops visibility
+            redis: env.REDIS_URL ? (redisReady ? "ok" : "connecting") : "disabled",
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(payload);
           return;
         }
-        message = parsed as WsMessage;
-      } catch {
-        logger.warn({ clientId, roomId }, "ws: failed to parse message");
-        return;
-      }
 
-      if (message.type === "profile") {
-        // Guard against non-string values from malicious clients; safeName/safeColor
-        // call .trim() internally and would throw on numbers/objects.
-        client.displayName = safeName(
-          typeof message.name === "string" ? message.name : null,
-        );
-        client.displayColor = safeColor(
-          typeof message.color === "string" ? message.color : null,
-        );
-        pushPresence(roomId);
-        return;
-      }
+        // P023 – readiness probe: 503 until the HTTP server is listening AND the
+        // database is reachable.  Only then is the instance ready for traffic.
+        if (req.url === "/api/ready") {
+          const canAcceptTraffic = isReady && (await checkDbHealth());
+          res.writeHead(canAcceptTraffic ? 200 : 503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ready: canAcceptTraffic }));
+          return;
+        }
 
-      // Drop ping/pong before any further processing – heartbeat only
-      if (message.type === "ping" || message.type === "pong") return;
-
-      // Persist commit messages to the database
-      if (message.type === "commit" && message.sha && message.commit) {
-        logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
-        await dbSaveCommit(
-          roomId,
-          message.sha as string,
-          message.commit as CommitData,
-          client.userId,
-        );
-      }
-
-      // Relay to peers
-      const relay: WsMessage = {
-        ...message,
-        senderId: client.clientId,
-        senderName: client.displayName,
-        senderColor: client.displayColor,
-        roomId,
-      };
-      broadcastRoom(roomId, relay, client.clientId);
+        await handle(req, res);
+      })().catch((err: unknown) => {
+        logger.error({ err }, "http: unhandled request error");
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end();
+        }
+      });
     });
+    const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
 
-    client.on("close", () => {
-      logger.info({ clientId, roomId }, "ws: client disconnected");
+    server.on("upgrade", (req: IncomingMessage, socket, head) => {
+      void (async () => {
+        // Reject immediately if the Host header is absent – without it we cannot
+        // construct a valid URL, and a missing Host is itself a malformed request.
+        if (!req.headers.host) {
+          logger.warn("ws: rejected upgrade – missing Host header");
+          socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+          socket.destroy();
+          return;
+        }
 
-      // P015 – decrement per-IP connection counter
-      const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
-      remaining > 0
-        ? connectionsPerIp.set(ip, remaining)
-        : connectionsPerIp.delete(ip);
+        // Guard against a malformed URL that would cause URL() to throw.
+        let reqUrl: URL;
+        try {
+          reqUrl = new URL(req.url ?? "/", `http://${req.headers.host}`);
+        } catch {
+          logger.warn({ url: req.url }, "ws: rejected upgrade – invalid request URL");
+          socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+          socket.destroy();
+          return;
+        }
 
-      const currentRoom = rooms.get(roomId);
-      if (!currentRoom) return;
+        if (reqUrl.pathname !== "/ws") {
+          socket.destroy();
+          return;
+        }
 
-      currentRoom.delete(clientId);
-
-      if (currentRoom.size === 0) {
-        // Delay teardown – reconnecting clients can still receive a fullsync.
-        const timer = setTimeout(() => {
-          if (rooms.get(roomId)?.size === 0) {
-            rooms.delete(roomId);
+        // P019 – reject upgrades from disallowed origins (CSWSH prevention).
+        // Browsers always set Origin; server-side tools typically omit it (allowed).
+        // Normalize the incoming header via new URL().origin to match the allow-list
+        // (which was also normalized) and avoid false rejections from trailing slashes.
+        const rawOrigin = req.headers["origin"];
+        if (rawOrigin) {
+          let normalizedOrigin: string;
+          try {
+            normalizedOrigin = new URL(rawOrigin).origin;
+          } catch {
+            normalizedOrigin = rawOrigin;
           }
-          roomCleanupTimers.delete(roomId);
-        }, ROOM_CLEANUP_DELAY_MS);
-        roomCleanupTimers.set(roomId, timer);
-        return;
+          if (!ALLOWED_ORIGINS.has(normalizedOrigin)) {
+            logger.warn({ origin: rawOrigin }, "ws: rejected upgrade from disallowed origin");
+            socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+            socket.destroy();
+            return;
+          }
+        }
+
+        // P015 – check per-IP connection limit before accepting the upgrade
+        const ip = (req.socket.remoteAddress ?? "unknown").replace(/^::ffff:/, "");
+        const currentCount = connectionsPerIp.get(ip) ?? 0;
+        if (currentCount >= MAX_CONNECTIONS_PER_IP) {
+          logger.warn({ ip }, "ws: connection limit reached, rejecting upgrade");
+          socket.write("HTTP/1.1 429 Too Many Connections\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+
+        // Resolve the authenticated user id from the NextAuth session cookie (may be null)
+        const userId = await resolveUserId(req);
+
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          const typedWs = ws as ClientState;
+          typedWs._userId = userId;
+          typedWs._ip = ip;
+          wss.emit("connection", ws, reqUrl);
+        });
+      })().catch((err: unknown) => {
+        logger.error({ err }, "ws: unhandled upgrade error");
+        socket.destroy(err instanceof Error ? err : new Error(String(err)));
+      });
+    });
+
+    wss.on("connection", asyncHandler("ws:connection", async (ws: WebSocket, reqUrl: URL) => {
+      const client = ws as ClientState;
+      const roomId = safeRoomId(reqUrl.searchParams.get("room"));
+      const clientId = randomUUID().slice(0, 8);
+
+      client.clientId = clientId;
+      client.roomId = roomId;
+      client.userId = client._userId ?? null;
+      client.displayName = safeName(reqUrl.searchParams.get("name"));
+      client.displayColor = safeColor(reqUrl.searchParams.get("color"));
+
+      // P015 – increment per-IP connection counter
+      const ip = client._ip ?? "unknown";
+      connectionsPerIp.set(ip, (connectionsPerIp.get(ip) ?? 0) + 1);
+
+      const room = getRoom(roomId);
+      room.set(clientId, client);
+
+      // Cancel any pending cleanup timer for this room (a client just rejoined)
+      if (roomCleanupTimers.has(roomId)) {
+        clearTimeout(roomCleanupTimers.get(roomId)!);
+        roomCleanupTimers.delete(roomId);
       }
 
-      pushPresence(roomId);
-      broadcastRoom(roomId, { type: "user-left", clientId }, clientId);
-    });
-  });
+      // Ensure the room is registered in the database
+      await dbEnsureRoom(roomId, client.userId);
 
-  server.listen(port, host, () => {
-    isReady = true; // P023 – mark server as ready to serve traffic
-    logger.info({ host, port }, "SketchGit server listening");
-  });
+      logger.info({ clientId, roomId, userId: client.userId ?? null }, "ws: client connected");
+
+      sendTo(client, { type: "welcome", roomId, clientId });
+      schedulePushPresence(roomId);
+
+      // If this is the only client in the room, serve historical state from DB
+      if (room.size === 1) {
+        const snapshot = await dbLoadSnapshot(roomId);
+        if (snapshot) {
+          sendTo(client, {
+            type: "fullsync",
+            targetId: clientId,
+            commits: snapshot.commits,
+            branches: snapshot.branches,
+            HEAD: snapshot.HEAD,
+            detached: snapshot.detached,
+          });
+        }
+      }
+
+      client.on("message", asyncHandler("ws:message", async (raw) => {
+        let message: WsMessage;
+        try {
+          const parsed: unknown = JSON.parse(raw.toString());
+          if (
+            typeof parsed !== "object" ||
+            parsed === null ||
+            typeof (parsed as Record<string, unknown>).type !== "string"
+          ) {
+            logger.warn({ clientId, roomId }, "ws: received message without type field");
+            return;
+          }
+          message = parsed as WsMessage;
+        } catch {
+          logger.warn({ clientId, roomId }, "ws: failed to parse message");
+          return;
+        }
+
+        if (message.type === "profile") {
+          // Guard against non-string values from malicious clients; safeName/safeColor
+          // call .trim() internally and would throw on numbers/objects.
+          client.displayName = safeName(
+            typeof message.name === "string" ? message.name : null,
+          );
+          client.displayColor = safeColor(
+            typeof message.color === "string" ? message.color : null,
+          );
+          schedulePushPresence(roomId);
+          return;
+        }
+
+        // Drop ping/pong before any further processing – heartbeat only
+        if (message.type === "ping" || message.type === "pong") return;
+
+        // Persist commit messages to the database
+        if (message.type === "commit" && message.sha && message.commit) {
+          logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
+          await dbSaveCommit(
+            roomId,
+            message.sha as string,
+            message.commit as CommitData,
+            client.userId,
+          );
+        }
+
+        // Relay to peers
+        const relay: WsMessage = {
+          ...message,
+          senderId: client.clientId,
+          senderName: client.displayName,
+          senderColor: client.displayColor,
+          roomId,
+        };
+        broadcastRoom(roomId, relay, client.clientId);
+      }));
+
+      client.on("close", () => {
+        logger.info({ clientId, roomId }, "ws: client disconnected");
+
+        // P015 – decrement per-IP connection counter
+        const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;
+        remaining > 0
+          ? connectionsPerIp.set(ip, remaining)
+          : connectionsPerIp.delete(ip);
+
+        const currentRoom = rooms.get(roomId);
+        if (!currentRoom) return;
+
+        currentRoom.delete(clientId);
+
+        if (currentRoom.size === 0) {
+          // Delay teardown – reconnecting clients can still receive a fullsync.
+          const timer = setTimeout(() => {
+            if (rooms.get(roomId)?.size === 0) {
+              rooms.delete(roomId);
+            }
+            roomCleanupTimers.delete(roomId);
+          }, ROOM_CLEANUP_DELAY_MS);
+          roomCleanupTimers.set(roomId, timer);
+          return;
+        }
+
+        schedulePushPresence(roomId);
+        broadcastRoom(roomId, { type: "user-left", clientId }, clientId);
+      });
+    }));
+
+    server.listen(port, host, () => {
+      isReady = true; // P023 – mark server as ready to serve traffic
+      logger.info({ host, port }, "SketchGit server listening");
+    });
 
   // ─── Server-side heartbeat ─────────────────────────────────────────────────
   const pingInterval = setInterval(() => {
@@ -734,6 +788,10 @@ app.prepare().then(() => {
 
     // 3. Clear timers
     clearInterval(pingInterval);
+    // P044 – cancel any pending presence-debounce timers so they don't fire
+    // after the server has begun shutting down.
+    presenceDebounceTimers.forEach((timer) => clearTimeout(timer));
+    presenceDebounceTimers.clear();
 
     // 4. P012: Disconnect from Redis before the DB to avoid losing in-flight publishes
     if (redisPub || redisSub) {
@@ -765,4 +823,8 @@ app.prepare().then(() => {
   };
   registerShutdown("SIGTERM");
   registerShutdown("SIGINT");
+})
+.catch((err: unknown) => {
+  console.error("server: startup failed", err);
+  process.exit(1);
 });

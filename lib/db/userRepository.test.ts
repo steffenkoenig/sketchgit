@@ -82,14 +82,20 @@ describe('verifyCredentials', () => {
 
   it('returns null when user does not exist', async () => {
     mockPrismaUser.findUnique.mockResolvedValue(null);
+    mockBcrypt.compare.mockResolvedValue(false);
     const result = await verifyCredentials('unknown@example.com', 'pass');
     expect(result).toBeNull();
+    // P054: bcrypt.compare must always be called (constant-time defence)
+    expect(mockBcrypt.compare).toHaveBeenCalledTimes(1);
   });
 
   it('returns null when user has no password hash', async () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'u1', passwordHash: null });
+    mockBcrypt.compare.mockResolvedValue(false);
     const result = await verifyCredentials('u1@example.com', 'pass');
     expect(result).toBeNull();
+    // P054: bcrypt.compare must always be called (constant-time defence)
+    expect(mockBcrypt.compare).toHaveBeenCalledTimes(1);
   });
 
   it('returns null when password does not match', async () => {

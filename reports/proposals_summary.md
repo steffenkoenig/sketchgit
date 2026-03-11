@@ -47,6 +47,9 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P025 | Improve Application Accessibility: ARIA Roles, Keyboard Navigation, and Screen Reader Support | Maintainability | [P025](proposals/done/P025_accessibility-aria-keyboard.md) |
 | P022 | Improve Canvas Rendering Performance: Batch Renders, Reduce Object Churn, and Cache Arrows | Performance | [P022](proposals/done/P022_canvas-rendering-performance.md) |
 | P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/done/P012_horizontal-scalability-redis-pubsub.md) |
+| P042 | Add the `@typescript-eslint/no-floating-promises` ESLint Rule to Catch Unhandled Promise Rejections | Reliability, Maintainability | [P042](proposals/done/P042_no-floating-promises-eslint-rule.md) |
+| P044 | Debounce the `pushPresence` Broadcast to Prevent Ghost-Client Flicker During Simultaneous Connects | Performance, UX | [P044](proposals/done/P044_presence-broadcast-debouncing.md) |
+| P054 | Fix Timing Side-channel in `verifyCredentials` That Enables User-enumeration Attacks | Security | [P054](proposals/done/P054_constant-time-credential-verification.md) |
 
 ---
 
@@ -73,9 +76,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P039 | Add a REST Endpoint to Export the Current Room's Canvas as PNG or SVG | Maintainability, UX | [P039](proposals/P039_canvas-export-api.md) |
 | P040 | Implement Email-Based Password Reset for Credentials-Provider Users | Security, Reliability | [P040](proposals/P040_password-reset-flow.md) |
 | P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/P041_gdpr-account-deletion.md) |
-| P042 | Add the `@typescript-eslint/no-floating-promises` ESLint Rule to Catch Unhandled Promise Rejections | Reliability, Maintainability | [P042](proposals/P042_no-floating-promises-eslint-rule.md) |
 | P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/P043_graceful-shutdown-drain-window.md) |
-| P044 | Debounce the `pushPresence` Broadcast to Prevent Ghost-Client Flicker During Simultaneous Connects | Performance, UX | [P044](proposals/P044_presence-broadcast-debouncing.md) |
 | P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/P045_docker-image-digest-trivy-scan.md) |
 | P046 | Replace In-memory Proxy Rate Limiter with Redis-backed Counter for Multi-instance Correctness | Security, Reliability | [P046](proposals/P046_redis-backed-rate-limiter.md) |
 | P047 | Add `safeBranchName()` and Commit Message Length Validation to Prevent Database Corruption | Security, Reliability | [P047](proposals/P047_branch-name-commit-message-sanitization.md) |
@@ -85,7 +86,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P051 | Cancel Pending Room-cleanup Timers During Graceful Shutdown to Prevent Post-shutdown Errors | Reliability | [P051](proposals/P051_room-cleanup-timer-shutdown.md) |
 | P052 | Broadcast Merge Commits to Peers and Persist Them (Both Clean and Conflict-resolved Merges) | Reliability | [P052](proposals/P052_broadcast-merge-commits.md) |
 | P053 | Broadcast Branch Rollback and Branch-switch Operations to Peers to Prevent Silent Divergence | Reliability | [P053](proposals/P053_broadcast-branch-operations.md) |
-| P054 | Fix Timing Side-channel in `verifyCredentials` That Enables User-enumeration Attacks | Security | [P054](proposals/P054_constant-time-credential-verification.md) |
 | P055 | Replace `window.confirm()` in `cpRollback` with an Accessible In-app Confirmation Modal | UX, Accessibility | [P055](proposals/P055_replace-window-confirm.md) |
 | P056 | Implement Nonce-based CSP to Replace `'unsafe-inline'` in `script-src` and `style-src` | Security | [P056](proposals/P056_nonce-based-csp.md) |
 | P057 | Validate Commit SHA Format and Canvas Payload Size Before WebSocket DB Persistence | Security, Reliability | [P057](proposals/P057_commit-sha-payload-validation.md) |
