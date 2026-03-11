@@ -58,7 +58,16 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 ## Proposals – Not Started
 
-*All proposals have been implemented.* 🎉
+| ID | Title | Dimension(s) | File |
+|----|-------|--------------|------|
+| P029 | Fix Unbounded Commit Query in `roomRepository.loadRoomSnapshot` and Add Paginated Commit History REST API | Performance, Reliability | [P029](proposals/P029_paginated-commit-history-api.md) |
+| P030 | Add an LRU In-Memory Cache for Room Snapshots to Avoid Repeated Database Loads on Reconnect | Performance | [P030](proposals/P030_in-memory-room-snapshot-cache.md) |
+| P031 | Validate Incoming WebSocket Message Payloads with Zod Schemas and Enforce Per-Message Size Limits | Reliability, Security | [P031](proposals/P031_websocket-message-validation.md) |
+| P032 | Invoke `pruneInactiveRooms` on a Recurring Schedule to Prevent Unbounded Database Growth | Reliability, Performance | [P032](proposals/P032_automated-room-pruning-job.md) |
+| P033 | Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95% | Performance | [P033](proposals/P033_delta-based-canvas-storage.md) |
+| P034 | Enforce Room Membership and Visibility Rules on WebSocket Connection Upgrade | Security, Reliability | [P034](proposals/P034_room-access-control-enforcement.md) |
+| P035 | Aggregate Presence Across All Server Instances Using Redis Hash | Reliability | [P035](proposals/P035_cross-instance-presence-redis-hash.md) |
+| P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/P036_client-side-logging-abstraction.md) |
 
 ---
 
@@ -91,6 +100,14 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P026 (Docker) | P023 (health endpoint wired to HEALTHCHECK directive) |
 | P027 (Env Validation) | P014 (Zod already available); P013 (typed env in server.ts) |
 | P028 (Test Coverage) | P024 (layout extraction makes timeline testable); P014 (Zod enables 422 tests) |
+| P029 (Paginated Commits API) | P011 ✅ (index added), P014 ✅ (Zod available) |
+| P030 (Room Snapshot Cache) | P011 ✅ (bounded query), P023 ✅ (health endpoint); P029 recommended first |
+| P031 (WS Payload Validation) | P013 ✅ (server in TypeScript), P014 ✅ (Zod available) |
+| P032 (Room Pruning Job) | P003 ✅ (Prisma), P023 ✅ (shutdown handler), P027 ✅ (env validation) |
+| P033 (Delta Canvas Storage) | P011 ✅ (JSONB column), P001 ✅ (`buildObjMap` available); P029 recommended first |
+| P034 (Room Access Control) | P007 ✅ (auth established), P013 ✅ (TypeScript server) |
+| P035 (Cross-Instance Presence) | P012 ✅ (Redis pub/sub), P007 ✅ (userId on ClientState), P023 ✅ (shutdown handler) |
+| P036 (Client Logging) | P001 ✅ (module decomposition), P010 ✅ (pino server-side pattern) |
 
 ---
 
@@ -126,13 +143,14 @@ Some proposals build on or benefit from others. The table below shows key depend
 27. ~~**P022** – Canvas rendering performance (requestRenderAll everywhere, pen Polyline in-place update, mouseup→Path conversion)~~ ✅ **Done**
 28. ~~**P012** – Horizontal scalability via Redis (ioredis pub/sub, broadcastLocalRoom + broadcastRoom, graceful shutdown, docker-compose redis service)~~ ✅ **Done**
 
-### All proposals completed! 🎉
+### New proposals (P029–P036)
+These proposals address issues discovered in the next review cycle. They are listed in recommended implementation order in the "Not Started" table above.
 
 ---
 
 ## Quick Wins (Low effort, high impact)
 
-The following items from the proposals can be implemented quickly and independently:
+The following items can be implemented quickly and independently:
 
 | Quick Win | Parent Proposal | Estimated Effort |
 |-----------|-----------------|------------------|
@@ -144,4 +162,7 @@ The following items from the proposals can be implemented quickly and independen
 | Add `aria-label` to all toolbar buttons | P025 | 1 hour |
 | Add `.nvmrc` pinning Node.js to version 22 | P026 | 5 minutes |
 | Add `output: 'standalone'` to `next.config.mjs` | P026 | 5 minutes |
+| Add `take: 100` to `roomRepository.loadRoomSnapshot` | P029 | 15 minutes |
+| Clear pruning job timer in graceful shutdown handler | P032 | 15 minutes |
+| Add `no-console` ESLint rule for `lib/sketchgit/**` | P036 | 10 minutes |
 
