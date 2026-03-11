@@ -8,6 +8,11 @@
  * P019 – WebSocket Origin validation (cross-site WebSocket hijacking prevention).
  * P023 – /api/health and /api/ready endpoints; graceful SIGTERM shutdown.
  * P027 – environment variables validated at startup via validateEnv().
+ * P012 – Optional Redis Pub/Sub for horizontal scalability across multiple
+ *         server instances.  When REDIS_URL is set, every WebSocket message is
+ *         published to `sketchgit:room:<roomId>` so that peer instances can
+ *         relay it to their locally-connected clients.  When REDIS_URL is
+ *         absent the server operates in single-process mode (existing behaviour).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -37,6 +42,66 @@ const handle = app.getRequestHandler();
 // ─── Database ────────────────────────────────────────────────────────────────
 // DATABASE_URL is guaranteed to be present (validated above).
 const prisma = new PrismaClient({ log: ["warn", "error"] });
+
+// ─── P012: Redis Pub/Sub (optional) ──────────────────────────────────────────
+// Two separate ioredis connections are required: one for publishing and one for
+// subscribing (a connection that has called SUBSCRIBE cannot issue other commands).
+// Both clients are null when REDIS_URL is absent; in that case all traffic stays
+// local-only (existing single-instance behaviour).
+
+/** Prefix for all room channels to avoid collisions with other Redis users. */
+const REDIS_CHANNEL_PREFIX = "sketchgit:room:";
+
+type RedisClient = import("ioredis").default;
+
+let redisPub: RedisClient | null = null;
+let redisSub: RedisClient | null = null;
+
+/** True once the Redis subscriber is connected and listening. */
+let redisReady = false;
+
+async function initRedis(): Promise<void> {
+  if (!env.REDIS_URL) return; // optional feature – skip when not configured
+
+  const { default: Redis } = await import("ioredis");
+
+  const redisOpts = {
+    lazyConnect: true,
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: true,
+    retryStrategy: (times: number) => Math.min(times * 200, 5_000),
+  };
+
+  redisPub = new Redis(env.REDIS_URL, redisOpts);
+  redisSub = new Redis(env.REDIS_URL, redisOpts);
+
+  redisPub.on("error", (err) => logger.error({ err }, "redis: pub connection error"));
+  redisSub.on("error", (err) => logger.error({ err }, "redis: sub connection error"));
+
+  await Promise.all([redisPub.connect(), redisSub.connect()]);
+
+  // Subscribe to all room channels using a wildcard pattern.
+  // When a peer instance publishes a message we receive it here and relay it
+  // to locally-connected WebSocket clients.
+  await redisSub.psubscribe(`${REDIS_CHANNEL_PREFIX}*`);
+
+  redisSub.on("pmessage", (_pattern: string, channel: string, data: string) => {
+    const roomId = channel.slice(REDIS_CHANNEL_PREFIX.length);
+    let envelope: { from: string; payload: WsMessage };
+    try {
+      envelope = JSON.parse(data) as { from: string; payload: WsMessage };
+    } catch {
+      logger.warn({ channel }, "redis: failed to parse pmessage payload");
+      return;
+    }
+    // Relay to locally-connected clients only (excluding the original sender
+    // whose clientId is embedded in the envelope to prevent echo-loops).
+    broadcastLocalRoom(roomId, envelope.payload, envelope.from);
+  });
+
+  redisReady = true;
+  logger.info("redis: pub/sub connected and ready");
+}
 
 // ─── In-memory state ──────────────────────────────────────────────────────────
 
@@ -149,7 +214,12 @@ async function checkDbHealth(): Promise<boolean> {
   }
 }
 
-function broadcastRoom(
+/**
+ * Broadcast a message to all locally-connected clients in a room.
+ * This is the inner function; use `broadcastRoom` for normal use (which also
+ * publishes to Redis so peer instances can relay the message).
+ */
+function broadcastLocalRoom(
   roomId: string,
   payload: WsMessage,
   excludeClientId: string | null = null,
@@ -159,6 +229,31 @@ function broadcastRoom(
   for (const [clientId, client] of room.entries()) {
     if (excludeClientId && clientId === excludeClientId) continue;
     sendTo(client, payload);
+  }
+}
+
+/**
+ * P012: Broadcast a message to all clients in a room.
+ *  - Local delivery is synchronous (sub-millisecond).
+ *  - When Redis is available the message is also published to the room channel
+ *    so that peer server instances relay it to their locally-connected clients.
+ *    The `excludeClientId` is embedded in the envelope so that receiving
+ *    instances can exclude the originating client and avoid echo-loops.
+ */
+function broadcastRoom(
+  roomId: string,
+  payload: WsMessage,
+  excludeClientId: string | null = null,
+): void {
+  // 1. Local broadcast (always, immediate)
+  broadcastLocalRoom(roomId, payload, excludeClientId);
+
+  // 2. Cross-instance broadcast via Redis (when available)
+  if (redisPub && redisReady) {
+    const envelope = JSON.stringify({ from: excludeClientId ?? "", payload });
+    redisPub.publish(`${REDIS_CHANNEL_PREFIX}${roomId}`, envelope).catch((err) => {
+      logger.warn({ roomId, err }, "redis: publish failed");
+    });
   }
 }
 
@@ -174,7 +269,10 @@ function pushPresence(roomId: string): void {
       userId: client.userId ?? null,
     });
   }
-  broadcastRoom(roomId, { type: "presence", roomId, clients });
+  // P012: Presence is local-only – each instance knows only its own connections.
+  // The full-mesh cross-instance presence (via Redis HSET) is a future enhancement;
+  // for now each instance broadcasts presence for its locally-connected clients.
+  broadcastLocalRoom(roomId, { type: "presence", roomId, clients });
 }
 
 // ─── Session parsing ──────────────────────────────────────────────────────────
@@ -342,6 +440,13 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
+// P012: Start Redis connection before the HTTP server so the pub/sub channel
+// is ready when the first WebSocket client connects.  Redis failure is
+// non-fatal: the server continues in local-only mode.
+void initRedis().catch((err) =>
+  logger.error({ err }, "redis: initRedis failed – running in local-only mode"),
+);
+
 app.prepare().then(() => {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     // P023 – liveness probe: always returns 200 as long as the process is alive.
@@ -355,6 +460,8 @@ app.prepare().then(() => {
         rooms: rooms.size,
         clients: wss.clients.size,
         database: dbOk ? "ok" : "unreachable",
+        // P012: include Redis status for ops visibility
+        redis: env.REDIS_URL ? (redisReady ? "ok" : "connecting") : "disabled",
       });
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(payload);
@@ -612,7 +719,17 @@ app.prepare().then(() => {
     // 3. Clear timers
     clearInterval(pingInterval);
 
-    // 4. Disconnect from the database
+    // 4. P012: Disconnect from Redis before the DB to avoid losing in-flight publishes
+    if (redisPub || redisSub) {
+      await Promise.all([
+        redisPub?.quit().catch(() => {}),
+        redisSub?.quit().catch(() => {}),
+      ]);
+      redisReady = false;
+      logger.info("redis: connections closed");
+    }
+
+    // 5. Disconnect from the database
     await prisma.$disconnect();
 
     logger.info("Graceful shutdown complete");

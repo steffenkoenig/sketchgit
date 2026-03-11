@@ -6,6 +6,16 @@
  * type-checking of all Fabric.js API calls, and allows npm audit / Dependabot
  * to track the library for security updates.
  *
+ * P022 – Canvas rendering performance improvements:
+ *  1. All `canvas.renderAll()` calls replaced with `canvas.requestRenderAll()`.
+ *     Fabric.js 5.x batches `requestRenderAll()` via `requestAnimationFrame`,
+ *     deduplicating multiple calls within the same animation frame.
+ *  2. Pen tool rewritten to use `fabric.Polyline` updated in-place during
+ *     mousemove (zero new objects per event) instead of creating and discarding
+ *     a full `fabric.Path` on every event (was O(N) objects per stroke).
+ *     On mouseup the temporary polyline is replaced by a permanent `fabric.Path`
+ *     for correct serialization and consistent canvas JSON format.
+ *
  * Known: fabric@5.3.0 has a reported XSS vulnerability in its SVG *export*
  * path. SketchGit does not expose SVG export to users, so this application is
  * not affected. Upgrading to fabric@7.x (patched) requires a full API rewrite
@@ -80,7 +90,8 @@ export class CanvasEngine {
     this.boundResize = () => {
       this.canvas.setWidth(wrap.clientWidth);
       this.canvas.setHeight(wrap.clientHeight);
-      this.canvas.renderAll();
+      // P022: requestRenderAll() is batched via rAF; safe for resize handler.
+      this.canvas.requestRenderAll();
     };
     this.boundKeydown = (e: KeyboardEvent) => this.onKey(e);
 
@@ -113,7 +124,9 @@ export class CanvasEngine {
   }
 
   loadCanvasData(data: string): void {
-    this.canvas.loadFromJSON(JSON.parse(data), () => { this.canvas.renderAll(); });
+    // P022: requestRenderAll() in the loadFromJSON callback schedules a single
+    // frame render rather than forcing a synchronous repaint.
+    this.canvas.loadFromJSON(JSON.parse(data), () => { this.canvas.requestRenderAll(); });
   }
 
   // ── Dirty state ───────────────────────────────────────────────────────────
@@ -140,7 +153,10 @@ export class CanvasEngine {
 
     if (this.currentTool === 'pen') {
       this.currentPenPath = [{ x: p.x, y: p.y }];
-      this.activeObj = new fabric.Path(`M ${p.x} ${p.y}`, {
+      // P022: Use a Polyline for the in-progress stroke so points can be
+      // appended in-place during mousemove without creating a new object
+      // on every event.  The polyline is converted to a Path on mouseup.
+      this.activeObj = new fabric.Polyline([{ x: p.x, y: p.y }], {
         stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
         selectable: false, evented: false,
         strokeLineCap: 'round', strokeLineJoin: 'round',
@@ -218,17 +234,14 @@ export class CanvasEngine {
 
     if (this.currentTool === 'pen' && this.currentPenPath) {
       this.currentPenPath.push({ x: p.x, y: p.y });
-      this.canvas.remove(this.activeObj);
-      const d = this.currentPenPath
-        .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
-        .join(' ');
-      this.activeObj = new fabric.Path(d, {
-        stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
-        selectable: false, evented: false,
-        strokeLineCap: 'round', strokeLineJoin: 'round',
-      });
-      ensureObjId(this.activeObj);
-      this.canvas.add(this.activeObj);
+      // P022: Update the Polyline in-place instead of removing the old object
+      // and creating a new one on every mousemove event.  This eliminates the
+      // O(N) object churn that previously caused GC pressure during long strokes.
+      const poly = this.activeObj as any;
+      poly.set?.('points', [...this.currentPenPath]);
+      poly._setPositionDimensions?.({});
+      poly.setCoords?.();
+      this.canvas.requestRenderAll();
       this.onBroadcastDraw(false); // throttled mid-stroke delta (immediate=false)
       return;
     }
@@ -250,7 +263,7 @@ export class CanvasEngine {
     } else if (this.currentTool === 'line' || this.currentTool === 'arrow') {
       this.activeObj.set({ x2: p.x, y2: p.y });
     }
-    this.canvas.renderAll();
+    this.canvas.requestRenderAll(); // P022: batch the render via rAF
   }
 
   private onMouseUp(e: any): void {
@@ -258,13 +271,31 @@ export class CanvasEngine {
     this.isDrawing = false;
 
     if (this.currentTool === 'pen' && this.activeObj) {
-      ensureObjId(this.activeObj);
-      this.activeObj.set({ selectable: true, evented: true });
-      this.canvas.setActiveObject(this.activeObj);
+      // P022: Convert the temporary Polyline to a permanent Path.
+      // Path serializes more compactly and is the canonical format used by
+      // all other pen-stroke consumers (delta system, commit JSON, merge engine).
+      const penPoints = this.currentPenPath ?? [];
+      this.canvas.remove(this.activeObj);
+
+      if (penPoints.length > 1) {
+        const d = penPoints
+          .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
+          .join(' ');
+        const finalPath = new fabric.Path(d, {
+          stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
+          selectable: true, evented: true,
+          strokeLineCap: 'round', strokeLineJoin: 'round',
+        });
+        ensureObjId(finalPath as any);
+        this.canvas.add(finalPath);
+        this.canvas.setActiveObject(finalPath);
+      }
+
       this.currentPenPath = null;
       this.activeObj = null;
       this.markDirty();
       this.canvas.selection = true;
+      this.onBroadcastDraw(true);
       return;
     }
 
@@ -284,7 +315,7 @@ export class CanvasEngine {
     }
 
     this.canvas.selection = true;
-    this.canvas.renderAll();
+    this.canvas.requestRenderAll(); // P022: batch via rAF
     if (this.currentTool !== 'select') this.onBroadcastDraw(true);
   }
 
@@ -363,7 +394,7 @@ export class CanvasEngine {
     const dot = document.getElementById('strokeDot');
     if (dot) dot.style.background = v;
     const o = this.canvas.getActiveObject();
-    if (o) { o.set('stroke', v); this.canvas.renderAll(); }
+    if (o) { o.set('stroke', v); this.canvas.requestRenderAll(); }
   }
 
   updateFillColor(v: string): void {
@@ -371,7 +402,7 @@ export class CanvasEngine {
     const dot = document.getElementById('fillDot');
     if (dot) dot.style.background = v;
     const o = this.canvas.getActiveObject();
-    if (o) { o.set('fill', v); this.canvas.renderAll(); }
+    if (o) { o.set('fill', v); this.canvas.requestRenderAll(); }
   }
 
   toggleFill(): void {
@@ -393,6 +424,6 @@ export class CanvasEngine {
   resetZoom(): void {
     this.canvas.setZoom(1);
     this.canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
-    this.canvas.renderAll();
+    this.canvas.requestRenderAll(); // P022: batch via rAF
   }
 }

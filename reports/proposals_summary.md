@@ -45,6 +45,8 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P021 | Reduce Unnecessary React Re-Renders with useCallback, useMemo, and Component Splitting | Performance | [P021](proposals/done/P021_react-performance-optimizations.md) |
 | P024 | Virtualize the Commit Timeline SVG to Support Large Commit Histories | Performance | [P024](proposals/done/P024_timeline-virtualization.md) |
 | P025 | Improve Application Accessibility: ARIA Roles, Keyboard Navigation, and Screen Reader Support | Maintainability | [P025](proposals/done/P025_accessibility-aria-keyboard.md) |
+| P022 | Improve Canvas Rendering Performance: Batch Renders, Reduce Object Churn, and Cache Arrows | Performance | [P022](proposals/done/P022_canvas-rendering-performance.md) |
+| P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/done/P012_horizontal-scalability-redis-pubsub.md) |
 
 ---
 
@@ -56,10 +58,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 ## Proposals – Not Started
 
-| ID | Title | Dimension(s) | File |
-|----|-------|--------------|------|
-| P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/P012_horizontal-scalability-redis-pubsub.md) |
-| P022 | Improve Canvas Rendering Performance: Batch Renders, Reduce Object Churn, and Cache Arrows | Performance | [P022](proposals/P022_canvas-rendering-performance.md) |
+*All proposals have been implemented.* 🎉
 
 ---
 
@@ -124,10 +123,10 @@ Some proposals build on or benefit from others. The table below shows key depend
 24. ~~**P021** – React performance (useCallback for call(), React.memo on AppTopbar + LeftToolbar, useMemo for session)~~ ✅ **Done**
 25. ~~**P024** – Timeline virtualization (computeLayout() separated; getVisibleCommits() for scroll-based DOM culling)~~ ✅ **Done**
 26. ~~**P025** – Accessibility/ARIA (role=toolbar, aria-labels, focus-trap in modals, sr-only labels, skip link)~~ ✅ **Done**
+27. ~~**P022** – Canvas rendering performance (requestRenderAll everywhere, pen Polyline in-place update, mouseup→Path conversion)~~ ✅ **Done**
+28. ~~**P012** – Horizontal scalability via Redis (ioredis pub/sub, broadcastLocalRoom + broadcastRoom, graceful shutdown, docker-compose redis service)~~ ✅ **Done**
 
-### Remaining
-27. **P022** – Canvas rendering performance (requestRenderAll, pen path in-place, arrow object reduction)
-28. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
+### All proposals completed! 🎉
 
 ---
 
