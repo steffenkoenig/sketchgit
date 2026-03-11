@@ -11,7 +11,11 @@
     "toggleFill": "Toggle Fill",
     "zoomIn": "Zoom In (+)",
     "zoomOut": "Zoom Out (-)",
-    "resetView": "Reset View"
+    "resetView": "Reset View",
+    "uncommittedChanges": "Uncommitted changes",
+    "skipToCanvas": "Skip to canvas",
+    "exportPng": "Export as PNG",
+    "exportSvg": "Export as SVG"
   },
   "topbar": {
     "collab": "⟳ Collab",

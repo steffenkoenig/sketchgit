@@ -2,6 +2,9 @@
  * Next.js proxy (replaces "middleware" in Next.js 16).
  *
  * - Rate-limits authentication endpoints to prevent brute-force attacks.
+ *   P046: When REDIS_URL is set, uses a Redis INCR+EXPIRE sliding-window counter
+ *   shared across all instances. Falls back to the in-process Map when Redis is
+ *   absent or unavailable (fail-open).
  * - Protects /dashboard: unauthenticated users are redirected to /auth/signin.
  * - All other routes (including the canvas app) are publicly accessible so
  *   that anonymous users experience no friction.
@@ -9,12 +12,10 @@
  * Limits are configurable via RATE_LIMIT_MAX (default 10) and
  * RATE_LIMIT_WINDOW (default 60 seconds). Set DISABLE_RATE_LIMIT=true to
  * bypass rate limiting in test environments.
- *
- * For multi-instance deployments, replace the in-process Map with a Redis-
- * backed counter (see P012/P015 proposals for details).
  */
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { getRedisClient } from "@/lib/redis";
 
 // ── In-process sliding-window rate limiter ────────────────────────────────────
 
@@ -40,20 +41,42 @@ function getRateLimit(): { max: number; windowMs: number } {
   };
 }
 
-function applyRateLimit(req: NextRequest): NextResponse | null {
-  if (process.env.DISABLE_RATE_LIMIT === "true") return null;
+// ── P046 – Redis sliding-window rate limit helper ─────────────────────────────
 
-  // NOTE: IP resolution relies on proxy-set headers (x-forwarded-for / x-real-ip),
-  // which can be spoofed in setups where the proxy does not strip and re-set them.
-  // In production, ensure your reverse proxy (nginx, Caddy, ALB, etc.) is configured
-  // to overwrite these headers from the trusted upstream network address only.
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "127.0.0.1";
+/**
+ * Atomic Redis INCR+EXPIRE sliding-window counter.
+ * Returns `{ limited: false }` on any Redis error (fail-open).
+ */
+async function applyRateLimitRedis(
+  key: string,
+  max: number,
+  windowMs: number,
+): Promise<{ limited: boolean; retryAfterSec: number }> {
+  const redis = getRedisClient();
+  if (!redis) return { limited: false, retryAfterSec: 0 };
+  try {
+    const windowSec = Math.ceil(windowMs / 1000);
+    const count = await redis.incr(key);
+    if (count === 1) {
+      // First hit in this window – set TTL atomically.
+      await redis.expire(key, windowSec);
+    }
+    if (count > max) {
+      const ttl = await redis.ttl(key);
+      return { limited: true, retryAfterSec: Math.max(ttl, 0) };
+    }
+    return { limited: false, retryAfterSec: 0 };
+  } catch {
+    // Redis unavailable → fail-open (allow request, do not block traffic).
+    return { limited: false, retryAfterSec: 0 };
+  }
+}
 
-  const key = `${ip}:${req.nextUrl.pathname}`;
-  const { max, windowMs } = getRateLimit();
+function applyRateLimitInMemory(
+  key: string,
+  max: number,
+  windowMs: number,
+): NextResponse | null {
   const now = Date.now();
 
   // Opportunistic cleanup: when the store is over the cap, first evict all
@@ -97,17 +120,53 @@ function applyRateLimit(req: NextRequest): NextResponse | null {
       },
     );
   }
-
   return null;
+}
+
+function applyRateLimit(req: NextRequest): NextResponse | null | Promise<NextResponse | null> {
+  if (process.env.DISABLE_RATE_LIMIT === "true") return null;
+
+  // NOTE: IP resolution relies on proxy-set headers (x-forwarded-for / x-real-ip),
+  // which can be spoofed in setups where the proxy does not strip and re-set them.
+  // In production, ensure your reverse proxy (nginx, Caddy, ALB, etc.) is configured
+  // to overwrite these headers from the trusted upstream network address only.
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "127.0.0.1";
+
+  const key = `rate:${ip}:${req.nextUrl.pathname}`;
+  const { max, windowMs } = getRateLimit();
+
+  // P046: When Redis is available, use a shared counter across all instances.
+  if (getRedisClient()) {
+    return applyRateLimitRedis(key, max, windowMs).then(({ limited, retryAfterSec }) => {
+      if (!limited) return null;
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(retryAfterSec),
+            "X-RateLimit-Limit": String(max),
+            "X-RateLimit-Remaining": "0",
+          },
+        },
+      );
+    });
+  }
+
+  // Fall back to in-memory Map (single-instance mode).
+  return applyRateLimitInMemory(key, max, windowMs);
 }
 
 // ── Auth proxy handler ────────────────────────────────────────────────────────
 
-export default auth((req) => {
+export default auth(async (req) => {
   const pathname = req.nextUrl.pathname;
 
   if (RATE_LIMITED_PATHS.has(pathname)) {
-    const rateLimitResponse = applyRateLimit(req);
+    const rateLimitResponse = await applyRateLimit(req);
     if (rateLimitResponse) return rateLimitResponse;
   }
 

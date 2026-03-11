@@ -33,6 +33,8 @@ export default [
       "lib/api/**/*.ts",
       "lib/export/**/*.ts",
       "lib/email/**/*.ts",
+      "lib/redis.ts",
+      "lib/server/**/*.ts",
       "app/api/**/*.ts",
     ],
     languageOptions: {

@@ -25,7 +25,7 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
-import { pruneInactiveRooms, checkRoomAccess, type ClientRole } from "./lib/db/roomRepository.js";
+import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, type ClientRole } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
@@ -246,6 +246,25 @@ function safeName(value: string | null): string {
 function safeColor(value: string | null): string {
   const c = (value ?? "").trim();
   return /^#[0-9a-fA-F]{6}$/.test(c) ? c : "#7c6eff";
+}
+
+/**
+ * P047 – Normalise a branch name coming from an untrusted WebSocket client.
+ * Allows letters, digits, `/`, `_`, `-`, `.` (standard git branch-name chars).
+ * Slices to 100 characters and replaces all other characters with `-`.
+ * Returns "main" as a safe default when the value is empty or null.
+ */
+function safeBranchName(value: string | null | undefined): string {
+  const trimmed = (value ?? "main").trim().slice(0, 100);
+  return trimmed.replace(/[^a-zA-Z0-9/_\-.]/g, "-") || "main";
+}
+
+/**
+ * P047 – Normalise a commit message coming from an untrusted client.
+ * Strips leading/trailing whitespace and caps at 500 characters.
+ */
+function safeCommitMessage(value: string | null | undefined): string {
+  return (value ?? "").trim().slice(0, 500) || "(no message)";
 }
 
 function parseCookies(cookieHeader: string | undefined): Record<string, string> {
@@ -471,6 +490,10 @@ async function dbSaveCommit(
   commitData: CommitData,
   userId: string | null,
 ): Promise<void> {
+  // P047 – sanitize branch name and commit message before any DB writes.
+  const branch = safeBranchName(commitData.branch);
+  const message = safeCommitMessage(commitData.message);
+
   // Validate canvas JSON before entering the transaction. An invalid payload
   // means the commit is unrenderable – log and skip rather than persisting
   // a silent empty fallback that would confuse clients.
@@ -512,8 +535,8 @@ async function dbSaveCommit(
           roomId,
           parentSha: commitData.parent ?? null,
           parents: commitData.parents ?? [],
-          branch: commitData.branch,
-          message: commitData.message,
+          branch,
+          message,
           // P011: canvasJson is now Json (JSONB) – pass a parsed object, not a string.
           // P033: may be a delta object if storageType is DELTA.
           canvasJson: canvasToStore,
@@ -524,8 +547,8 @@ async function dbSaveCommit(
         update: {},
       }),
       prisma.branch.upsert({
-        where: { roomId_name: { roomId, name: commitData.branch } },
-        create: { roomId, name: commitData.branch, headSha: sha },
+        where: { roomId_name: { roomId, name: branch } },
+        create: { roomId, name: branch, headSha: sha },
         update: { headSha: sha },
       }),
       prisma.roomState.upsert({
@@ -533,10 +556,10 @@ async function dbSaveCommit(
         create: {
           roomId,
           headSha: sha,
-          headBranch: commitData.branch,
+          headBranch: branch,
           isDetached: false,
         },
-        update: { headSha: sha, headBranch: commitData.branch },
+        update: { headSha: sha, headBranch: branch },
       }),
     ]);
   } catch (err) {
@@ -793,7 +816,10 @@ void app.prepare()
 
     wss.on("connection", asyncHandler("ws:connection", async (ws: WebSocket, reqUrl: URL) => {
       const client = ws as ClientState;
-      const roomId = safeRoomId(reqUrl.searchParams.get("room"));
+      // P049 – resolve slug to canonical room ID before assigning.
+      const rawRoom = reqUrl.searchParams.get("room");
+      const resolvedId = rawRoom ? await resolveRoomId(rawRoom) : null;
+      const roomId = resolvedId ?? safeRoomId(rawRoom);
       const clientId = randomUUID().slice(0, 8);
 
       client.clientId = clientId;
@@ -957,6 +983,9 @@ void app.prepare()
             }
             roomCleanupTimers.delete(roomId);
           }, ROOM_CLEANUP_DELAY_MS);
+          // P051: unref the timer so it does not prevent process exit when
+          // the event loop would otherwise be idle (e.g. during shutdown).
+          timer.unref();
           roomCleanupTimers.set(roomId, timer);
           return;
         }
@@ -1027,6 +1056,12 @@ void app.prepare()
     // after the server has begun shutting down.
     presenceDebounceTimers.forEach((timer) => clearTimeout(timer));
     presenceDebounceTimers.clear();
+    // P051 – cancel pending room-cleanup timers to prevent post-shutdown callbacks.
+    if (roomCleanupTimers.size > 0) {
+      logger.info({ timerCount: roomCleanupTimers.size }, "shutdown: clearing room cleanup timers");
+      roomCleanupTimers.forEach((t) => clearTimeout(t));
+      roomCleanupTimers.clear();
+    }
 
     // 4. P012: Disconnect from Redis before the DB to avoid losing in-flight publishes
     if (redisPub || redisSub) {

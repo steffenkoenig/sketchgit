@@ -8,6 +8,7 @@
  *
  * P025: Landmarks and accessible labels added to all controls.
  * P039: Export PNG/SVG download links for the current room's canvas.
+ * P050: All visible strings replaced with useTranslations calls; EN/DE switcher added.
  */
 
 import React from "react";
@@ -15,6 +16,7 @@ import Link from "next/link";
 import type { Session } from "next-auth";
 import { signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
+import { useTranslations, useLocale } from "next-intl";
 import { Button } from "@/components/ui/button";
 import type { SketchGitCall } from "@/components/sketchgit/types";
 
@@ -24,11 +26,48 @@ type AppTopbarProps = {
   sessionStatus: "loading" | "authenticated" | "unauthenticated";
 };
 
+/**
+ * P050 – Locale switcher button that stores the user's preference in a cookie
+ * and reloads the page so next-intl picks up the new locale.
+ */
+function LocaleSwitcher() {
+  const locale = useLocale();
+
+  function switchLocale(target: "en" | "de") {
+    if (target === locale) return;
+    document.cookie = `NEXT_LOCALE=${target}; path=/; max-age=31536000; SameSite=Lax`;
+    window.location.reload();
+  }
+
+  return (
+    <div className="flex items-center gap-1" aria-label="Language switcher">
+      {(["en", "de"] as const).map((l) => (
+        <button
+          key={l}
+          onClick={() => switchLocale(l)}
+          className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+            l === locale
+              ? "bg-violet-600 text-white"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+          aria-label={`Switch to ${l === "en" ? "English" : "German"}`}
+          aria-pressed={l === locale}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus }: AppTopbarProps) {
   // P039: Resolve the current room ID from the URL query param for export links.
   const searchParams = useSearchParams();
   const roomId = searchParams.get("room") ?? "default";
   const exportBase = `/api/rooms/${encodeURIComponent(roomId)}/export`;
+
+  // P050: translation helper
+  const t = useTranslations();
 
   return (
     <header id="topbar" className="border-b border-slate-800" role="banner" aria-label="Application toolbar">
@@ -66,7 +105,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         onClick={() => call("toggleCollabPanel")}
         aria-label="Toggle collaboration panel"
         aria-haspopup="dialog"
-      >⟳ Collab</Button>
+      >{t("topbar.collab")}</Button>
 
       <Button
         variant="outline" size="sm"
@@ -75,7 +114,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         id="mergeBtn"
         aria-label="Open merge branch dialog"
         aria-haspopup="dialog"
-      >⇄ Merge</Button>
+      >{t("topbar.merge")}</Button>
 
       <Button
         variant="outline" size="sm"
@@ -83,7 +122,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         onClick={() => call("openBranchCreate")}
         aria-label="Create a new branch"
         aria-haspopup="dialog"
-      >⎇ Branch</Button>
+      >{t("topbar.branch")}</Button>
 
       <Button
         size="sm"
@@ -92,7 +131,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         id="commitBtn"
         aria-label="Commit current drawing changes"
         aria-haspopup="dialog"
-      >● Commit</Button>
+      >{t("topbar.commit")}</Button>
 
       {/* P039: Canvas export download links */}
       <a
@@ -100,15 +139,20 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         download={`canvas-${roomId}.png`}
         className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
         aria-label="Export canvas as PNG image"
-      >⬇ PNG</a>
+      >{t("toolbar.exportPng")}</a>
       <a
         href={`${exportBase}?format=svg`}
         download={`canvas-${roomId}.svg`}
         className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
         aria-label="Export canvas as SVG vector file"
-      >⬇ SVG</a>
+      >{t("toolbar.exportSvg")}</a>
 
       {/* Auth section */}
+      <div className="sep" role="separator" aria-orientation="vertical"></div>
+
+      {/* P050 – Locale switcher (EN / DE) */}
+      <LocaleSwitcher />
+
       <div className="sep" role="separator" aria-orientation="vertical"></div>
 
       {sessionStatus === "loading" ? null : session?.user ? (
@@ -134,7 +178,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
             className="h-7"
             onClick={() => signOut({ callbackUrl: "/" })}
             aria-label="Sign out of SketchGit"
-          >⤴ Sign out</Button>
+          >{t("topbar.signOut")}</Button>
         </div>
       ) : (
         <Button
@@ -142,7 +186,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
           className="h-7"
           onClick={() => signIn()}
           aria-label="Sign in or create a SketchGit account"
-        >👤 Sign in</Button>
+        >{t("topbar.signIn")}</Button>
       )}
     </header>
   );

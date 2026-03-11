@@ -65,6 +65,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/done/P041_gdpr-account-deletion.md) |
 | P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/done/P043_graceful-shutdown-drain-window.md) |
 | P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/done/P045_docker-image-digest-trivy-scan.md) |
+| P046 | Replace In-memory Proxy Rate Limiter with Redis-backed Counter for Multi-instance Correctness | Security, Reliability | [P046](proposals/done/P046_redis-backed-rate-limiter.md) |
+| P047 | Add `safeBranchName()` and Commit Message Length Validation to Prevent Database Corruption | Security, Reliability | [P047](proposals/done/P047_branch-name-commit-message-sanitization.md) |
+| P049 | Add `PATCH /api/rooms/[roomId]` to Allow Room Owners to Set a Memorable Slug | UX, Maintainability | [P049](proposals/done/P049_room-slug-management-api.md) |
+| P050 | Integrate `next-intl` to Consume the Pre-existing `messages/en.json` and `messages/de.json` | UX, Maintainability | [P050](proposals/done/P050_i18n-wire-message-catalogue.md) |
+| P051 | Cancel Pending Room-cleanup Timers During Graceful Shutdown to Prevent Post-shutdown Errors | Reliability | [P051](proposals/done/P051_room-cleanup-timer-shutdown.md) |
 
 ---
 
@@ -77,12 +82,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 ## Proposals – Not Started
 
 | ID | Title | Dimension(s) | File |
-| P046 | Replace In-memory Proxy Rate Limiter with Redis-backed Counter for Multi-instance Correctness | Security, Reliability | [P046](proposals/P046_redis-backed-rate-limiter.md) |
-| P047 | Add `safeBranchName()` and Commit Message Length Validation to Prevent Database Corruption | Security, Reliability | [P047](proposals/P047_branch-name-commit-message-sanitization.md) |
-| P048 | Send a Database-backed Fullsync to Every Connecting Client, Not Just the First | Reliability | [P048](proposals/P048_server-authoritative-fullsync.md) |
-| P049 | Add `PATCH /api/rooms/[roomId]` to Allow Room Owners to Set a Memorable Slug | UX, Maintainability | [P049](proposals/P049_room-slug-management-api.md) |
-| P050 | Integrate `next-intl` to Consume the Pre-existing `messages/en.json` and `messages/de.json` | UX, Maintainability | [P050](proposals/P050_i18n-wire-message-catalogue.md) |
-| P051 | Cancel Pending Room-cleanup Timers During Graceful Shutdown to Prevent Post-shutdown Errors | Reliability | [P051](proposals/P051_room-cleanup-timer-shutdown.md) |
+| P048 | Send a Database-backed Fullsync to Every Connecting Client, Not Just the First | Reliability | [P048](proposals/done/P048_server-authoritative-fullsync.md) |
 | P052 | Broadcast Merge Commits to Peers and Persist Them (Both Clean and Conflict-resolved Merges) | Reliability | [P052](proposals/P052_broadcast-merge-commits.md) |
 | P053 | Broadcast Branch Rollback and Branch-switch Operations to Peers to Prevent Silent Divergence | Reliability | [P053](proposals/P053_broadcast-branch-operations.md) |
 | P055 | Replace `window.confirm()` in `cpRollback` with an Accessible In-app Confirmation Modal | UX, Accessibility | [P055](proposals/P055_replace-window-confirm.md) |
@@ -198,6 +198,12 @@ Some proposals build on or benefit from others. The table below shows key depend
 41. ~~**P041** – GDPR account deletion (DELETE /api/auth/account, password re-confirmation for credentials users, DeleteAccountButton with modal dialog in dashboard)~~ ✅ **Done**
 42. ~~**P043** – Graceful shutdown drain window (inFlightWrites+beginWrite/endWrite/waitForDrain in server.ts, dbSaveCommit wrapped, shutdown-warning WsMessageType, SHUTDOWN_DRAIN_MS env var, toast in wsClient.ts)~~ ✅ **Done**
 43. ~~**P045** – Docker digest pinning + Trivy CI (FROM node:22-alpine@sha256:... in all 3 stages, docker-build+trivy-scan CI jobs, SARIF upload to GitHub Security)~~ ✅ **Done**
+44. ~~**P046** – Redis-backed rate limiter (lib/redis.ts getRedisClient() singleton, applyRateLimitRedis INCR+EXPIRE atomic counter, fail-open on Redis error, proxy.ts async delegation when REDIS_URL set)~~ ✅ **Done**
+45. ~~**P047** – Branch name + commit message sanitization (safeBranchName/safeCommitMessage in server.ts, applied in dbSaveCommit, 100-char branch limit, 500-char message limit)~~ ✅ **Done**
+46. ~~**P048** – Server-authoritative fullsync (room.size === 1 guard removed; every connecting client receives DB snapshot via P030 LRU cache; peer-to-peer fullsync-request retained as fallback)~~ ✅ **Done**
+47. ~~**P049** – Room slug management API (PATCH /api/rooms/[roomId] with Zod validation + ownership check, resolveRoomId in roomRepository, slug resolution in WS upgrade, RenameRoomButton inline editor in dashboard, slug links)~~ ✅ **Done**
+48. ~~**P050** – i18n message catalogue wired (next-intl installed, i18n.ts with cookie+Accept-Language locale detection, withNextIntl in next.config.mjs, NextIntlClientProvider in layout, useTranslations in SketchGitApp.tsx + AppTopbar.tsx, EN/DE LocaleSwitcher)~~ ✅ **Done**
+49. ~~**P051** – Room cleanup timer shutdown (roomCleanupTimers.clear() in shutdown handler + timer.unref() on creation)~~ ✅ **Done**
 
 ### New proposals (P029–P057)
 These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.

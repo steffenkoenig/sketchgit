@@ -304,3 +304,18 @@ export async function checkRoomAccess(
   if (!membership) return { allowed: false, reason: "NOT_A_MEMBER" };
   return { allowed: true, role: membership.role };
 }
+
+// ─── P049: Slug resolution ────────────────────────────────────────────────────
+
+/**
+ * Resolve a room identifier that may be either a room ID or a slug.
+ * Returns the canonical room ID, or null if no room matches.
+ */
+export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
+  if (!idOrSlug) return null;
+  const room = await prisma.room.findFirst({
+    where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
+    select: { id: true },
+  });
+  return room?.id ?? null;
+}
