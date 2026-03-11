@@ -44,10 +44,9 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
     getZoom: vi.fn().mockReturnValue(1),
     setZoom: vi.fn(),
     zoomToPoint: vi.fn(),
-    setWidth: vi.fn(),
-    setHeight: vi.fn(),
-    getPointer: vi.fn().mockReturnValue({ x: 10, y: 20 }),
-    loadFromJSON: vi.fn((_data: unknown, cb?: () => void) => cb && cb()),
+    setDimensions: vi.fn(), // Fabric v7: replaces setWidth/setHeight
+    // Fabric v7: loadFromJSON is promise-based (no callback).
+    loadFromJSON: vi.fn().mockResolvedValue(undefined),
     toJSON: vi.fn().mockReturnValue({ version: '5', objects: [] }),
     isDrawingMode: false,
     selection: true,
@@ -59,21 +58,25 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
 });
 
 vi.mock('fabric', () => ({
-  fabric: {
-    // Use regular functions (not arrow functions) so they can be called with `new`
-    Canvas: vi.fn(function FabricCanvas() { return mockCanvasInstance; }),
-    Rect: vi.fn(function FabricRect(opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-    Ellipse: vi.fn(function FabricEllipse(opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-    Line: vi.fn(function FabricLine(opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-    Path: vi.fn(function FabricPath(_d: string, opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-    Polyline: vi.fn(function FabricPolyline(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-    IText: vi.fn(function FabricIText(_t: string, opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-    Polygon: vi.fn(function FabricPolygon(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-    Group: vi.fn(function FabricGroup(_items: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-  },
+  // Use regular functions (not arrow functions) so they can be called with `new`.
+  // In fabric v7 all classes are named exports; there is no `fabric` namespace.
+  Canvas: vi.fn(function FabricCanvas() { return mockCanvasInstance; }),
+  Rect: vi.fn(function FabricRect(opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  Ellipse: vi.fn(function FabricEllipse(opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  Line: vi.fn(function FabricLine(opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  Path: vi.fn(function FabricPath(_d: string, opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  Polyline: vi.fn(function FabricPolyline(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  IText: vi.fn(function FabricIText(_t: string, opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  Polygon: vi.fn(function FabricPolygon(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  Group: vi.fn(function FabricGroup(_items: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  FabricObject: class FabricObject {},
+  // Fabric v7: Point is used by zoomToPoint; provide a minimal implementation.
+  Point: vi.fn(function MockPoint(this: { x: number; y: number }, x: number, y: number) {
+    this.x = x; this.y = y;
+  }),
 }));
 
-import { fabric as fabricLib } from 'fabric';
+import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group } from 'fabric';
 import { CanvasEngine } from './canvasEngine';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -109,8 +112,7 @@ function makeEngine() {
 
 function resetMocks() {
   // Clear call histories (NOT implementations) on fabric constructors
-  [fabricLib.Canvas, fabricLib.Rect, fabricLib.Ellipse, fabricLib.Line,
-    fabricLib.Path, (fabricLib as any).Polyline, fabricLib.IText, fabricLib.Polygon, fabricLib.Group,
+  [Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group,
   ].forEach((f) => (f as unknown as ReturnType<typeof vi.fn>).mockClear());
 
   // Clear and restore mockCanvasInstance method state
@@ -122,8 +124,7 @@ function resetMocks() {
   mockCanvasInstance.dispose.mockClear();
   mockCanvasInstance.setZoom.mockClear();
   mockCanvasInstance.zoomToPoint.mockClear();
-  mockCanvasInstance.setWidth.mockClear();
-  mockCanvasInstance.setHeight.mockClear();
+  mockCanvasInstance.setDimensions.mockClear();
 
   mockCanvasInstance.on.mockClear();
   mockCanvasInstance.on.mockImplementation((event: string, handler: (e: unknown) => void) => {
@@ -135,12 +136,11 @@ function resetMocks() {
   mockCanvasInstance.getActiveObject.mockReturnValue(null);
   mockCanvasInstance.getZoom.mockReset();
   mockCanvasInstance.getZoom.mockReturnValue(1);
-  mockCanvasInstance.getPointer.mockReset();
-  mockCanvasInstance.getPointer.mockReturnValue({ x: 10, y: 20 });
   mockCanvasInstance.toJSON.mockReset();
   mockCanvasInstance.toJSON.mockReturnValue({ version: '5', objects: [] });
   mockCanvasInstance.loadFromJSON.mockReset();
-  mockCanvasInstance.loadFromJSON.mockImplementation((_d: unknown, cb?: () => void) => cb && cb());
+  // Fabric v7: loadFromJSON is promise-based.
+  mockCanvasInstance.loadFromJSON.mockResolvedValue(undefined);
 
   mockCanvasInstance.isDrawingMode = false;
   mockCanvasInstance.selection = true;
@@ -158,8 +158,7 @@ describe('CanvasEngine – lifecycle', () => {
   it('init() creates a Fabric Canvas and registers event handlers', async () => {
     const { engine } = makeEngine();
     engine.init();
-    const fabric = fabricLib;
-    expect(fabric.Canvas).toHaveBeenCalled();
+    expect(Canvas).toHaveBeenCalled();
     expect(mockCanvasInstance.on).toHaveBeenCalledWith('mouse:down', expect.any(Function));
     expect(mockCanvasInstance.on).toHaveBeenCalledWith('mouse:move', expect.any(Function));
     expect(mockCanvasInstance.on).toHaveBeenCalledWith('mouse:up', expect.any(Function));
@@ -168,10 +167,9 @@ describe('CanvasEngine – lifecycle', () => {
   it('init() does nothing when canvas-wrap is absent', async () => {
     document.body.innerHTML = '';
     const { engine } = makeEngine();
-    const fabric = fabricLib;
-    (fabric.Canvas as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (Canvas as unknown as ReturnType<typeof vi.fn>).mockClear();
     engine.init();
-    expect(fabric.Canvas).not.toHaveBeenCalled();
+    expect(Canvas).not.toHaveBeenCalled();
   });
 
   it('destroy() calls canvas.dispose() and removes window listeners', () => {
@@ -463,9 +461,16 @@ describe('CanvasEngine – keyboard shortcuts', () => {
 describe('CanvasEngine – mouse events', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
-  function fireMouseDown(tool: string, engine: CanvasEngine) {
+  // Fabric v7: events include scenePoint (replaces canvas.getPointer(e.e))
+  const defaultScenePoint = { x: 10, y: 20 };
+
+  function makeMouseEvent(type: string, init?: MouseEventInit) {
+    return new MouseEvent(type, init);
+  }
+
+  function fireMouseDown(tool: string, engine: CanvasEngine, scenePoint = defaultScenePoint) {
     engine.setTool(tool);
-    canvasEventHandlers['mouse:down']?.({ e: new MouseEvent('mousedown') });
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint });
   }
 
   it('mouse:down with "select" does not add any object', () => {
@@ -476,63 +481,57 @@ describe('CanvasEngine – mouse events', () => {
   });
 
   it('mouse:down with "rect" creates a Rect', async () => {
-    const fabric = fabricLib;
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('rect', engine);
-    expect(fabric.Rect).toHaveBeenCalled();
+    expect(Rect).toHaveBeenCalled();
     expect(mockCanvasInstance.add).toHaveBeenCalled();
   });
 
   it('mouse:down with "ellipse" creates an Ellipse', async () => {
-    const fabric = fabricLib;
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('ellipse', engine);
-    expect(fabric.Ellipse).toHaveBeenCalled();
+    expect(Ellipse).toHaveBeenCalled();
   });
 
   it('mouse:down with "line" creates a Line', async () => {
-    const fabric = fabricLib;
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('line', engine);
-    expect(fabric.Line).toHaveBeenCalled();
+    expect(Line).toHaveBeenCalled();
   });
 
   it('mouse:down with "arrow" creates a Line (arrow variant)', async () => {
-    const fabric = fabricLib;
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('arrow', engine);
-    expect(fabric.Line).toHaveBeenCalled();
+    expect(Line).toHaveBeenCalled();
   });
 
   it('mouse:down with "text" creates IText and enters editing', async () => {
-    const fabric = fabricLib;
-    (fabric.IText as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (IText as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('text', engine);
-    expect(fabric.IText).toHaveBeenCalled();
-    const iTextInst = (fabric.IText as unknown as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+    expect(IText).toHaveBeenCalled();
+    const iTextInst = (IText as unknown as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
     expect(iTextInst?.enterEditing).toHaveBeenCalled();
   });
 
   it('mouse:down with "pen" starts path drawing (uses Polyline for in-progress stroke)', async () => {
-    const fabric = fabricLib as any;
-    fabric.Polyline.mockClear();
+    (Polyline as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('pen', engine);
     // P022: pen mousedown now creates a Polyline (updated in-place) instead of a Path
-    expect(fabric.Polyline).toHaveBeenCalled();
+    expect(Polyline).toHaveBeenCalled();
   });
 
   it('mouse:move broadcasts cursor position', () => {
     const { engine, onBroadcastCursor } = makeEngine();
     engine.init();
-    canvasEventHandlers['mouse:move']?.({ e: new MouseEvent('mousemove') });
+    canvasEventHandlers['mouse:move']?.({ e: makeMouseEvent('mousemove'), scenePoint: defaultScenePoint });
     expect(onBroadcastCursor).toHaveBeenCalled();
   });
 
@@ -543,57 +542,53 @@ describe('CanvasEngine – mouse events', () => {
     const { engine } = makeEngine();
     engine.init();
     engine.setTool('eraser');
-    canvasEventHandlers['mouse:down']?.({ e: new MouseEvent('mousedown') });
-    canvasEventHandlers['mouse:move']?.({ e: new MouseEvent('mousemove') });
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: defaultScenePoint });
+    canvasEventHandlers['mouse:move']?.({ e: makeMouseEvent('mousemove'), scenePoint: defaultScenePoint });
     expect(mockCanvasInstance.remove).toHaveBeenCalledWith(obj);
   });
 
   it('mouse:move with "pen" updates the polyline in-place (no new Path created)', async () => {
-    const fabric = fabricLib as any;
-    fabric.Path.mockClear();
-    fabric.Polyline.mockClear();
+    (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (Polyline as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine } = makeEngine();
     engine.init();
     fireMouseDown('pen', engine);
-    expect(fabric.Polyline).toHaveBeenCalledTimes(1); // one polyline created on mousedown
-    canvasEventHandlers['mouse:move']?.({ e: new MouseEvent('mousemove') });
+    expect(Polyline).toHaveBeenCalledTimes(1); // one polyline created on mousedown
+    canvasEventHandlers['mouse:move']?.({ e: makeMouseEvent('mousemove'), scenePoint: defaultScenePoint });
     // P022: no new Path or Polyline created on mousemove – update is in-place
-    expect(fabric.Path).not.toHaveBeenCalled();
-    expect(fabric.Polyline).toHaveBeenCalledTimes(1); // still only 1
+    expect(Path).not.toHaveBeenCalled();
+    expect(Polyline).toHaveBeenCalledTimes(1); // still only 1
     // The canvas should request a re-render
     expect(mockCanvasInstance.requestRenderAll).toHaveBeenCalled();
   });
 
   it('mouse:up finalises a shape that was dragged far enough', () => {
-    mockCanvasInstance.getPointer
-      .mockReturnValueOnce({ x: 10, y: 20 })
-      .mockReturnValueOnce({ x: 100, y: 120 });
     const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
-    fireMouseDown('rect', engine);
-    canvasEventHandlers['mouse:up']?.({ e: new MouseEvent('mouseup') });
+    fireMouseDown('rect', engine, { x: 10, y: 20 });
+    // mouseup at a different position (far enough to create a non-zero shape)
+    canvasEventHandlers['mouse:up']?.({ e: makeMouseEvent('mouseup'), scenePoint: { x: 100, y: 120 } });
     expect(onBroadcastDraw).toHaveBeenCalled();
   });
 
   it('mouse:up removes a zero-size shape (accidental click)', () => {
-    mockCanvasInstance.getPointer.mockReturnValue({ x: 10, y: 20 });
     const { engine } = makeEngine();
     engine.init();
-    fireMouseDown('rect', engine);
-    canvasEventHandlers['mouse:up']?.({ e: new MouseEvent('mouseup') });
+    // mousedown and mouseup at same position
+    fireMouseDown('rect', engine, defaultScenePoint);
+    canvasEventHandlers['mouse:up']?.({ e: makeMouseEvent('mouseup'), scenePoint: defaultScenePoint });
     expect(mockCanvasInstance.remove).toHaveBeenCalled();
   });
 
   it('mouse:up finalises a pen stroke (converts polyline to permanent Path)', () => {
-    const fabric = fabricLib as any;
-    fabric.Path.mockClear();
+    (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     fireMouseDown('pen', engine);
-    canvasEventHandlers['mouse:move']?.({ e: new MouseEvent('mousemove') });
-    canvasEventHandlers['mouse:up']?.({ e: new MouseEvent('mouseup') });
+    canvasEventHandlers['mouse:move']?.({ e: makeMouseEvent('mousemove'), scenePoint: { x: 50, y: 60 } });
+    canvasEventHandlers['mouse:up']?.({ e: makeMouseEvent('mouseup'), scenePoint: { x: 50, y: 60 } });
     // P022: mouseup creates one permanent Path from accumulated points
-    expect(fabric.Path).toHaveBeenCalledTimes(1);
+    expect(Path).toHaveBeenCalledTimes(1);
     expect(onBroadcastDraw).toHaveBeenCalled();
   });
 
@@ -601,7 +596,7 @@ describe('CanvasEngine – mouse events', () => {
     const { engine } = makeEngine();
     engine.init();
     const wheelEvent = new WheelEvent('wheel', { deltaY: 100, cancelable: true });
-    canvasEventHandlers['mouse:wheel']?.({ e: wheelEvent });
+    canvasEventHandlers['mouse:wheel']?.({ e: wheelEvent, scenePoint: defaultScenePoint });
     expect(mockCanvasInstance.zoomToPoint).toHaveBeenCalled();
   });
 
