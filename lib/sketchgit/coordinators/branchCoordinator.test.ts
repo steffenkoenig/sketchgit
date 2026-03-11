@@ -43,7 +43,7 @@ function makeCtx(): AppContext {
       loadCanvasData: vi.fn(),
       clearDirty: vi.fn(),
     } as unknown as AppContext['canvas'],
-    ws: {} as AppContext['ws'],
+    ws: { send: vi.fn() } as unknown as AppContext['ws'],
     collab: {} as AppContext['collab'],
   };
 }
@@ -160,6 +160,23 @@ describe('BranchCoordinator', () => {
       (document.getElementById('newBranchName') as HTMLInputElement).value = 'hotfix';
       coord.doCreateBranch();
       expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('hotfix'));
+    });
+  });
+
+  // ─── P053: openBranchModal sends branch-update after switch ──────────────
+
+  describe('P053: openBranchModal() branch-switch', () => {
+    it('sends branch-update after switching branches', () => {
+      coord.openBranchModal();
+      const featureItem = document.querySelector('.branch-item:not(.active-branch)') as HTMLElement;
+      featureItem.click();
+      expect((ctx.ws.send as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'branch-update',
+          branch: 'feature',
+          isRollback: false,
+        }),
+      );
     });
   });
 });

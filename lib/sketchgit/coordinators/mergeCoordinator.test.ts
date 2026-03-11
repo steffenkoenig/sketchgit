@@ -43,7 +43,7 @@ function makeCtx(mergeResult: unknown = { done: true }): AppContext {
       loadCanvasData: vi.fn(),
       clearDirty: vi.fn(),
     } as unknown as AppContext['canvas'],
-    ws: {} as AppContext['ws'],
+    ws: { send: vi.fn() } as unknown as AppContext['ws'],
     collab: {} as AppContext['collab'],
   };
 }
@@ -262,6 +262,49 @@ describe('MergeCoordinator', () => {
     it('closes the conflict modal', () => {
       coord.applyMergeResolution();
       expect(mockCloseModal).toHaveBeenCalledWith('conflictModal');
+    });
+
+    // P052 – conflict-resolved merge sends ws.send
+    it('P052: sends commit message to ws after conflict resolution', () => {
+      coord.applyMergeResolution();
+      expect((ctx.ws.send as ReturnType<typeof vi.fn>)).toHaveBeenCalledOnce();
+      const sent = (ctx.ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      expect(sent.type).toBe('commit');
+      expect(sent.sha).toBe('sha_merge');
+      const commit = sent.commit as Record<string, unknown>;
+      expect(commit.isMerge).toBe(true);
+      expect((commit.parents as string[])).toHaveLength(2);
+    });
+  });
+
+  // ─── P052: doMerge broadcasts merge commit ────────────────────────────────
+
+  describe('P052: doMerge (clean) sends ws.send', () => {
+    beforeEach(() => {
+      // Return a clean merge result with sha
+      ctx = makeCtx({ done: true, sha: 'sha_clean_merge' });
+      // Pre-populate commits so doMerge can look up sha_clean_merge
+      (ctx.git.commits as Record<string, unknown>)['sha_clean_merge'] = {
+        sha: 'sha_clean_merge', message: "Merge 'feature' into 'main'",
+        canvas: '{"objects":[]}', branch: 'main', isMerge: true,
+        parents: ['sha0', 'sha1'],
+      };
+      ctx.git.branches['main'] = 'sha_clean_merge';
+      coord = new MergeCoordinator(ctx, refresh);
+    });
+
+    it('sends commit message to ws after clean merge', () => {
+      coord.doMerge();
+      expect((ctx.ws.send as ReturnType<typeof vi.fn>)).toHaveBeenCalledOnce();
+      const sent = (ctx.ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      expect(sent.type).toBe('commit');
+      expect(sent.sha).toBe('sha_clean_merge');
+    });
+
+    it('does NOT send ws.send when merge returns null', () => {
+      ctx.git.merge = vi.fn().mockReturnValue(null);
+      coord.doMerge();
+      expect((ctx.ws.send as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
     });
   });
 });

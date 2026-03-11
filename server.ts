@@ -27,6 +27,7 @@ import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
 import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, type ClientRole } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
+import { validateCommitMessage } from "./lib/server/commitValidation.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -924,7 +925,8 @@ void app.prepare()
         if (
           (message.type === "draw" ||
             message.type === "draw-delta" ||
-            message.type === "commit") &&
+            message.type === "commit" ||
+            message.type === "branch-update") &&
           (client.role === "VIEWER" || client.role === "ANONYMOUS")
         ) {
           sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
@@ -933,6 +935,14 @@ void app.prepare()
 
         // Persist commit messages to the database
         if (message.type === "commit" && message.sha && message.commit) {
+          // P057 – Validate SHA format and payload size before persisting or relaying
+          const isValid = validateCommitMessage(
+            message.sha,
+            message.commit,
+            (reason) => logger.warn({ clientId, roomId, reason }, "ws: commit rejected"),
+          );
+          if (!isValid) return;
+
           logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
           // P043 – Track in-flight DB writes so graceful shutdown can drain them.
           beginWrite();

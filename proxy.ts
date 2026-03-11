@@ -6,6 +6,8 @@
  *   shared across all instances. Falls back to the in-process Map when Redis is
  *   absent or unavailable (fail-open).
  * - Protects /dashboard: unauthenticated users are redirected to /auth/signin.
+ * - P056: Generates a per-request nonce and sets a nonce-based CSP header,
+ *   replacing `'unsafe-inline'` for script-src and style-src.
  * - All other routes (including the canvas app) are publicly accessible so
  *   that anonymous users experience no friction.
  *
@@ -16,6 +18,8 @@
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getRedisClient } from "@/lib/redis";
+import { randomBytes } from "node:crypto";
+import { buildCsp } from "@/lib/server/csp";
 
 // ── In-process sliding-window rate limiter ────────────────────────────────────
 
@@ -179,7 +183,16 @@ export default auth(async (req) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // P056 – Generate a per-request nonce and forward it so layout.tsx can use it
+  const nonce = randomBytes(16).toString("base64");
+  const isProd = process.env.NODE_ENV === "production";
+
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", buildCsp(nonce, isProd));
+  return response;
 });
 
 export const config = {

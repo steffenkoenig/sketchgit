@@ -261,6 +261,27 @@ export default function SketchGitApp() {
       </div>
 
       <div id="toast" role="status" aria-live="assertive" aria-atomic="true"></div>
+
+      {/* P055: Accessible confirmation modal – replaces window.confirm() for destructive actions */}
+      <div className="overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+        <div className="modal">
+          <h2 id="confirmModalTitle">⚠ Confirm Action</h2>
+          <p id="confirmModalMessage" className="info-box"></p>
+          <div className="modal-actions">
+            <button
+              className="mbtn"
+              onClick={() => call("cancelConfirm")}
+              aria-label="Cancel and close"
+            >Cancel</button>
+            <button
+              className="mbtn warn"
+              id="confirmModalOkBtn"
+              onClick={() => call("acceptConfirm")}
+              aria-label="Confirm destructive action"
+            >Confirm</button>
+          </div>
+        </div>
+      </div>
     </>
   );
 }

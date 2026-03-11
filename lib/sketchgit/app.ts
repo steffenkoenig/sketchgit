@@ -66,6 +66,10 @@ export function createSketchGitApp() {
     receiveCommit: (sha, commit) => {
       git.commits[sha] = commit as Commit;
     },
+    applyBranchUpdate: (branch, headSha) => {
+      // P053 – apply a rolled-back branch pointer from a peer
+      git.branches[branch] = headSha;
+    },
   });
 
   const canvas = new CanvasEngine(
@@ -158,6 +162,10 @@ export function createSketchGitApp() {
     // Commit modal
     openCommitModal: () => commit.openCommitModal(),
     doCommit: () => commit.doCommit(),
+
+    // P055 – Accessible confirm modal
+    acceptConfirm: () => commit.acceptConfirm(),
+    cancelConfirm: () => commit.cancelConfirm(),
 
     // Branch modals
     openBranchCreate: () => branch.openBranchCreate(),

@@ -39,6 +39,7 @@ function makeCallbacks(canvasJson = '{"version":"5","objects":[]}') {
     }),
     applyGitState: vi.fn(),
     receiveCommit: vi.fn(),
+    applyBranchUpdate: vi.fn(),
   } satisfies CollabCallbacks;
 }
 
@@ -240,6 +241,21 @@ describe('CollaborationManager – message handling', () => {
     send(ws, { type: 'commit', sha: 'abc123', commit: commitData } as WsMessage);
     expect(cb.receiveCommit).toHaveBeenCalledWith('abc123', commitData);
     expect(cb.renderTimeline).toHaveBeenCalled();
+  });
+
+  // P053 – branch-update
+  it('branch-update (isRollback=true): calls applyBranchUpdate + renderTimeline + updateUI', () => {
+    send(ws, { type: 'branch-update', branch: 'main', headSha: 'sha_old', isRollback: true } as WsMessage);
+    expect(cb.applyBranchUpdate).toHaveBeenCalledWith('main', 'sha_old');
+    expect(cb.renderTimeline).toHaveBeenCalled();
+    expect(cb.updateUI).toHaveBeenCalled();
+  });
+
+  it('branch-update (isRollback=false): does NOT call applyBranchUpdate but still refreshes UI', () => {
+    send(ws, { type: 'branch-update', branch: 'feature', headSha: 'sha1', isRollback: false } as WsMessage);
+    expect(cb.applyBranchUpdate).not.toHaveBeenCalled();
+    expect(cb.renderTimeline).toHaveBeenCalled();
+    expect(cb.updateUI).toHaveBeenCalled();
   });
 
   // ── fullsync-request ─────────────────────────────────────────────────────

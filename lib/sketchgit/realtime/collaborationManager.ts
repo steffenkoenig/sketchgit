@@ -29,6 +29,11 @@ export interface CollabCallbacks {
   applyGitState: (state: { commits: Record<string, unknown>; branches: Record<string, string>; HEAD: string; detached: string | null }) => void;
   /** Called when a peer broadcasts a commit we don't have yet. */
   receiveCommit: (sha: string, commit: unknown) => void;
+  /**
+   * P053 – Apply a branch pointer update received from a peer (rollback relay).
+   * Only called when `isRollback` is true in the branch-update message.
+   */
+  applyBranchUpdate: (branch: string, headSha: string) => void;
 }
 
 export class CollaborationManager {
@@ -146,6 +151,16 @@ export class CollaborationManager {
         this.cb.receiveCommit(data.sha as string, data.commit);
         this.cb.renderTimeline();
         showToast('📥 Commit received: ' + (data.commit as { message: string })?.message);
+        break;
+      }
+
+      // P053 – handle branch pointer updates (rollback/switch) from peers
+      case 'branch-update': {
+        if (data.isRollback && typeof data.branch === 'string' && typeof data.headSha === 'string') {
+          this.cb.applyBranchUpdate(data.branch, data.headSha);
+        }
+        this.cb.renderTimeline();
+        this.cb.updateUI();
         break;
       }
 

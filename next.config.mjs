@@ -16,8 +16,11 @@ const nextConfig = {
 	// the ESM bundle can import it without module-resolution errors.
 	transpilePackages: ['fabric'],
 
-	// P019 – HTTP security headers returned on every response.
-	// Note: HSTS is only set in production to avoid confusing localhost dev.
+	// P056 – nonce-based CSP is now set per-request in proxy.ts.
+	// The static Content-Security-Policy header with 'unsafe-inline' is removed
+	// so the middleware nonce-based header is the only one sent.
+	// The other security headers (X-Frame-Options, etc.) remain here as they
+	// are not request-specific.
 	async headers() {
 		const isProd = process.env.NODE_ENV === 'production';
 		return [
@@ -31,25 +34,6 @@ const nextConfig = {
 						key: 'Permissions-Policy',
 						value: 'camera=(), microphone=(), geolocation=()',
 					},
-					{
-						key: 'Content-Security-Policy',
-						value: [
-							"default-src 'self'",
-							// Next.js injects inline scripts for hydration/bootstrapping;
-							// 'unsafe-inline' is required unless a nonce-based CSP is
-							// implemented end-to-end (middleware + _document nonce prop).
-							"script-src 'self' 'unsafe-inline'",
-							// Tailwind JIT injects inline styles at runtime.
-							"style-src 'self' 'unsafe-inline'",
-							"img-src 'self' data: https:",
-							"font-src 'self'",
-							// WebSocket connections. `ws:` and `wss:` allow any host over the
-							// respective schemes; tighten to explicit URL(s) if you need stricter
-							// same-host enforcement (dynamic in Next.js config is non-trivial).
-							"connect-src 'self' ws: wss:",
-							"frame-ancestors 'none'",
-						].join('; '),
-					},
 					...(isProd
 						? [
 								{
@@ -61,6 +45,12 @@ const nextConfig = {
 				],
 			},
 		];
+	},
+
+	// P056 – propagate the per-request nonce generated in proxy.ts to all
+	// Next.js auto-injected inline scripts (hydration, chunk loading, etc.).
+	experimental: {
+		nonce: true,
 	},
 };
 

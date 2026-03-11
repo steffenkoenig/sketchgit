@@ -113,7 +113,8 @@ export type WsMessageType =
   | "fullsync"
   | "user-left"
   | "error"
-  | "shutdown-warning";
+  | "shutdown-warning"
+  | "branch-update";
 
 export interface WsMessage {
   type: WsMessageType;
