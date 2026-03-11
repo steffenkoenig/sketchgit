@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+*.log
+.env
+.env.*
+!.env.example
+coverage
+dist
+tsconfig.tsbuildinfo
+lib/sketchgit/createSketchGitApp.legacy.ts

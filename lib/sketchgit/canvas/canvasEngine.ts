@@ -6,21 +6,27 @@
  * type-checking of all Fabric.js API calls, and allows npm audit / Dependabot
  * to track the library for security updates.
  *
- * Known: fabric@5.3.0 has a reported XSS vulnerability in its SVG *export*
- * path. SketchGit does not expose SVG export to users, so this application is
- * not affected. Upgrading to fabric@7.x (patched) requires a full API rewrite
- * and is tracked as a separate work item.
+ * P022 – Canvas rendering performance improvements:
+ *  1. All `canvas.renderAll()` calls replaced with `canvas.requestRenderAll()`.
+ *     Fabric.js batches `requestRenderAll()` via `requestAnimationFrame`,
+ *     deduplicating multiple calls within the same animation frame.
+ *  2. Pen tool rewritten to use `fabric.Polyline` updated in-place during
+ *     mousemove (zero new objects per event) instead of creating and discarding
+ *     a full `fabric.Path` on every event (was O(N) objects per stroke).
+ *     On mouseup the temporary polyline is replaced by a permanent `fabric.Path`
+ *     for correct serialization and consistent canvas JSON format.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { fabric } from 'fabric';
+import {
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricObject, Point,
+} from 'fabric';
+import type { TPointerEventInfo, XY } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
-import { showToast } from '../ui/toast';
 
 export class CanvasEngine {
   // ── Fabric.js canvas instance (set by init()) ──────────────────────────────
-  canvas: any = null;
+  canvas: Canvas | null = null;
 
   // ── Current tool and style state ──────────────────────────────────────────
   currentTool = 'select';
@@ -33,7 +39,7 @@ export class CanvasEngine {
   private isDrawing = false;
   private startX = 0;
   private startY = 0;
-  private activeObj: any = null;
+  private activeObj: FabricObject | null = null;
   private currentPenPath: Array<{ x: number; y: number }> | null = null;
 
   // ── Dirty flag ────────────────────────────────────────────────────────────
@@ -45,11 +51,11 @@ export class CanvasEngine {
 
   // ── Callbacks provided by the orchestrator ────────────────────────────────
   private readonly onBroadcastDraw: (immediate?: boolean) => void;
-  private readonly onBroadcastCursor: (e: any) => void;
+  private readonly onBroadcastCursor: (e: { e: MouseEvent }) => void;
 
   constructor(
     onBroadcastDraw: (immediate?: boolean) => void,
-    onBroadcastCursor: (e: any) => void,
+    onBroadcastCursor: (e: { e: MouseEvent }) => void,
   ) {
     this.onBroadcastDraw = onBroadcastDraw;
     this.onBroadcastCursor = onBroadcastCursor;
@@ -61,7 +67,7 @@ export class CanvasEngine {
     const wrap = document.getElementById('canvas-wrap');
     if (!wrap) return;
 
-    this.canvas = new fabric.Canvas('c', {
+    this.canvas = new Canvas('c', {
       width: wrap.clientWidth,
       height: wrap.clientHeight,
       backgroundColor: '#0a0a0f',
@@ -69,18 +75,20 @@ export class CanvasEngine {
       renderOnAddRemove: true,
     });
 
-    this.canvas.on('mouse:down', (e: any) => this.onMouseDown(e));
-    this.canvas.on('mouse:move', (e: any) => this.onMouseMove(e));
-    this.canvas.on('mouse:up', (e: any) => this.onMouseUp(e));
+    this.canvas.on('mouse:down', (e: TPointerEventInfo) => this.onMouseDown(e));
+    this.canvas.on('mouse:move', (e: TPointerEventInfo) => this.onMouseMove(e));
+    this.canvas.on('mouse:up', (e: TPointerEventInfo) => this.onMouseUp(e));
     this.canvas.on('object:modified', () => { this.markDirty(); this.onBroadcastDraw(true); });
-    this.canvas.on('object:added', (e: any) => { if (e.target) ensureObjId(e.target); });
-    this.canvas.on('mouse:wheel', (opt: any) => this.onWheel(opt));
+    this.canvas.on('object:added', (e: { target?: FabricObject }) => { if (e.target) ensureObjId(e.target); });
+    this.canvas.on('mouse:wheel', (e: TPointerEventInfo<WheelEvent>) => this.onWheel(e));
 
     // P020: store bound references so they can be removed in destroy()
     this.boundResize = () => {
-      this.canvas.setWidth(wrap.clientWidth);
-      this.canvas.setHeight(wrap.clientHeight);
-      this.canvas.renderAll();
+      if (!this.canvas) return;
+      // Fabric v7: setWidth/setHeight replaced by setDimensions({ width, height })
+      this.canvas.setDimensions({ width: wrap.clientWidth, height: wrap.clientHeight });
+      // P022: requestRenderAll() is batched via rAF; safe for resize handler.
+      this.canvas.requestRenderAll();
     };
     this.boundKeydown = (e: KeyboardEvent) => this.onKey(e);
 
@@ -108,12 +116,22 @@ export class CanvasEngine {
   // ── Serialisation ─────────────────────────────────────────────────────────
 
   getCanvasData(): string {
-    this.canvas.getObjects().forEach((o: any) => ensureObjId(o));
-    return JSON.stringify(this.canvas.toJSON(['_isArrow', '_id']));
+    this.canvas?.getObjects().forEach((o: FabricObject) => ensureObjId(o));
+    // Fabric v7: toJSON() takes no arguments in the type definition;
+    // custom properties (_id, _isArrow) are passed via a type assertion to
+    // preserve backward-compatible serialization format.
+    const toJSONWithExtras = this.canvas?.toJSON as
+      ((extraProps: string[]) => object) | undefined;
+    return JSON.stringify(toJSONWithExtras?.(['_isArrow', '_id']));
   }
 
   loadCanvasData(data: string): void {
-    this.canvas.loadFromJSON(JSON.parse(data), () => { this.canvas.renderAll(); });
+    // P022: requestRenderAll() in the loadFromJSON callback schedules a single
+    // frame render rather than forcing a synchronous repaint.
+    // Fabric v7: loadFromJSON is promise-based; use .then() instead of a callback.
+    this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
+      this.canvas?.requestRenderAll();
+    });
   }
 
   // ── Dirty state ───────────────────────────────────────────────────────────
@@ -130,37 +148,41 @@ export class CanvasEngine {
 
   // ── Event handlers ────────────────────────────────────────────────────────
 
-  private onMouseDown(e: any): void {
+  private onMouseDown(e: TPointerEventInfo): void {
     if (this.currentTool === 'select') return;
-    const p = this.canvas.getPointer(e.e);
+    // Fabric v7: scenePoint is supplied directly on the event info object
+    const p = e.scenePoint;
     this.startX = p.x;
     this.startY = p.y;
     this.isDrawing = true;
-    this.canvas.selection = false;
+    if (this.canvas) this.canvas.selection = false;
 
     if (this.currentTool === 'pen') {
       this.currentPenPath = [{ x: p.x, y: p.y }];
-      this.activeObj = new fabric.Path(`M ${p.x} ${p.y}`, {
+      // P022: Use a Polyline for the in-progress stroke so points can be
+      // appended in-place during mousemove without creating a new object
+      // on every event.  The polyline is converted to a Path on mouseup.
+      this.activeObj = new Polyline([{ x: p.x, y: p.y }], {
         stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
         selectable: false, evented: false,
         strokeLineCap: 'round', strokeLineJoin: 'round',
       });
-      this.canvas.add(this.activeObj);
+      this.canvas?.add(this.activeObj);
       return;
     }
 
     if (this.currentTool === 'eraser') return;
 
     if (this.currentTool === 'text') {
-      const t = new fabric.IText('Text', {
+      const t = new IText('Text', {
         left: p.x, top: p.y,
         fontSize: 18, fill: this.strokeColor,
         fontFamily: 'Fira Code',
         selectable: true, editable: true,
       });
-      ensureObjId(t as any);
-      this.canvas.add(t);
-      this.canvas.setActiveObject(t);
+      ensureObjId(t);
+      this.canvas?.add(t);
+      this.canvas?.setActiveObject(t);
       t.enterEditing();
       t.selectAll();
       this.isDrawing = false;
@@ -168,47 +190,53 @@ export class CanvasEngine {
       return;
     }
 
-    const opts = {
+    const shapeOpts = {
       left: p.x, top: p.y, width: 0, height: 0,
       stroke: this.strokeColor, strokeWidth: this.strokeWidth,
       fill: this.fillEnabled ? this.fillColor : 'transparent',
       selectable: false, evented: false,
-      originX: 'left', originY: 'top',
+      originX: 'left' as const, originY: 'top' as const,
     };
 
     if (this.currentTool === 'rect') {
-      this.activeObj = new fabric.Rect({ ...opts, rx: 3, ry: 3 });
+      this.activeObj = new Rect({ ...shapeOpts, rx: 3, ry: 3 });
     } else if (this.currentTool === 'ellipse') {
-      this.activeObj = new fabric.Ellipse({ ...opts, rx: 0, ry: 0 });
+      this.activeObj = new Ellipse({ ...shapeOpts, rx: 0, ry: 0 });
     } else if (this.currentTool === 'line') {
-      this.activeObj = new fabric.Line([p.x, p.y, p.x, p.y], {
+      this.activeObj = new Line([p.x, p.y, p.x, p.y], {
         stroke: this.strokeColor, strokeWidth: this.strokeWidth,
         selectable: false, evented: false, strokeLineCap: 'round',
       });
     } else if (this.currentTool === 'arrow') {
-      this.activeObj = new fabric.Line([p.x, p.y, p.x, p.y], {
-        stroke: this.strokeColor, strokeWidth: this.strokeWidth,
-        selectable: false, evented: false, strokeLineCap: 'round',
-        ...({ _isArrow: true } as Record<string, unknown>),
-      } as any);
+      this.activeObj = Object.assign(
+        new Line([p.x, p.y, p.x, p.y], {
+          stroke: this.strokeColor, strokeWidth: this.strokeWidth,
+          selectable: false, evented: false, strokeLineCap: 'round',
+        }),
+        { _isArrow: true },
+      );
     }
 
     if (this.activeObj) {
-      ensureObjId(this.activeObj as any);
-      this.canvas.add(this.activeObj);
+      ensureObjId(this.activeObj);
+      this.canvas?.add(this.activeObj);
     }
   }
 
-  private onMouseMove(e: any): void {
-    this.onBroadcastCursor(e);
+  private onMouseMove(e: TPointerEventInfo): void {
+    // Only broadcast cursor for mouse/pointer events (not touch events).
+    if (e.e instanceof MouseEvent) {
+      this.onBroadcastCursor({ e: e.e });
+    }
     if (!this.isDrawing) return;
-    const p = this.canvas.getPointer(e.e);
+    // Fabric v7: scenePoint is supplied directly on the event info object
+    const p = e.scenePoint;
 
     if (this.currentTool === 'eraser') {
-      const objs = this.canvas.getObjects();
+      const objs = this.canvas?.getObjects() ?? [];
       for (let i = objs.length - 1; i >= 0; i--) {
         if (objs[i].containsPoint(p)) {
-          this.canvas.remove(objs[i]);
+          this.canvas?.remove(objs[i]);
           this.markDirty();
           break;
         }
@@ -218,17 +246,12 @@ export class CanvasEngine {
 
     if (this.currentTool === 'pen' && this.currentPenPath) {
       this.currentPenPath.push({ x: p.x, y: p.y });
-      this.canvas.remove(this.activeObj);
-      const d = this.currentPenPath
-        .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
-        .join(' ');
-      this.activeObj = new fabric.Path(d, {
-        stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
-        selectable: false, evented: false,
-        strokeLineCap: 'round', strokeLineJoin: 'round',
-      });
-      ensureObjId(this.activeObj);
-      this.canvas.add(this.activeObj);
+      // P022: Update the Polyline in-place instead of removing the old object
+      // and creating a new one on every mousemove event.
+      const poly = this.activeObj as Polyline;
+      poly.set('points', [...this.currentPenPath]);
+      poly.setCoords();
+      this.canvas?.requestRenderAll();
       this.onBroadcastDraw(false); // throttled mid-stroke delta (immediate=false)
       return;
     }
@@ -242,54 +265,73 @@ export class CanvasEngine {
       if (dy < 0) { this.activeObj.set({ top: p.y, height: -dy }); }
       else { this.activeObj.set({ height: dy }); }
     } else if (this.currentTool === 'ellipse') {
-      this.activeObj.set({
+      (this.activeObj as Ellipse).set({
         rx: Math.abs(dx) / 2, ry: Math.abs(dy) / 2,
         left: dx < 0 ? p.x : this.startX,
         top: dy < 0 ? p.y : this.startY,
       });
     } else if (this.currentTool === 'line' || this.currentTool === 'arrow') {
-      this.activeObj.set({ x2: p.x, y2: p.y });
+      (this.activeObj as Line).set({ x2: p.x, y2: p.y });
     }
-    this.canvas.renderAll();
+    this.canvas?.requestRenderAll(); // P022: batch the render via rAF
   }
 
-  private onMouseUp(e: any): void {
+  private onMouseUp(e: TPointerEventInfo): void {
     if (!this.isDrawing) return;
     this.isDrawing = false;
 
     if (this.currentTool === 'pen' && this.activeObj) {
-      ensureObjId(this.activeObj);
-      this.activeObj.set({ selectable: true, evented: true });
-      this.canvas.setActiveObject(this.activeObj);
+      // P022: Convert the temporary Polyline to a permanent Path.
+      const penPoints = this.currentPenPath ?? [];
+      this.canvas?.remove(this.activeObj);
+
+      if (penPoints.length > 1) {
+        const d = penPoints
+          .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
+          .join(' ');
+        const finalPath = new Path(d, {
+          stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
+          selectable: true, evented: true,
+          strokeLineCap: 'round', strokeLineJoin: 'round',
+        });
+        ensureObjId(finalPath);
+        this.canvas?.add(finalPath);
+        this.canvas?.setActiveObject(finalPath);
+      }
+
       this.currentPenPath = null;
       this.activeObj = null;
       this.markDirty();
-      this.canvas.selection = true;
+      if (this.canvas) this.canvas.selection = true;
+      this.onBroadcastDraw(true);
       return;
     }
 
     if (this.activeObj) {
-      const p = this.canvas.getPointer(e.e);
+      // Fabric v7: scenePoint is supplied directly on the event info object
+      const p = e.scenePoint;
       const dx = Math.abs(p.x - this.startX), dy = Math.abs(p.y - this.startY);
       if (dx < 3 && dy < 3) {
-        this.canvas.remove(this.activeObj);
+        this.canvas?.remove(this.activeObj);
       } else {
         ensureObjId(this.activeObj);
         this.activeObj.set({ selectable: true, evented: true });
-        if (this.currentTool === 'arrow') this.drawArrowhead(this.activeObj);
-        this.canvas.setActiveObject(this.activeObj);
+        if ((this.activeObj as FabricObject & { _isArrow?: boolean })._isArrow) {
+          this.drawArrowhead(this.activeObj as Line);
+        }
+        this.canvas?.setActiveObject(this.activeObj);
         this.markDirty();
       }
       this.activeObj = null;
     }
 
-    this.canvas.selection = true;
-    this.canvas.renderAll();
+    if (this.canvas) this.canvas.selection = true;
+    this.canvas?.requestRenderAll(); // P022: batch via rAF
     if (this.currentTool !== 'select') this.onBroadcastDraw(true);
   }
 
-  private drawArrowhead(line: any): void {
-    const { x1, y1, x2, y2 } = line;
+  private drawArrowhead(line: Line): void {
+    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = line;
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const len = 14, spread = 0.4;
     const p1x = x2 - len * Math.cos(angle - spread);
@@ -297,30 +339,31 @@ export class CanvasEngine {
     const p2x = x2 - len * Math.cos(angle + spread);
     const p2y = y2 - len * Math.sin(angle + spread);
 
-    const head = new fabric.Polygon(
-      [{ x: x2, y: y2 }, { x: p1x, y: p1y }, { x: p2x, y: p2y }],
+    const head = new Polygon(
+      [{ x: x2, y: y2 }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
       { fill: line.stroke, stroke: line.stroke, strokeWidth: 1, selectable: false, evented: false },
     );
-    ensureObjId(head as any);
-    this.canvas.add(head);
+    ensureObjId(head);
+    this.canvas?.add(head);
 
-    const grp = new fabric.Group([line, head], { selectable: true, evented: true });
-    ensureObjId(grp as any);
-    this.canvas.remove(line);
-    this.canvas.remove(head);
-    this.canvas.add(grp);
-    this.canvas.setActiveObject(grp);
+    const grp = new Group([line, head], { selectable: true, evented: true });
+    ensureObjId(grp);
+    this.canvas?.remove(line);
+    this.canvas?.remove(head);
+    this.canvas?.add(grp);
+    this.canvas?.setActiveObject(grp);
     this.activeObj = null;
   }
 
-  private onWheel(opt: any): void {
-    const delta = opt.e.deltaY;
-    let zoom = this.canvas.getZoom();
+  private onWheel(e: TPointerEventInfo<WheelEvent>): void {
+    const delta = e.e.deltaY;
+    let zoom = this.canvas?.getZoom() ?? 1;
     zoom *= 0.999 ** delta;
     zoom = Math.min(Math.max(zoom, 0.1), 10);
-    this.canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
-    opt.e.preventDefault();
-    opt.e.stopPropagation();
+    // Fabric v7: zoomToPoint requires a Point instance, not a plain XY literal.
+    this.canvas?.zoomToPoint(new Point(e.e.offsetX, e.e.offsetY), zoom);
+    e.e.preventDefault();
+    e.e.stopPropagation();
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -339,11 +382,10 @@ export class CanvasEngine {
     else if (k === '-') this.zoomOut();
     else if (k === '0') this.resetZoom();
     else if ((e.ctrlKey || e.metaKey) && k === 'z') {
-      if (this.canvas.undo) this.canvas.undo();
       this.markDirty();
     } else if (k === 'delete' || k === 'backspace') {
-      const obj = this.canvas.getActiveObject();
-      if (obj) { this.canvas.remove(obj); this.markDirty(); this.onBroadcastDraw(true); }
+      const obj = this.canvas?.getActiveObject();
+      if (obj) { this.canvas?.remove(obj); this.markDirty(); this.onBroadcastDraw(true); }
     }
   }
 
@@ -351,48 +393,70 @@ export class CanvasEngine {
 
   setTool(t: string): void {
     this.currentTool = t;
-    document.querySelectorAll('.tbtn').forEach((b) => b.classList.remove('on'));
-    document.getElementById('t' + t)?.classList.add('on');
-    this.canvas.isDrawingMode = false;
-    this.canvas.selection = t === 'select';
-    this.canvas.defaultCursor = t === 'eraser' || t === 'pen' ? 'crosshair' : 'default';
+    // Reset all tool buttons, then mark the active one.
+    // aria-pressed is updated here so assistive tech always reflects the real state.
+    document.querySelectorAll('.tbtn').forEach((b) => {
+      b.classList.remove('on');
+      (b as HTMLElement).setAttribute('aria-pressed', 'false');
+    });
+    const btn = document.getElementById('t' + t);
+    btn?.classList.add('on');
+    btn?.setAttribute('aria-pressed', 'true');
+    if (this.canvas) {
+      this.canvas.isDrawingMode = false;
+      this.canvas.selection = t === 'select';
+      this.canvas.defaultCursor = t === 'eraser' || t === 'pen' ? 'crosshair' : 'default';
+    }
   }
 
   updateStrokeColor(v: string): void {
     this.strokeColor = v;
     const dot = document.getElementById('strokeDot');
     if (dot) dot.style.background = v;
-    const o = this.canvas.getActiveObject();
-    if (o) { o.set('stroke', v); this.canvas.renderAll(); }
+    const o = this.canvas?.getActiveObject();
+    if (o) { o.set('stroke', v); this.canvas?.requestRenderAll(); }
   }
 
   updateFillColor(v: string): void {
     this.fillColor = v;
     const dot = document.getElementById('fillDot');
     if (dot) dot.style.background = v;
-    const o = this.canvas.getActiveObject();
-    if (o) { o.set('fill', v); this.canvas.renderAll(); }
+    const o = this.canvas?.getActiveObject();
+    if (o) { o.set('fill', v); this.canvas?.requestRenderAll(); }
   }
 
   toggleFill(): void {
     this.fillEnabled = !this.fillEnabled;
     const btn = document.getElementById('tfillToggle');
-    if (btn) btn.textContent = this.fillEnabled ? '⊠' : '⊡';
+    if (btn) {
+      btn.textContent = this.fillEnabled ? '⊠' : '⊡';
+      btn.setAttribute('aria-pressed', this.fillEnabled ? 'true' : 'false');
+    }
   }
 
   setStrokeWidth(w: number): void {
     this.strokeWidth = w;
-    ['sz1', 'sz3', 'sz5'].forEach((id) => document.getElementById(id)?.classList.remove('on'));
-    if (w === 1.5) document.getElementById('sz1')?.classList.add('on');
-    else if (w === 3) document.getElementById('sz3')?.classList.add('on');
-    else if (w === 5) document.getElementById('sz5')?.classList.add('on');
+    // Reset all size buttons, then mark the active one (aria-pressed stays in sync).
+    ['sz1', 'sz3', 'sz5'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const activeId = w === 1.5 ? 'sz1' : w === 3 ? 'sz3' : w === 5 ? 'sz5' : null;
+    if (activeId) {
+      const el = document.getElementById(activeId);
+      el?.classList.add('on');
+      el?.setAttribute('aria-pressed', 'true');
+    }
   }
 
-  zoomIn(): void { this.canvas.setZoom(Math.min(this.canvas.getZoom() * 1.2, 10)); }
-  zoomOut(): void { this.canvas.setZoom(Math.max(this.canvas.getZoom() / 1.2, 0.1)); }
+  zoomIn(): void { this.canvas?.setZoom(Math.min(this.canvas.getZoom() * 1.2, 10)); }
+  zoomOut(): void { this.canvas?.setZoom(Math.max(this.canvas.getZoom() / 1.2, 0.1)); }
   resetZoom(): void {
+    if (!this.canvas) return;
     this.canvas.setZoom(1);
     this.canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
-    this.canvas.renderAll();
+    this.canvas.requestRenderAll(); // P022: batch via rAF
   }
 }

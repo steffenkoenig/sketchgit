@@ -234,3 +234,9 @@ canvas{position:absolute;top:0;left:0}
 
 /* color swatch preview in conflict */
 .color-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.2);vertical-align:middle;margin-right:4px}
+
+/* P025 – Accessibility helpers */
+/* Visually hidden but available to screen readers (standard sr-only pattern) */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}
+/* Reveal when focused (for skip links) */
+.sr-only.focus\:not-sr-only:focus,.focus\:not-sr-only:focus{position:static;width:auto;height:auto;padding:inherit;margin:0;overflow:visible;clip:auto;white-space:normal}

@@ -17,5 +17,46 @@ services:
       retries: 5
       start_period: 10s
 
+  # P012: Redis Pub/Sub for horizontal scalability across multiple app instances
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://sketchgit:dev_password@db:5432/sketchgit
+      NEXTAUTH_URL: http://localhost:3000
+      # IMPORTANT: Replace with a real secret generated via: openssl rand -base64 32
+      AUTH_SECRET: dev-secret-change-in-production
+      NODE_ENV: production
+      # P012: Redis URL for horizontal scalability (optional – remove to run single-instance)
+      REDIS_URL: redis://redis:6379
+    # Run Prisma migrations then start the server
+    command: >
+      sh -c "npx prisma migrate deploy && node_modules/.bin/tsx server.ts"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   pgdata:

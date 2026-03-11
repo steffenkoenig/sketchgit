@@ -1,35 +1,53 @@
 /**
- * app.ts – thin orchestrator for SketchGit.
+ * app.ts – thin wiring layer for SketchGit (P017).
  *
- * This file wires all modules together and exposes the same public API that
- * `createSketchGitApp()` previously returned from the monolithic file.
- * It is the only place that knows about all subsystems; every other module
- * is independently importable and testable.
+ * This file creates the subsystem instances and the feature-focused
+ * coordinator objects, wires them together, and returns the same public API
+ * that `createSketchGitApp()` has always exposed to the React component.
+ *
+ * Previous version: 706 lines mixing instances, UI state, and workflow logic.
+ * After P017:       ~130 lines – only wiring, no business logic.
+ *
+ * Workflow logic now lives in dedicated coordinators:
+ *   - coordinators/timelineCoordinator.ts   (timeline rendering + UI sync)
+ *   - coordinators/commitCoordinator.ts     (popup + commit modal)
+ *   - coordinators/branchCoordinator.ts     (branch list + create)
+ *   - coordinators/mergeCoordinator.ts      (merge modal + conflict resolution)
+ *   - coordinators/collaborationCoordinator.ts (identity + room setup)
  */
 
-// ── Module imports ────────────────────────────────────────────────────────────
 import { GitModel } from './git/gitModel';
 import { CanvasEngine } from './canvas/canvasEngine';
 import { WsClient } from './realtime/wsClient';
 import { CollaborationManager } from './realtime/collaborationManager';
-import { renderTimeline } from './ui/timelineRenderer';
 import { showToast } from './ui/toast';
-import { openModal, closeModal } from './ui/modals';
-import { PendingMerge, BranchNames, MergeConflict, ConflictChoice } from './types';
-import { BRANCH_COLORS } from './types';
+import { closeModal } from './ui/modals';
 
-// ─── Factory (same shape as the old monolithic createSketchGitApp) ────────────
+import { AppContext } from './coordinators/appContext';
+import { TimelineCoordinator } from './coordinators/timelineCoordinator';
+import { CommitCoordinator } from './coordinators/commitCoordinator';
+import { BranchCoordinator } from './coordinators/branchCoordinator';
+import { MergeCoordinator } from './coordinators/mergeCoordinator';
+import { CollaborationCoordinator } from './coordinators/collaborationCoordinator';
+import { Commit } from './types';
+
+// ─── Factory (same public API as before) ──────────────────────────────────────
 
 export function createSketchGitApp() {
 
-  // ── Instances ──────────────────────────────────────────────────────────────
+  // ── Subsystem instances ────────────────────────────────────────────────────
+
   const git = new GitModel((msg) => showToast(msg, true));
   const ws = new WsClient();
+
+  // CollaborationManager callbacks reference `canvas` and coordinator methods;
+  // we wire them after coordinators are created using late-bound closures so
+  // that the circular reference (collab ↔ canvas, collab ↔ timeline) is safe.
   const collab = new CollaborationManager(ws, {
     getCanvasData: () => canvas.getCanvasData(),
     loadCanvasData: (data) => canvas.loadCanvasData(data),
-    renderTimeline: () => doRenderTimeline(),
-    updateUI: () => updateUI(),
+    renderTimeline: () => tl.refresh(),
+    updateUI: () => tl.updateUI(),
     getGitState: () => ({
       commits: git.commits as Record<string, unknown>,
       branches: git.branches,
@@ -46,7 +64,7 @@ export function createSketchGitApp() {
       if (c) canvas.loadCanvasData(c.canvas);
     },
     receiveCommit: (sha, commit) => {
-      git.commits[sha] = commit as import('./types').Commit;
+      git.commits[sha] = commit as Commit;
     },
   });
 
@@ -55,550 +73,54 @@ export function createSketchGitApp() {
     (e) => collab.broadcastCursor(e),
   );
 
-  // ── User identity ──────────────────────────────────────────────────────────
-  let myName = 'User';
-  // Pick a random avatar color (non-sensitive, Math.random() is appropriate here).
-  let myColor = BRANCH_COLORS[Math.floor(Math.random() * BRANCH_COLORS.length)];
+  const ctx: AppContext = { git, canvas, collab, ws };
 
-  // ── Commit popup state ────────────────────────────────────────────────────
-  let popupSHA: string | null = null;
+  // ── Coordinators ───────────────────────────────────────────────────────────
 
-  // ── Pending merge state ───────────────────────────────────────────────────
-  let pendingMerge: PendingMerge | null = null;
+  // TimelineCoordinator is constructed first; CommitCoordinator is constructed
+  // after so that we can supply the commit-click callback via late binding.
+  const tl = new TimelineCoordinator(ctx);
+  const refresh = () => tl.refresh();
 
-  // ── Branch-create target SHA ──────────────────────────────────────────────
-  let branchFromSHA: string | null = null;
-  let ctxMenuSHA: string | null = null;
+  const branch = new BranchCoordinator(ctx, refresh);
 
-  // ─── Timeline ─────────────────────────────────────────────────────────────
+  // CommitCoordinator's cpBranchFrom delegates to BranchCoordinator via callback.
+  const commit = new CommitCoordinator(ctx, refresh, (fromSha) => branch.openBranchCreate(fromSha));
 
-  function doRenderTimeline(): void {
-    renderTimeline(
-      git,
-      (sha, x, y) => openCommitPopup(sha, x, y),
-      (name) => {
-        git.checkout(name);
-        const c = git.commits[git.branches[name]];
-        if (c) canvas.loadCanvasData(c.canvas);
-        canvas.clearDirty();
-        updateUI();
-        doRenderTimeline();
-        showToast(`Switched to '${name}'`);
-      },
-    );
-  }
+  // Now that CommitCoordinator exists, wire the timeline commit-click handler.
+  tl.onCommitClick = (sha, x, y) => commit.openCommitPopup(sha, x, y);
 
-  function updateUI(): void {
-    const nameEl = document.getElementById('currentBranchName');
-    if (nameEl) {
-      nameEl.textContent = git.detached
-        ? '🔍 ' + git.detached.slice(0, 6)
-        : git.HEAD;
+  const merge = new MergeCoordinator(ctx, refresh);
+  const collaboration = new CollaborationCoordinator(ctx, refresh);
+
+  // ── Outside-click handler – close panel/popup on backdrop click ────────────
+  // Store the bound reference so it can be removed in destroy().
+
+  const outsideClickHandler = (e: MouseEvent) => {
+    const panel = document.getElementById('collab-panel');
+    const target = e.target as EventTarget;
+    if (
+      panel?.classList.contains('open') &&
+      !(target instanceof Node && panel.contains(target)) &&
+      !(target instanceof Element && target.closest('#topbar'))
+    ) {
+      collab.toggleCollabPanel();
     }
-    const shaEl = document.getElementById('headSHA');
-    if (shaEl) shaEl.textContent = (git.currentSHA() ?? '').slice(0, 7);
-    const dotEl = document.getElementById('currentBranchDot');
-    if (dotEl) dotEl.style.background = git.branchColor(git.HEAD);
-  }
-
-  // ─── Commit popup ──────────────────────────────────────────────────────────
-
-  function openCommitPopup(sha: string, screenX: number, screenY: number): void {
-    popupSHA = sha;
-    const c = git.commits[sha];
-    if (!c) return;
-
-    const isHead = sha === git.currentSHA();
-    const headBadge = document.getElementById('cp-head-badge');
-    if (headBadge) headBadge.style.display = isHead ? 'inline-flex' : 'none';
-
-    const shaEl = document.getElementById('cp-sha');
-    if (shaEl) shaEl.textContent = sha.slice(0, 12) + '…';
-    const msgEl = document.getElementById('cp-msg');
-    if (msgEl) msgEl.textContent = c.message;
-    const d = new Date(c.ts);
-    const metaEl = document.getElementById('cp-meta');
-    if (metaEl) {
-      metaEl.textContent =
-        `${c.branch} · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    }
-
     const popup = document.getElementById('commit-popup');
-    if (popup) {
-      popup.classList.add('open');
-      const pw = 230, ph = 180;
-      let x = screenX - pw / 2;
-      let y = screenY - ph - 14;
-      x = Math.max(8, Math.min(x, window.innerWidth - pw - 8));
-      if (y < 8) y = screenY + 18;
-      popup.style.left = x + 'px';
-      popup.style.top = y + 'px';
+    if (popup?.classList.contains('open') && !(target instanceof Node && popup.contains(target))) {
+      commit.closeCommitPopup();
     }
-  }
+  };
 
-  function closeCommitPopup(): void {
-    document.getElementById('commit-popup')?.classList.remove('open');
-    popupSHA = null;
-  }
+  document.addEventListener('click', outsideClickHandler);
 
-  function cpCheckout(): void {
-    if (!popupSHA) return;
-    const sha = popupSHA;
-    closeCommitPopup();
-    if (sha === git.currentSHA()) { showToast('Already at this commit'); return; }
-    git.checkoutCommit(sha);
-    canvas.loadCanvasData(git.commits[sha].canvas);
-    canvas.clearDirty();
-    doRenderTimeline(); updateUI();
-    showToast('⤵ Viewing commit ' + sha.slice(0, 7) + ' — detached HEAD');
-  }
+  // ── Bootstrap ──────────────────────────────────────────────────────────────
 
-  function cpBranchFrom(): void {
-    if (!popupSHA) return;
-    ctxMenuSHA = popupSHA;
-    closeCommitPopup();
-    openBranchCreate();
-  }
+  collaboration.init();
+  // P024: Wire the scroll listener so the timeline virtualizes on scroll.
+  tl.initScrollListener();
 
-  function cpRollback(): void {
-    if (!popupSHA) return;
-    const sha = popupSHA;
-    if (git.detached) { showToast('⚠ Not on a branch', true); closeCommitPopup(); return; }
-    if (!confirm(`Rollback branch '${git.HEAD}' to ${sha.slice(0, 7)}? This cannot be undone.`)) return;
-    closeCommitPopup();
-    git.branches[git.HEAD] = sha;
-    git.detached = null;
-    canvas.loadCanvasData(git.commits[sha].canvas);
-    canvas.clearDirty(); doRenderTimeline(); updateUI();
-    showToast('Rolled back to ' + sha.slice(0, 7));
-  }
-
-  // ─── Commit modal ──────────────────────────────────────────────────────────
-
-  function openCommitModal(): void {
-    if (!canvas.isDirty) { showToast('Nothing new to commit'); return; }
-    const msgEl = document.getElementById('commitMsg') as HTMLInputElement | null;
-    if (msgEl) msgEl.value = '';
-    openModal('commitModal');
-    setTimeout(() => (document.getElementById('commitMsg') as HTMLInputElement | null)?.focus(), 100);
-  }
-
-  function doCommit(): void {
-    const msgEl = document.getElementById('commitMsg') as HTMLInputElement | null;
-    const msg = (msgEl?.value ?? '').trim() || 'Update drawing';
-    const sha = git.commit(canvas.getCanvasData(), msg);
-    if (!sha) return;
-    closeModal('commitModal');
-    canvas.clearDirty();
-    doRenderTimeline();
-    updateUI();
-    showToast(`✓ Committed: ${msg}`);
-    ws.send({ type: 'commit', sha, commit: git.commits[sha] });
-  }
-
-  // ─── Branch modal ──────────────────────────────────────────────────────────
-
-  function openBranchModal(): void {
-    const list = document.getElementById('branchListEl');
-    if (!list) return;
-    list.replaceChildren();
-    for (const [name, sha] of Object.entries(git.branches)) {
-      const color = git.branchColor(name);
-      const item = document.createElement('div');
-      item.className = 'branch-item' + (name === git.HEAD ? ' active-branch' : '');
-
-      const dot = document.createElement('div');
-      dot.style.width = '10px';
-      dot.style.height = '10px';
-      dot.style.borderRadius = '50%';
-      dot.style.background = color;
-      dot.style.flexShrink = '0';
-
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'bname';
-      nameSpan.textContent = name;
-
-      const shaSpan = document.createElement('span');
-      shaSpan.className = 'bsha';
-      shaSpan.textContent = sha ? sha.slice(0, 7) : '';
-
-      item.appendChild(dot);
-      item.appendChild(nameSpan);
-      item.appendChild(shaSpan);
-
-      item.addEventListener('click', () => {
-        git.checkout(name);
-        const c = git.commits[git.branches[name]];
-        if (c) canvas.loadCanvasData(c.canvas);
-        canvas.clearDirty(); closeModal('branchModal'); doRenderTimeline(); updateUI();
-        showToast(`Switched to branch '${name}'`);
-      });
-      list.appendChild(item);
-    }
-    openModal('branchModal');
-  }
-
-  function openBranchCreate(): void {
-    branchFromSHA = ctxMenuSHA ?? git.currentSHA();
-    const c = branchFromSHA ? git.commits[branchFromSHA] : null;
-    const infoEl = document.getElementById('branchFromInfo');
-    if (infoEl) {
-      infoEl.replaceChildren();
-      const boldEl = document.createElement('b');
-      boldEl.textContent = 'From:';
-      infoEl.appendChild(boldEl);
-      infoEl.appendChild(
-        document.createTextNode(
-          ' ' + (branchFromSHA ? branchFromSHA.slice(0, 7) : '?') + ' — ' + (c ? c.message : ''),
-        ),
-      );
-    }
-    const nameEl = document.getElementById('newBranchName') as HTMLInputElement | null;
-    if (nameEl) nameEl.value = '';
-    closeModal('branchModal');
-    openModal('branchCreateModal');
-    setTimeout(() => (document.getElementById('newBranchName') as HTMLInputElement | null)?.focus(), 100);
-  }
-
-  function doCreateBranch(): void {
-    const nameEl = document.getElementById('newBranchName') as HTMLInputElement | null;
-    const name = (nameEl?.value ?? '').trim().replace(/\s+/g, '-');
-    if (!name) return;
-    if (!git.createBranch(name, branchFromSHA)) return;
-    git.checkout(name);
-    closeModal('branchCreateModal');
-    doRenderTimeline(); updateUI();
-    showToast(`✓ Created & switched to '${name}'`);
-    ctxMenuSHA = null;
-  }
-
-  // ─── Merge modal ───────────────────────────────────────────────────────────
-
-  function openMergeModal(): void {
-    if (git.detached) { showToast('⚠ Cannot merge in detached HEAD', true); return; }
-    const targetEl = document.getElementById('mergeTargetName');
-    if (targetEl) targetEl.textContent = git.HEAD;
-    const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement | null;
-    if (!sel) return;
-    sel.replaceChildren();
-    for (const b of Object.keys(git.branches).filter((b) => b !== git.HEAD)) {
-      const o = document.createElement('option');
-      o.value = b; o.textContent = b;
-      sel.appendChild(o);
-    }
-    if (!sel.options.length) { showToast('No other branches to merge', true); return; }
-    openModal('mergeModal');
-  }
-
-  function doMerge(): void {
-    const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement | null;
-    const src = sel?.value ?? '';
-    closeModal('mergeModal');
-
-    const result = git.merge(src);
-    if (!result) return;
-
-    if ('done' in result) {
-      canvas.loadCanvasData(git.commits[git.branches[git.HEAD]].canvas);
-      canvas.clearDirty();
-      doRenderTimeline(); updateUI();
-      showToast(`✓ Merged '${src}' into '${git.HEAD}'`);
-    } else if ('conflicts' in result) {
-      const conflictResult = result.conflicts;
-      const { conflicts, cleanObjects, oursData, branchNames } = conflictResult;
-      openConflictModal(
-        conflicts as MergeConflict[],
-        cleanObjects as (Record<string, unknown> | null)[],
-        oursData as string,
-        branchNames as BranchNames,
-      );
-      showToast(`⚡ ${conflicts.length} conflict(s) — please resolve`, true);
-    }
-  }
-
-  // ─── Conflict resolution UI ────────────────────────────────────────────────
-
-  /** Build a DOM element representing a property value (safe – no innerHTML). */
-  function createPropValueElement(prop: string, val: unknown): HTMLElement {
-    const container = document.createElement('span');
-    if (val === undefined || val === null) {
-      const i = document.createElement('i');
-      i.style.opacity = '0.4';
-      i.textContent = '—';
-      container.appendChild(i);
-      return container;
-    }
-    const v = String(val);
-    if (prop === 'stroke' || prop === 'fill') {
-      const isColor = /^#[0-9a-fA-F]{3,8}$/.test(v) || v.startsWith('rgb');
-      if (isColor && v !== 'transparent') {
-        const swatch = document.createElement('span');
-        swatch.className = 'color-swatch';
-        swatch.style.background = v;
-        container.appendChild(swatch);
-        container.appendChild(document.createTextNode(v));
-        return container;
-      }
-      if (!v) {
-        const i = document.createElement('i');
-        i.style.opacity = '0.4';
-        i.textContent = 'transparent';
-        container.appendChild(i);
-        return container;
-      }
-      container.textContent = v;
-      return container;
-    }
-    if (typeof val === 'number') {
-      container.textContent = String(Math.round((val as number) * 100) / 100);
-      return container;
-    }
-    if (prop === 'path' || prop === '_groupObjects') {
-      const i = document.createElement('i');
-      i.style.opacity = '0.5';
-      i.textContent = '[complex data]';
-      container.appendChild(i);
-      return container;
-    }
-    container.textContent = v.length > 40 ? v.slice(0, 38) + '…' : v;
-    return container;
-  }
-
-  function getPropLabel(prop: string): string {
-    const labels: Record<string, string> = {
-      stroke: 'Stroke color', fill: 'Fill', strokeWidth: 'Stroke width',
-      left: 'X position', top: 'Y position', width: 'Width', height: 'Height',
-      scaleX: 'Scale X', scaleY: 'Scale Y', angle: 'Rotation',
-      rx: 'Radius X', ry: 'Radius Y', x1: 'Start X', y1: 'Start Y',
-      x2: 'End X', y2: 'End Y', path: 'Path', text: 'Text',
-      fontSize: 'Font size', fontFamily: 'Font family', opacity: 'Opacity',
-      flipX: 'Flip X', flipY: 'Flip Y',
-    };
-    return labels[prop] ?? prop;
-  }
-
-  function openConflictModal(
-    conflicts: MergeConflict[],
-    cleanObjects: (Record<string, unknown> | null)[],
-    oursData: string,
-    branchNames: BranchNames,
-  ): void {
-    pendingMerge = { conflicts, cleanObjects, oursData, branchNames, resolved: false };
-
-    const list = document.getElementById('conflictList');
-    if (!list) return;
-    list.replaceChildren();
-
-    const totalConflicts = conflicts.reduce((s, c) => s + c.propConflicts.length, 0);
-    const summaryEl = document.getElementById('conflictSummary');
-    if (summaryEl) {
-      summaryEl.textContent =
-        `${conflicts.length} object(s) with ${totalConflicts} property conflict(s). ` +
-        `Choose which version to keep for each property.`;
-    }
-
-    conflicts.forEach((conflict, ci) => {
-      const objEl = document.createElement('div');
-      objEl.className = 'conflict-obj';
-
-      const header = document.createElement('div');
-      header.className = 'conflict-obj-header';
-      const iconSpan = document.createElement('span');
-      iconSpan.textContent = '⊞';
-      const labelBold = document.createElement('b');
-      labelBold.textContent = conflict.label;
-      const countSpan = document.createElement('span');
-      countSpan.style.marginLeft = 'auto';
-      countSpan.style.color = 'var(--tx3)';
-      countSpan.textContent = `${conflict.propConflicts.length} conflict(s)`;
-      header.appendChild(iconSpan);
-      header.appendChild(labelBold);
-      header.appendChild(countSpan);
-      objEl.appendChild(header);
-
-      conflict.propConflicts.forEach((pc, pi) => {
-        const propEl = document.createElement('div');
-        propEl.className = 'conflict-prop';
-
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'prop-name';
-        nameSpan.textContent = getPropLabel(pc.prop);
-        propEl.appendChild(nameSpan);
-
-        const oursBtn = createConflictOption('ours', `← Ours (${branchNames.ours})`, pc.prop, pc.ours, pc.chosen === 'ours', ci, pi);
-        const vsSpan = document.createElement('span');
-        vsSpan.className = 'prop-vs'; vsSpan.textContent = 'vs';
-        const theirsBtn = createConflictOption('theirs', `Theirs (${branchNames.theirs}) →`, pc.prop, pc.theirs, pc.chosen === 'theirs', ci, pi);
-
-        propEl.appendChild(oursBtn);
-        propEl.appendChild(vsSpan);
-        propEl.appendChild(theirsBtn);
-        objEl.appendChild(propEl);
-      });
-
-      list.appendChild(objEl);
-    });
-
-    updateConflictStats();
-    openModal('conflictModal');
-  }
-
-  function createConflictOption(
-    choice: 'ours' | 'theirs',
-    labelText: string,
-    propName: string,
-    val: unknown,
-    selected: boolean,
-    ci: number,
-    pi: number,
-  ): HTMLElement {
-    const el = document.createElement('div');
-    el.className = 'prop-option' + (selected ? ` selected-${choice}` : '');
-
-    const labelDiv = document.createElement('div');
-    labelDiv.className = 'opt-label';
-    labelDiv.style.color = `var(${choice === 'ours' ? '--a1' : '--a3'})`;
-    labelDiv.textContent = labelText;
-
-    const valDiv = document.createElement('div');
-    valDiv.className = 'opt-val';
-    valDiv.appendChild(createPropValueElement(propName, val));
-
-    el.appendChild(labelDiv);
-    el.appendChild(valDiv);
-    el.addEventListener('click', () => selectConflictChoice(ci, pi, choice, el));
-    return el;
-  }
-
-  function selectConflictChoice(
-    ci: number,
-    pi: number,
-    choice: 'ours' | 'theirs',
-    clickedEl: HTMLElement,
-  ): void {
-    if (!pendingMerge) return;
-    pendingMerge.conflicts[ci].propConflicts[pi].chosen = choice;
-    const propEl = clickedEl.closest('.conflict-prop');
-    if (propEl) {
-      propEl.querySelectorAll('.prop-option').forEach((el) => {
-        el.classList.remove('selected-ours', 'selected-theirs');
-      });
-    }
-    clickedEl.classList.add(choice === 'ours' ? 'selected-ours' : 'selected-theirs');
-    updateConflictStats();
-  }
-
-  function resolveAllOurs(): void {
-    if (!pendingMerge) return;
-    pendingMerge.conflicts.forEach((c) => {
-      c.propConflicts.forEach((pc) => { pc.chosen = 'ours'; });
-    });
-    document.querySelectorAll('.prop-option').forEach((el) => {
-      const choice = (el as HTMLElement).dataset.choice;
-      el.classList.remove('selected-ours', 'selected-theirs');
-      if (choice === 'ours') el.classList.add('selected-ours');
-    });
-    rebuildConflictChoiceUI();
-    updateConflictStats();
-  }
-
-  function resolveAllTheirs(): void {
-    if (!pendingMerge) return;
-    pendingMerge.conflicts.forEach((c) => {
-      c.propConflicts.forEach((pc) => { pc.chosen = 'theirs'; });
-    });
-    rebuildConflictChoiceUI();
-    updateConflictStats();
-  }
-
-  function rebuildConflictChoiceUI(): void {
-    // Re-apply selected class to all prop-option elements after bulk resolve
-    document.querySelectorAll('.conflict-prop').forEach((propEl) => {
-      propEl.querySelectorAll('.prop-option').forEach((optEl) => {
-        // The options carry their CI/PI via closure references in click listeners;
-        // instead we walk the DOM and use the displayed label to infer choice.
-        optEl.classList.remove('selected-ours', 'selected-theirs');
-      });
-    });
-    // Re-render fully
-    if (pendingMerge) {
-      const { conflicts, cleanObjects, oursData, branchNames } = pendingMerge;
-      openConflictModal(conflicts, cleanObjects, oursData, branchNames);
-    }
-  }
-
-  function updateConflictStats(): void {
-    if (!pendingMerge) return;
-    let oursCount = 0, theirsCount = 0, total = 0;
-    pendingMerge.conflicts.forEach((c) => {
-      c.propConflicts.forEach((pc) => {
-        total++;
-        if (pc.chosen === 'ours') oursCount++;
-        else theirsCount++;
-      });
-    });
-    const statsEl = document.getElementById('conflictStats');
-    if (statsEl) {
-      statsEl.replaceChildren();
-      const b1 = document.createElement('b'); b1.textContent = String(oursCount);
-      const b2 = document.createElement('b'); b2.textContent = String(theirsCount);
-      const b3 = document.createElement('b'); b3.textContent = String(total);
-      statsEl.append(b1, ' ours · ', b2, ' theirs · ', b3, ' total');
-    }
-  }
-
-  function applyMergeResolution(): void {
-    if (!pendingMerge) return;
-    const { conflicts, cleanObjects, oursData, branchNames } = pendingMerge;
-    const baseParsed = JSON.parse(oursData) as Record<string, unknown>;
-
-    const finalObjects = [...cleanObjects];
-    let conflictIdx = 0;
-    finalObjects.forEach((obj, i) => {
-      if (obj === null) {
-        const conflict = conflicts[conflictIdx++];
-        const merged = { ...conflict.oursObj };
-        conflict.propConflicts.forEach((pc: ConflictChoice) => {
-          merged[pc.prop] = pc.chosen === 'ours' ? pc.ours : pc.theirs;
-        });
-        finalObjects[i] = merged;
-      }
-    });
-
-    baseParsed.objects = finalObjects.filter(Boolean);
-    const mergedData = JSON.stringify(baseParsed);
-
-    const { targetBranch, sourceBranch, targetSHA, sourceSHA } = branchNames;
-    const sha = git.generateSha();
-    git.commits[sha] = {
-      sha, parent: targetSHA, parents: [targetSHA, sourceSHA],
-      message: `Merge '${sourceBranch}' into '${targetBranch}' (${conflicts.length} conflict(s) resolved)`,
-      ts: Date.now(), canvas: mergedData, branch: targetBranch, isMerge: true,
-    };
-    git.branches[targetBranch] = sha;
-
-    canvas.loadCanvasData(mergedData);
-    canvas.clearDirty();
-    closeModal('conflictModal');
-    pendingMerge = null;
-    doRenderTimeline();
-    updateUI();
-    showToast(`✓ Merge complete — ${conflicts.length} conflict(s) resolved`);
-  }
-
-  // ─── Name modal ────────────────────────────────────────────────────────────
-
-  function setName(): void {
-    const n = (document.getElementById('nameInput') as HTMLInputElement | null)?.value.trim();
-    if (!n) return;
-    myName = n;
-    if (ws.isConnected()) {
-      ws.send({ type: 'profile', name: myName, color: myColor });
-    }
-    closeModal('nameModal');
-  }
-
-  // ─── Timeline scroll controls ──────────────────────────────────────────────
+  // ── Timeline scroll controls ───────────────────────────────────────────────
 
   function tlScrollLeft(): void {
     const el = document.getElementById('tlscroll');
@@ -609,63 +131,10 @@ export function createSketchGitApp() {
     if (el) el.scrollLeft += 200;
   }
 
-  // ─── Collaboration panel ───────────────────────────────────────────────────
-
-  function connectToPeer(): void {
-    collab.connectToPeerUI(myName, myColor);
-  }
-
-  function copyPeerId(): void {
-    collab.copyPeerId();
-  }
-
-  function toggleCollabPanel(): void {
-    collab.toggleCollabPanel();
-  }
-
-  // ─── Bootstrap ────────────────────────────────────────────────────────────
-
-  function init(): void {
-    canvas.init();
-    const initData = JSON.stringify({ version: '5.3.1', objects: [], background: '#0a0a0f' });
-    git.init(initData);
-    doRenderTimeline();
-    updateUI();
-
-    // Connect to the room derived from the URL (or 'default')
-    const initialRoom = collab.getRoomFromUrl();
-    const inputEl = document.getElementById('remotePeerInput') as HTMLInputElement | null;
-    if (inputEl) inputEl.value = initialRoom;
-    const myPeerEl = document.getElementById('myPeerId');
-    if (myPeerEl) myPeerEl.textContent = collab.roomInviteLink(initialRoom);
-    ws.connect(initialRoom, myName, myColor);
-
-    openModal('nameModal');
-    setTimeout(() => (document.getElementById('nameInput') as HTMLInputElement | null)?.focus(), 200);
-
-    // Close panel / popup on outside click
-    document.addEventListener('click', (e) => {
-      const panel = document.getElementById('collab-panel');
-      const target = e.target as EventTarget;
-      if (
-        panel?.classList.contains('open') &&
-        !(target instanceof Node && panel.contains(target)) &&
-        !(target instanceof Element && target.closest('#topbar'))
-      ) {
-        collab.toggleCollabPanel();
-      }
-      const popup = document.getElementById('commit-popup');
-      if (popup?.classList.contains('open') && !(target instanceof Node && popup.contains(target))) {
-        closeCommitPopup();
-      }
-    });
-  }
-
-  init();
-
-  // ─── Public API (same as old createSketchGitApp) ───────────────────────────
+  // ─── Public API (same shape as before – React component requires no changes) ─
 
   return {
+    // Canvas tools
     setTool: (t: string) => canvas.setTool(t),
     updateStrokeColor: (v: string) => canvas.updateStrokeColor(v),
     updateFillColor: (v: string) => canvas.updateFillColor(v),
@@ -674,30 +143,46 @@ export function createSketchGitApp() {
     zoomIn: () => canvas.zoomIn(),
     zoomOut: () => canvas.zoomOut(),
     resetZoom: () => canvas.resetZoom(),
-    toggleCollabPanel,
-    openMergeModal,
-    openBranchCreate,
-    openCommitModal,
-    copyPeerId,
-    connectToPeer,
-    closeCommitPopup,
-    cpCheckout,
-    cpBranchFrom,
-    cpRollback,
+
+    // Collaboration panel
+    toggleCollabPanel: () => collaboration.toggleCollabPanel(),
+    copyPeerId: () => collaboration.copyPeerId(),
+    connectToPeer: () => collaboration.connectToPeer(),
+
+    // Commit popup
+    closeCommitPopup: () => commit.closeCommitPopup(),
+    cpCheckout: () => commit.cpCheckout(),
+    cpBranchFrom: () => commit.cpBranchFrom(),
+    cpRollback: () => commit.cpRollback(),
+
+    // Commit modal
+    openCommitModal: () => commit.openCommitModal(),
+    doCommit: () => commit.doCommit(),
+
+    // Branch modals
+    openBranchCreate: () => branch.openBranchCreate(),
+    openBranchModal: () => branch.openBranchModal(),
+    doCreateBranch: () => branch.doCreateBranch(),
+
+    // Merge modal + conflict resolution
+    openMergeModal: () => merge.openMergeModal(),
+    doMerge: () => merge.doMerge(),
+    resolveAllOurs: () => merge.resolveAllOurs(),
+    resolveAllTheirs: () => merge.resolveAllTheirs(),
+    applyMergeResolution: () => merge.applyMergeResolution(),
+
+    // Identity modal
+    setName: () => collaboration.setName(),
+
+    // Misc modals / utilities
     closeModal,
-    doCommit,
-    doCreateBranch,
-    doMerge,
-    resolveAllOurs,
-    resolveAllTheirs,
-    applyMergeResolution,
-    setName,
-    openBranchModal,
     tlScrollLeft,
     tlScrollRight,
-    // P020: Tear down all subsystems (canvas, WebSocket, collaboration manager)
-    // Called by the React useEffect cleanup to prevent resource leaks on unmount.
+
+    // P020: Resource cleanup on React component unmount.
     destroy(): void {
+      document.removeEventListener('click', outsideClickHandler); // remove backdrop handler
+      tl.destroyScrollListener(); // P024: remove scroll virtualization listener
       ws.disconnect();
       collab.destroy();
       canvas.destroy();

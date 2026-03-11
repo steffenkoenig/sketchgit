@@ -26,6 +26,7 @@ export default [
     files: [
       "server.ts",
       "proxy.ts",
+      "prisma.config.ts",
       "lib/env.ts",
       "lib/auth.ts",
       "lib/db/**/*.ts",
