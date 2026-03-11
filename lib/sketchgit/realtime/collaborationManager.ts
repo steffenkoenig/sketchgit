@@ -6,6 +6,7 @@
 import { WsMessage, PresenceClient } from '../types';
 import { WsClient } from './wsClient';
 import { showToast } from '../ui/toast';
+import { logger } from '../logger';
 
 // ─── Throttle constants (P006) ────────────────────────────────────────────────
 
@@ -258,7 +259,7 @@ export class CollaborationManager {
     try {
       parsed = JSON.parse(canvasJson) as Record<string, unknown>;
     } catch {
-      console.warn('[CollabManager] Failed to parse canvas JSON for delta');
+      logger.warn('[CollabManager] Failed to parse canvas JSON for delta');
       return;
     }
     const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
@@ -324,7 +325,7 @@ export class CollaborationManager {
     try {
       parsed = JSON.parse(this.cb.getCanvasData()) as Record<string, unknown>;
     } catch {
-      console.warn('[CollabManager] Failed to parse canvas JSON for delta apply');
+      logger.warn('[CollabManager] Failed to parse canvas JSON for delta apply');
       return;
     }
 

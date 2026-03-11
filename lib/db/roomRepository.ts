@@ -3,7 +3,7 @@
  * All functions are async and interact with PostgreSQL via the Prisma client.
  */
 import { prisma } from "@/lib/db/prisma";
-import { CommitStorageType } from "@prisma/client";
+import { CommitStorageType, MemberRole } from "@prisma/client";
 import { replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 
 // ─── Types (mirror the client-side git model) ─────────────────────────────────
@@ -250,4 +250,57 @@ export async function pruneInactiveRooms(
     },
   });
   return result.count;
+}
+
+// ─── Access control ───────────────────────────────────────────────────────────
+
+/** Role type used in WebSocket access control checks. */
+export type ClientRole = MemberRole | "ANONYMOUS";
+
+export type RoomAccessResult =
+  | { allowed: true; role: ClientRole }
+  | { allowed: false; reason: "ROOM_NOT_FOUND" | "PRIVATE_ROOM" | "NOT_A_MEMBER" };
+
+/**
+ * Determine whether a user is allowed to connect to a room via WebSocket.
+ *
+ * Rules:
+ * - Room does not exist yet → allowed as ANONYMOUS (creation-on-join semantics).
+ * - Room is public → any user (including anonymous) is allowed.
+ * - Room is private + unauthenticated user → denied with reason PRIVATE_ROOM.
+ * - Room is private + authenticated user → allowed only if a membership record
+ *   exists; otherwise denied with reason NOT_A_MEMBER.
+ */
+export async function checkRoomAccess(
+  roomId: string,
+  userId: string | null,
+): Promise<RoomAccessResult> {
+  const room = await prisma.room.findUnique({
+    where: { id: roomId },
+    select: { isPublic: true },
+  });
+
+  // Room does not exist → creation-on-join, always allowed
+  if (!room) return { allowed: true, role: "ANONYMOUS" };
+
+  if (room.isPublic) {
+    if (!userId) return { allowed: true, role: "ANONYMOUS" };
+    // Resolve the authenticated user's role (if they have a membership)
+    const membership = await prisma.roomMembership.findUnique({
+      where: { roomId_userId: { roomId, userId } },
+      select: { role: true },
+    });
+    return { allowed: true, role: membership?.role ?? "ANONYMOUS" };
+  }
+
+  // Private room
+  if (!userId) return { allowed: false, reason: "PRIVATE_ROOM" };
+
+  const membership = await prisma.roomMembership.findUnique({
+    where: { roomId_userId: { roomId, userId } },
+    select: { role: true },
+  });
+
+  if (!membership) return { allowed: false, reason: "NOT_A_MEMBER" };
+  return { allowed: true, role: membership.role };
 }

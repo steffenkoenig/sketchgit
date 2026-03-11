@@ -55,6 +55,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P031 | Validate Incoming WebSocket Message Payloads with Zod Schemas and Enforce Per-Message Size Limits | Reliability, Security | [P031](proposals/done/P031_websocket-message-validation.md) |
 | P032 | Invoke `pruneInactiveRooms` on a Recurring Schedule to Prevent Unbounded Database Growth | Reliability, Performance | [P032](proposals/done/P032_automated-room-pruning-job.md) |
 | P033 | Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95% | Performance | [P033](proposals/done/P033_delta-based-canvas-storage.md) |
+| P034 | Enforce Room Membership and Visibility Rules on WebSocket Connection Upgrade | Security, Reliability | [P034](proposals/done/P034_room-access-control-enforcement.md) |
+| P035 | Aggregate Presence Across All Server Instances Using Redis Hash | Reliability | [P035](proposals/done/P035_cross-instance-presence-redis-hash.md) |
+| P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/done/P036_client-side-logging-abstraction.md) |
+| P037 | Implement an Undo/Redo History Stack in the Canvas Engine with Ctrl+Z / Ctrl+Shift+Z Support | Performance, UX | [P037](proposals/done/P037_undo-redo-stack.md) |
+| P038 | Add a Playwright End-to-End Test Suite Covering Critical User Journeys | Reliability, Maintainability | [P038](proposals/done/P038_e2e-playwright-test-suite.md) |
 
 ---
 
@@ -68,11 +73,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
-| P034 | Enforce Room Membership and Visibility Rules on WebSocket Connection Upgrade | Security, Reliability | [P034](proposals/P034_room-access-control-enforcement.md) |
-| P035 | Aggregate Presence Across All Server Instances Using Redis Hash | Reliability | [P035](proposals/P035_cross-instance-presence-redis-hash.md) |
-| P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/P036_client-side-logging-abstraction.md) |
-| P037 | Implement an Undo/Redo History Stack in the Canvas Engine with Ctrl+Z / Ctrl+Shift+Z Support | Performance, UX | [P037](proposals/P037_undo-redo-stack.md) |
-| P038 | Add a Playwright End-to-End Test Suite Covering Critical User Journeys | Reliability, Maintainability | [P038](proposals/P038_e2e-playwright-test-suite.md) |
 | P039 | Add a REST Endpoint to Export the Current Room's Canvas as PNG or SVG | Maintainability, UX | [P039](proposals/P039_canvas-export-api.md) |
 | P040 | Implement Email-Based Password Reset for Credentials-Provider Users | Security, Reliability | [P040](proposals/P040_password-reset-flow.md) |
 | P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/P041_gdpr-account-deletion.md) |
@@ -184,6 +184,16 @@ Some proposals build on or benefit from others. The table below shows key depend
 26. ~~**P025** – Accessibility/ARIA (role=toolbar, aria-labels, focus-trap in modals, sr-only labels, skip link)~~ ✅ **Done**
 27. ~~**P022** – Canvas rendering performance (requestRenderAll everywhere, pen Polyline in-place update, mouseup→Path conversion)~~ ✅ **Done**
 28. ~~**P012** – Horizontal scalability via Redis (ioredis pub/sub, broadcastLocalRoom + broadcastRoom, graceful shutdown, docker-compose redis service)~~ ✅ **Done**
+29. ~~**P029** – Paginated commit history API + bounded loadRoomSnapshot (take: 100, cursor pagination, GET /api/rooms/[roomId]/commits)~~ ✅ **Done**
+30. ~~**P030** – LRU in-memory room snapshot cache (lru-cache, createRoomSnapshotCache, invalidate on commit, stats in /api/health)~~ ✅ **Done**
+31. ~~**P031** – WebSocket message validation (InboundWsMessageSchema, size gate, safeParse, PAYLOAD_TOO_LARGE/INVALID_PAYLOAD errors)~~ ✅ **Done**
+32. ~~**P032** – Automated room pruning job (startPruningJob, excludeRoomIds, PRUNE_INACTIVE_ROOMS_DAYS + PRUNE_INTERVAL_HOURS env vars)~~ ✅ **Done**
+33. ~~**P033** – Delta-based canvas storage (CommitStorageType enum, computeCanvasDelta + replayCanvasDelta, DELTA/SNAPSHOT on write + reconstruct on read)~~ ✅ **Done**
+34. ~~**P034** – Room access control (checkRoomAccess, ClientRole, ACCESS_DENIED on upgrade, FORBIDDEN on draw/commit for VIEWER/ANONYMOUS)~~ ✅ **Done**
+35. ~~**P035** – Cross-instance presence via Redis Hash (REDIS_PRESENCE_PREFIX, getGlobalPresence, HSET+EXPIRE pipeline, hdel on shutdown)~~ ✅ **Done**
+36. ~~**P036** – Client-side logging abstraction (lib/sketchgit/logger.ts, setLogLevel, onError hook, replaced 4× console.warn, ESLint no-console rule)~~ ✅ **Done**
+37. ~~**P037** – Undo/redo stack in CanvasEngine (undoStack/redoStack, pushHistory on mousedown, undo()/redo() with broadcast, Ctrl+Z/Shift+Z/Y)~~ ✅ **Done**
+38. ~~**P038** – Playwright E2E test suite (playwright.config.ts, 5 test scenarios in e2e/, test:e2e npm script, CI integration)~~ ✅ **Done**
 
 ### New proposals (P029–P057)
 These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.

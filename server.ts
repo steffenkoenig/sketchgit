@@ -25,7 +25,7 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
-import { pruneInactiveRooms } from "./lib/db/roomRepository.js";
+import { pruneInactiveRooms, checkRoomAccess, type ClientRole } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
@@ -59,6 +59,9 @@ const prisma = new PrismaClient({
 
 /** Prefix for all room channels to avoid collisions with other Redis users. */
 const REDIS_CHANNEL_PREFIX = "sketchgit:room:";
+
+/** P035: Prefix for per-room presence hashes. */
+const REDIS_PRESENCE_PREFIX = "sketchgit:presence:";
 
 /**
  * Unique identifier for this server instance.
@@ -129,6 +132,8 @@ type ClientState = WebSocket & {
   clientId: string;
   roomId: string;
   userId: string | null;
+  /** P034: resolved access role for this client (set after checkRoomAccess) */
+  role: ClientRole;
   displayName: string;
   displayColor: string;
   /** Internal: user id resolved during WebSocket upgrade */
@@ -286,22 +291,77 @@ function broadcastRoom(
   }
 }
 
+/** P035: TTL in seconds for the per-room presence Hash in Redis (2× heartbeat cycle). */
+const REDIS_PRESENCE_TTL_SECONDS = 30;
+
+/**
+ * P035 – Return the merged list of clients from all server instances for a room.
+ * Falls back to the local client list when Redis is unavailable.
+ */
+async function getGlobalPresence(
+  roomId: string,
+  localClients: Array<{ clientId: string; name: string; color: string; userId: string | null }>,
+): Promise<Array<{ clientId: string; name: string; color: string; userId: string | null }>> {
+  if (!redisPub || !redisReady) return localClients;
+
+  try {
+    const key = `${REDIS_PRESENCE_PREFIX}${roomId}`;
+    const allFields = await redisPub.hgetall(key);
+    if (!allFields) return localClients;
+
+    const seen = new Set<string>();
+    const merged: Array<{ clientId: string; name: string; color: string; userId: string | null }> = [];
+    for (const value of Object.values(allFields)) {
+      const clients = JSON.parse(value) as Array<{ clientId: string; name: string; color: string; userId: string | null }>;
+      for (const c of clients) {
+        if (!seen.has(c.clientId)) {
+          seen.add(c.clientId);
+          merged.push(c);
+        }
+      }
+    }
+    return merged;
+  } catch (err) {
+    logger.warn({ roomId, err }, "redis: getGlobalPresence failed, falling back to local");
+    return localClients;
+  }
+}
+
 function pushPresence(roomId: string): void {
   const room = rooms.get(roomId);
-  if (!room) return;
-  const clients = [];
-  for (const [clientId, client] of room.entries()) {
-    clients.push({
-      clientId,
-      name: client.displayName,
-      color: client.displayColor,
-      userId: client.userId ?? null,
-    });
+  // Compute local client list regardless of Redis availability
+  const localClients: Array<{ clientId: string; name: string; color: string; userId: string | null }> = [];
+  if (room) {
+    for (const [clientId, client] of room.entries()) {
+      localClients.push({
+        clientId,
+        name: client.displayName,
+        color: client.displayColor,
+        userId: client.userId ?? null,
+      });
+    }
   }
-  // P012: Presence is local-only – each instance knows only its own connections.
-  // The full-mesh cross-instance presence (via Redis HSET) is a future enhancement;
-  // for now each instance broadcasts presence for its locally-connected clients.
-  broadcastLocalRoom(roomId, { type: "presence", roomId, clients });
+
+  if (redisPub && redisReady) {
+    // P035: Publish this instance's client list to Redis atomically (HSET + EXPIRE
+    // in a pipeline to prevent the Hash from outliving a crashed instance).
+    const key = `${REDIS_PRESENCE_PREFIX}${roomId}`;
+    const pipeline = redisPub.pipeline();
+    pipeline.hset(key, SERVER_INSTANCE_ID, JSON.stringify(localClients));
+    pipeline.expire(key, REDIS_PRESENCE_TTL_SECONDS);
+    // Fetch global merged list, then broadcast
+    void pipeline.exec().then(() =>
+      getGlobalPresence(roomId, localClients).then((clients) => {
+        broadcastLocalRoom(roomId, { type: "presence", roomId, clients });
+      }).catch((err) => {
+        logger.warn({ roomId, err }, "redis: presence merge failed");
+        broadcastLocalRoom(roomId, { type: "presence", roomId, clients: localClients });
+      }),
+    );
+  } else {
+    // Single-instance: broadcast local-only presence immediately
+    broadcastLocalRoom(roomId, { type: "presence", roomId, clients: localClients });
+  }
 }
 
 /**
@@ -705,6 +765,16 @@ void app.prepare()
       client.displayName = safeName(reqUrl.searchParams.get("name"));
       client.displayColor = safeColor(reqUrl.searchParams.get("color"));
 
+      // P034 – Enforce room access control before adding the client to the room.
+      const access = await checkRoomAccess(roomId, client.userId);
+      if (!access.allowed) {
+        logger.warn({ roomId, userId: client.userId, reason: access.reason }, "ws: access denied");
+        sendTo(client, { type: "error", code: "ACCESS_DENIED", reason: access.reason });
+        ws.close(1008, "Access denied");
+        return;
+      }
+      client.role = access.role;
+
       // P015 – increment per-IP connection counter
       const ip = client._ip ?? "unknown";
       connectionsPerIp.set(ip, (connectionsPerIp.get(ip) ?? 0) + 1);
@@ -784,6 +854,19 @@ void app.prepare()
 
         // Drop ping/pong before any further processing – heartbeat only
         if (message.type === "ping" || message.type === "pong") return;
+
+        // P034 – Enforce write permissions: VIEWER and ANONYMOUS roles cannot
+        // modify shared canvas state. Silently drop such messages and respond
+        // with a structured error so the client can surface a helpful message.
+        if (
+          (message.type === "draw" ||
+            message.type === "draw-delta" ||
+            message.type === "commit") &&
+          (client.role === "VIEWER" || client.role === "ANONYMOUS")
+        ) {
+          sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
+          return;
+        }
 
         // Persist commit messages to the database
         if (message.type === "commit" && message.sha && message.commit) {
@@ -885,6 +968,19 @@ void app.prepare()
 
     // 4. P012: Disconnect from Redis before the DB to avoid losing in-flight publishes
     if (redisPub || redisSub) {
+      // P035: Remove this instance's presence entries from all presence hashes
+      // so that clients on other instances don't see stale data after shutdown.
+      if (redisPub && redisReady && rooms.size > 0) {
+        try {
+          const pipeline = redisPub.pipeline();
+          for (const roomId of rooms.keys()) {
+            pipeline.hdel(`${REDIS_PRESENCE_PREFIX}${roomId}`, SERVER_INSTANCE_ID);
+          }
+          await pipeline.exec();
+        } catch (err) {
+          logger.warn({ err }, "redis: failed to clean up presence hashes on shutdown");
+        }
+      }
       await Promise.all([
         redisPub?.quit().catch(() => {}),
         redisSub?.quit().catch(() => {}),

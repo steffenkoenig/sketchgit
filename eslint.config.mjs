@@ -38,6 +38,17 @@ export default [
       },
     },
   },
+  // ── P036: Enforce structured logging abstraction in lib/sketchgit/** ──────
+  // Direct console.warn / console.error calls are disallowed; use
+  // lib/sketchgit/logger.ts instead so log levels can be controlled at runtime.
+  // The logger.ts file itself is explicitly excluded (it must call console.*).
+  {
+    files: ["lib/sketchgit/**/*.ts"],
+    ignores: ["lib/sketchgit/logger.ts"],
+    rules: {
+      "no-console": ["warn", { allow: [] }],
+    },
+  },
   // ── TypeScript rules (all .ts / .tsx) ─────────────────────────────────────
   {
     files: ["**/*.ts", "**/*.tsx"],
@@ -73,6 +84,14 @@ export default [
       }],
     },
   },
+  // logger.ts is the console abstraction itself – allow all console.* calls.
+  // This override must come AFTER the global TypeScript rules block so it takes precedence.
+  {
+    files: ["lib/sketchgit/logger.ts"],
+    rules: {
+      "no-console": "off",
+    },
+  },
   {
     files: ["**/*.test.ts"],
     languageOptions: {
@@ -95,6 +114,8 @@ export default [
       ".next/**",
       "prisma/**",
       "*.mjs",
+      "e2e/**",
+      "playwright.config.ts",
     ],
   },
 ];
