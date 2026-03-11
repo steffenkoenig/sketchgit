@@ -40,6 +40,13 @@ const EnvSchema = z.object({
   // events into a single broadcast that reflects the stable final state.
   PRESENCE_DEBOUNCE_MS: z.coerce.number().int().min(0).max(1000).default(80),
 
+  // ── Optional – WebSocket payload size limit (P031) ────────────────────────
+  MAX_WS_PAYLOAD_BYTES: z.coerce.number().int().positive().default(524288), // 512 KB
+
+  // ── Optional – room pruning (P032) ────────────────────────────────────────
+  PRUNE_INACTIVE_ROOMS_DAYS: z.coerce.number().int().min(1).default(30),
+  PRUNE_INTERVAL_HOURS: z.coerce.number().int().min(1).default(24),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

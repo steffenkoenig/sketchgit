@@ -18,11 +18,15 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomUUID } from "node:crypto";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, CommitStorageType } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pino from "pino";
 import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
+import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
+import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
+import { pruneInactiveRooms } from "./lib/db/roomRepository.js";
+import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -134,6 +138,9 @@ type ClientState = WebSocket & {
 };
 
 const rooms = new Map<string, Map<string, ClientState>>();
+
+// P030 – LRU snapshot cache to avoid re-loading DB state on every connection.
+const roomCache = createRoomSnapshotCache();
 
 // Track pending cleanup timers so that a reconnecting client cancels the timer.
 const roomCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -378,6 +385,27 @@ async function dbSaveCommit(
     return;
   }
 
+  // P033: attempt delta compression when there's a parent commit stored as SNAPSHOT
+  let storageType: CommitStorageType = CommitStorageType.SNAPSHOT;
+  let canvasToStore: object = canvasObj;
+
+  if (commitData.parent) {
+    try {
+      const parentCommit = await prisma.commit.findUnique({ where: { sha: commitData.parent } });
+      if (parentCommit && parentCommit.storageType === CommitStorageType.SNAPSHOT) {
+        const parentCanvas = JSON.stringify(parentCommit.canvasJson);
+        const delta = computeCanvasDelta(parentCanvas, commitData.canvas);
+        const deltaStr = JSON.stringify(delta);
+        if (deltaStr.length < commitData.canvas.length * 0.9) {
+          canvasToStore = delta as unknown as object;
+          storageType = CommitStorageType.DELTA;
+        }
+      }
+    } catch {
+      // Fall back to SNAPSHOT on any error
+    }
+  }
+
   try {
     await prisma.$transaction([
       prisma.commit.upsert({
@@ -390,8 +418,10 @@ async function dbSaveCommit(
           branch: commitData.branch,
           message: commitData.message,
           // P011: canvasJson is now Json (JSONB) – pass a parsed object, not a string.
-          canvasJson: canvasObj,
+          // P033: may be a delta object if storageType is DELTA.
+          canvasJson: canvasToStore,
           isMerge: commitData.isMerge ?? false,
+          storageType,
           authorId: userId ?? null,
         },
         update: {},
@@ -445,20 +475,31 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
     // Reverse to restore chronological (oldest-first) order for client replay.
     commits.reverse();
 
+    // P033: reconstruct DELTA commits by replaying against parent canvas
+    const canvasCache = new Map<string, string>();
     const commitsMap: Record<string, unknown> = {};
     for (const c of commits) {
+      let canvasStr: string;
+      if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
+        try { canvasStr = JSON.stringify(c.canvasJson); }
+        catch { canvasStr = '{"objects":[]}'; }
+      } else {
+        const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
+        try {
+          canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
+        } catch {
+          try { canvasStr = JSON.stringify(c.canvasJson); }
+          catch { canvasStr = '{"objects":[]}'; }
+        }
+      }
+      canvasCache.set(c.sha, canvasStr);
       commitsMap[c.sha] = {
         sha: c.sha,
         parent: c.parentSha,
         parents: c.parents,
         message: c.message,
         ts: c.createdAt.getTime(),
-        // P011: canvasJson is now a parsed object from JSONB – re-stringify for
-        // the client-side git model which expects a JSON string.
-        canvas: (() => {
-          try { return JSON.stringify(c.canvasJson); }
-          catch { return '{"objects":[]}'; }
-        })(),
+        canvas: canvasStr,
         branch: c.branch,
         isMerge: c.isMerge,
       };
@@ -485,6 +526,39 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
 // non-fatal: the server continues in local-only mode.
 void initRedis().catch((err) =>
   logger.error({ err }, "redis: initRedis failed – running in local-only mode"),
+);
+
+// P032 – periodic room pruning job
+function startPruningJob(intervalMs: number, retentionDays: number): ReturnType<typeof setInterval> {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) {
+      logger.warn("pruning: previous job still running, skipping this interval");
+      return;
+    }
+    running = true;
+    const activeRoomIds = [...rooms.keys()];
+    pruneInactiveRooms(retentionDays, activeRoomIds)
+      .then((count) => {
+        if (count > 0) {
+          logger.info({ count, retentionDays }, "pruning: removed inactive rooms");
+        }
+      })
+      .catch((err: unknown) => {
+        logger.error({ err }, "pruning: failed to prune inactive rooms");
+      })
+      .finally(() => {
+        running = false;
+      });
+  }, intervalMs);
+  timer.unref();
+  return timer;
+}
+
+let pruneJobTimer: ReturnType<typeof setInterval> | null = null;
+pruneJobTimer = startPruningJob(
+  env.PRUNE_INTERVAL_HOURS * 60 * 60 * 1000,
+  env.PRUNE_INACTIVE_ROOMS_DAYS,
 );
 
 /**
@@ -520,6 +594,8 @@ void app.prepare()
             database: dbOk ? "ok" : "unreachable",
             // P012: include Redis status for ops visibility
             redis: env.REDIS_URL ? (redisReady ? "ok" : "connecting") : "disabled",
+            // P030: snapshot cache stats
+            cache: roomCache.stats(),
           });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(payload);
@@ -650,38 +726,48 @@ void app.prepare()
       sendTo(client, { type: "welcome", roomId, clientId });
       schedulePushPresence(roomId);
 
-      // If this is the only client in the room, serve historical state from DB
-      if (room.size === 1) {
-        const snapshot = await dbLoadSnapshot(roomId);
-        if (snapshot) {
-          sendTo(client, {
-            type: "fullsync",
-            targetId: clientId,
-            commits: snapshot.commits,
-            branches: snapshot.branches,
-            HEAD: snapshot.HEAD,
-            detached: snapshot.detached,
-          });
-        }
+      // Serve historical state from DB (or cache). Always send to each connecting
+      // client so they get the latest committed state even when rejoining a room.
+      let snapshot = roomCache.get(roomId);
+      if (!snapshot) {
+        snapshot = await dbLoadSnapshot(roomId);
+        if (snapshot) roomCache.set(roomId, snapshot);
+      }
+      if (snapshot) {
+        sendTo(client, {
+          type: "fullsync",
+          targetId: clientId,
+          commits: snapshot.commits,
+          branches: snapshot.branches,
+          HEAD: snapshot.HEAD,
+          detached: snapshot.detached,
+        });
       }
 
       client.on("message", asyncHandler("ws:message", async (raw) => {
-        let message: WsMessage;
+        const rawStr = raw.toString();
+        if (rawStr.length > env.MAX_WS_PAYLOAD_BYTES) {
+          logger.warn({ clientId, roomId, size: rawStr.length }, "ws: message exceeds size limit");
+          sendTo(client, { type: "error", code: "PAYLOAD_TOO_LARGE" });
+          client.close(1009, "Message too large");
+          return;
+        }
+
+        let parsed: unknown;
         try {
-          const parsed: unknown = JSON.parse(raw.toString());
-          if (
-            typeof parsed !== "object" ||
-            parsed === null ||
-            typeof (parsed as Record<string, unknown>).type !== "string"
-          ) {
-            logger.warn({ clientId, roomId }, "ws: received message without type field");
-            return;
-          }
-          message = parsed as WsMessage;
+          parsed = JSON.parse(rawStr);
         } catch {
           logger.warn({ clientId, roomId }, "ws: failed to parse message");
           return;
         }
+
+        const validated = InboundWsMessageSchema.safeParse(parsed);
+        if (!validated.success) {
+          logger.warn({ clientId, roomId, errors: validated.error.errors }, "ws: invalid message schema");
+          sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
+          return;
+        }
+        const message = validated.data as unknown as WsMessage;
 
         if (message.type === "profile") {
           // Guard against non-string values from malicious clients; safeName/safeColor
@@ -708,6 +794,8 @@ void app.prepare()
             message.commit as CommitData,
             client.userId,
           );
+          // P030: invalidate cached snapshot so next connection loads fresh state
+          roomCache.invalidate(roomId);
         }
 
         // Relay to peers
@@ -788,6 +876,8 @@ void app.prepare()
 
     // 3. Clear timers
     clearInterval(pingInterval);
+    // P032 – stop pruning job
+    if (pruneJobTimer) clearInterval(pruneJobTimer);
     // P044 – cancel any pending presence-debounce timers so they don't fire
     // after the server has begun shutting down.
     presenceDebounceTimers.forEach((timer) => clearTimeout(timer));

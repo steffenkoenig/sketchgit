@@ -50,6 +50,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P042 | Add the `@typescript-eslint/no-floating-promises` ESLint Rule to Catch Unhandled Promise Rejections | Reliability, Maintainability | [P042](proposals/done/P042_no-floating-promises-eslint-rule.md) |
 | P044 | Debounce the `pushPresence` Broadcast to Prevent Ghost-Client Flicker During Simultaneous Connects | Performance, UX | [P044](proposals/done/P044_presence-broadcast-debouncing.md) |
 | P054 | Fix Timing Side-channel in `verifyCredentials` That Enables User-enumeration Attacks | Security | [P054](proposals/done/P054_constant-time-credential-verification.md) |
+| P029 | Fix Unbounded Commit Query in `roomRepository.loadRoomSnapshot` and Add Paginated Commit History REST API | Performance, Reliability | [P029](proposals/done/P029_paginated-commit-history-api.md) |
+| P030 | Add an LRU In-Memory Cache for Room Snapshots to Avoid Repeated Database Loads on Reconnect | Performance | [P030](proposals/done/P030_in-memory-room-snapshot-cache.md) |
+| P031 | Validate Incoming WebSocket Message Payloads with Zod Schemas and Enforce Per-Message Size Limits | Reliability, Security | [P031](proposals/done/P031_websocket-message-validation.md) |
+| P032 | Invoke `pruneInactiveRooms` on a Recurring Schedule to Prevent Unbounded Database Growth | Reliability, Performance | [P032](proposals/done/P032_automated-room-pruning-job.md) |
+| P033 | Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95% | Performance | [P033](proposals/done/P033_delta-based-canvas-storage.md) |
 
 ---
 
@@ -63,11 +68,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
-| P029 | Fix Unbounded Commit Query in `roomRepository.loadRoomSnapshot` and Add Paginated Commit History REST API | Performance, Reliability | [P029](proposals/P029_paginated-commit-history-api.md) |
-| P030 | Add an LRU In-Memory Cache for Room Snapshots to Avoid Repeated Database Loads on Reconnect | Performance | [P030](proposals/P030_in-memory-room-snapshot-cache.md) |
-| P031 | Validate Incoming WebSocket Message Payloads with Zod Schemas and Enforce Per-Message Size Limits | Reliability, Security | [P031](proposals/P031_websocket-message-validation.md) |
-| P032 | Invoke `pruneInactiveRooms` on a Recurring Schedule to Prevent Unbounded Database Growth | Reliability, Performance | [P032](proposals/P032_automated-room-pruning-job.md) |
-| P033 | Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95% | Performance | [P033](proposals/P033_delta-based-canvas-storage.md) |
 | P034 | Enforce Room Membership and Visibility Rules on WebSocket Connection Upgrade | Security, Reliability | [P034](proposals/P034_room-access-control-enforcement.md) |
 | P035 | Aggregate Presence Across All Server Instances Using Redis Hash | Reliability | [P035](proposals/P035_cross-instance-presence-redis-hash.md) |
 | P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/P036_client-side-logging-abstraction.md) |

@@ -3,6 +3,8 @@
  * All functions are async and interact with PostgreSQL via the Prisma client.
  */
 import { prisma } from "@/lib/db/prisma";
+import { CommitStorageType } from "@prisma/client";
+import { replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 
 // ─── Types (mirror the client-side git model) ─────────────────────────────────
 
@@ -94,30 +96,61 @@ export async function saveCommit(
 
 // ─── Full-state load ──────────────────────────────────────────────────────────
 
+export const COMMIT_PAGE_SIZE = 100;
+
 /**
  * Load the complete room state from the database. Returns null if the room
  * has no persisted commits yet (i.e. a brand-new room).
+ *
+ * Accepts optional cursor-based pagination: pass `cursor` (a commit SHA) to
+ * start after that commit, and `take` to limit the page size (default 100).
  */
 export async function loadRoomSnapshot(
-  roomId: string
+  roomId: string,
+  options?: { cursor?: string; take?: number }
 ): Promise<RoomSnapshot | null> {
+  const take = options?.take ?? COMMIT_PAGE_SIZE;
   const [commits, branches, state] = await Promise.all([
-    prisma.commit.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } }),
+    prisma.commit.findMany({
+      where: { roomId },
+      orderBy: { createdAt: "desc" },
+      take,
+      ...(options?.cursor ? { cursor: { sha: options.cursor }, skip: 1 } : {}),
+    }),
     prisma.branch.findMany({ where: { roomId } }),
     prisma.roomState.findUnique({ where: { roomId } }),
   ]);
 
   if (commits.length === 0) return null;
 
+  // Restore chronological (oldest-first) order for client replay.
+  commits.reverse();
+
+  // P033: reconstruct DELTA commits by replaying against parent canvas
+  const canvasCache = new Map<string, string>();
   const commitsMap: Record<string, CommitRecord> = {};
   for (const c of commits) {
+    let canvasStr: string;
+    if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
+      try { canvasStr = JSON.stringify(c.canvasJson); }
+      catch { canvasStr = '{"objects":[]}'; }
+    } else {
+      const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
+      try {
+        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
+      } catch {
+        try { canvasStr = JSON.stringify(c.canvasJson); }
+        catch { canvasStr = '{"objects":[]}'; }
+      }
+    }
+    canvasCache.set(c.sha, canvasStr);
     commitsMap[c.sha] = {
       sha: c.sha,
       parent: c.parentSha,
-      parents: c.parents,
+      parents: c.parents as string[],
       message: c.message,
       ts: c.createdAt.getTime(),
-      canvas: JSON.stringify(c.canvasJson),
+      canvas: canvasStr,
       branch: c.branch,
       isMerge: c.isMerge,
     };
@@ -202,11 +235,19 @@ export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
 /**
  * Delete rooms that have had no commits and no state updates for `days` days.
  * Cascades to commits, branches, memberships, and room state.
+ *
+ * Rooms with IDs in `excludeRoomIds` are skipped (e.g. currently active rooms).
  */
-export async function pruneInactiveRooms(days = 30): Promise<number> {
+export async function pruneInactiveRooms(
+  days = 30,
+  excludeRoomIds: string[] = [],
+): Promise<number> {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const result = await prisma.room.deleteMany({
-    where: { updatedAt: { lt: cutoff } },
+    where: {
+      updatedAt: { lt: cutoff },
+      ...(excludeRoomIds.length > 0 ? { id: { notIn: excludeRoomIds } } : {}),
+    },
   });
   return result.count;
 }

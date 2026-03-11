@@ -111,7 +111,8 @@ export type WsMessageType =
   | "pong"
   | "fullsync-request"
   | "fullsync"
-  | "user-left";
+  | "user-left"
+  | "error";
 
 export interface WsMessage {
   type: WsMessageType;

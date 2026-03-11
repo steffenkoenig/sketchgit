@@ -92,6 +92,11 @@ enum MemberRole {
   VIEWER
 }
 
+enum CommitStorageType {
+  SNAPSHOT
+  DELTA
+}
+
 // ─── Git model ────────────────────────────────────────────────────────────────
 
 model Commit {
@@ -107,6 +112,7 @@ model Commit {
   // JSON.stringify / JSON.parse at the Prisma layer).
   canvasJson Json
   isMerge    Boolean  @default(false)
+  storageType CommitStorageType @default(SNAPSHOT)
   authorId   String?
   createdAt  DateTime @default(now())
 

@@ -36,6 +36,7 @@ import {
   loadRoomSnapshot,
   getUserRooms,
   pruneInactiveRooms,
+  COMMIT_PAGE_SIZE,
   type CommitRecord,
 } from './roomRepository';
 import { prisma } from '@/lib/db/prisma';
@@ -185,6 +186,32 @@ describe('loadRoomSnapshot', () => {
     const snap = await loadRoomSnapshot('room-1');
     expect(snap!.detached).toBe('def456');
   });
+
+  it('calls findMany with take: COMMIT_PAGE_SIZE by default', async () => {
+    mock.commitFindMany.mockResolvedValue([]);
+    mock.branchFindMany.mockResolvedValue([]);
+    mock.roomStateFindUnique.mockResolvedValue(null);
+
+    await loadRoomSnapshot('room-1');
+    expect(mock.commitFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: COMMIT_PAGE_SIZE }),
+    );
+  });
+
+  it('passes cursor and skip when cursor option is provided', async () => {
+    mock.commitFindMany.mockResolvedValue([]);
+    mock.branchFindMany.mockResolvedValue([]);
+    mock.roomStateFindUnique.mockResolvedValue(null);
+
+    await loadRoomSnapshot('room-1', { cursor: 'abc123', take: 10 });
+    expect(mock.commitFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 10,
+        cursor: { sha: 'abc123' },
+        skip: 1,
+      }),
+    );
+  });
 });
 
 describe('getUserRooms', () => {
@@ -241,5 +268,24 @@ describe('pruneInactiveRooms', () => {
     mock.roomDeleteMany.mockResolvedValue({ count: 0 });
     await pruneInactiveRooms();
     expect(mock.roomDeleteMany).toHaveBeenCalled();
+  });
+
+  it('excludes active room ids when provided', async () => {
+    mock.roomDeleteMany.mockResolvedValue({ count: 1 });
+    await pruneInactiveRooms(30, ['room-active-1', 'room-active-2']);
+    expect(mock.roomDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { notIn: ['room-active-1', 'room-active-2'] },
+        }),
+      }),
+    );
+  });
+
+  it('does not add id filter when excludeRoomIds is empty', async () => {
+    mock.roomDeleteMany.mockResolvedValue({ count: 0 });
+    await pruneInactiveRooms(30, []);
+    const call = mock.roomDeleteMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(call.where).not.toHaveProperty('id');
   });
 });
