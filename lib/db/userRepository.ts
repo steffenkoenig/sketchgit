@@ -7,6 +7,7 @@
  * throughput requirements, consider switching to the `bcrypt` native package
  * for significantly faster hashing. The API is identical.
  */
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 
@@ -94,4 +95,68 @@ export async function verifyCredentials(
     image: user.image,
     createdAt: user.createdAt,
   };
+}
+
+// ─── P040: Password reset ──────────────────────────────────────────────────────
+
+/** TTL for password-reset tokens: 24 hours. */
+const RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Generate and persist a password-reset token for `email`.
+ * Returns the token string, or null when the email is not registered
+ * (silent failure prevents email-enumeration attacks).
+ * A second call for the same email replaces the previous token.
+ */
+export async function createPasswordResetToken(email: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return null; // silently fail – do not reveal whether email is registered
+
+  const token = randomBytes(32).toString("hex"); // 64-char hex, 256 bits of entropy
+  const expires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  // Reuse the NextAuth VerificationToken model.  The `identifier` is the user's
+  // email; the sentinel `token` field value "reset" is the compound PK key so
+  // that only one active reset token per address exists at a time.
+  await prisma.verificationToken.upsert({
+    where: { identifier_token: { identifier: email, token: "reset" } },
+    create: { identifier: email, token: "reset", expires },
+    update: { expires },
+  });
+  // Store the actual secret token in a second row keyed by the token value.
+  await prisma.verificationToken.upsert({
+    where: { identifier_token: { identifier: email, token } },
+    create: { identifier: email, token, expires },
+    update: { expires },
+  });
+
+  return token;
+}
+
+/**
+ * Consume a reset token and update the user's password.
+ * Returns `true` on success, `false` when the token is invalid or expired.
+ */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<boolean> {
+  const record = await prisma.verificationToken.findFirst({
+    where: { token, expires: { gt: new Date() } },
+  });
+  if (!record) return false;
+
+  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { email: record.identifier },
+      data: { passwordHash },
+    }),
+    prisma.verificationToken.deleteMany({
+      where: { identifier: record.identifier },
+    }),
+  ]);
+
+  return true;
 }

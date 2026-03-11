@@ -163,6 +163,43 @@ const MAX_CONNECTIONS_PER_IP = 20;
 // How long (ms) to keep an empty room alive in case clients reconnect.
 const ROOM_CLEANUP_DELAY_MS = 60_000;
 
+// P043 – Drain window for in-flight DB writes before shutdown.
+const SHUTDOWN_DRAIN_MS = env.SHUTDOWN_DRAIN_MS;
+
+/** Count of database write operations currently in progress. */
+let inFlightWrites = 0;
+
+/** Resolvers waiting for in-flight writes to reach zero (used during shutdown). */
+const drainWaiters: Array<() => void> = [];
+
+function beginWrite(): void {
+  inFlightWrites++;
+}
+
+function endWrite(): void {
+  inFlightWrites--;
+  if (inFlightWrites <= 0) {
+    inFlightWrites = 0;
+    drainWaiters.splice(0).forEach((resolve) => resolve());
+  }
+}
+
+/** Resolve when in-flight writes reach zero, or after `timeoutMs`. */
+function waitForDrain(timeoutMs: number): Promise<void> {
+  if (inFlightWrites === 0) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      const idx = drainWaiters.indexOf(resolve);
+      if (idx !== -1) drainWaiters.splice(idx, 1);
+      resolve();
+    }, timeoutMs);
+    drainWaiters.push(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 // Server-side heartbeat: broadcast a ping to all clients every 25 s.
 const PING_INTERVAL_MS = 25_000;
 
@@ -871,12 +908,18 @@ void app.prepare()
         // Persist commit messages to the database
         if (message.type === "commit" && message.sha && message.commit) {
           logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
-          await dbSaveCommit(
-            roomId,
-            message.sha as string,
-            message.commit as CommitData,
-            client.userId,
-          );
+          // P043 – Track in-flight DB writes so graceful shutdown can drain them.
+          beginWrite();
+          try {
+            await dbSaveCommit(
+              roomId,
+              message.sha as string,
+              message.commit as CommitData,
+              client.userId,
+            );
+          } finally {
+            endWrite();
+          }
           // P030: invalidate cached snapshot so next connection loads fresh state
           roomCache.invalidate(roomId);
         }
@@ -943,6 +986,25 @@ void app.prepare()
     isShuttingDown = true;
     isReady = false; // stop accepting new traffic via /api/ready
     logger.info({ signal }, "Graceful shutdown initiated");
+
+    // P043 – 0a. Notify connected clients that shutdown is imminent.
+    wss.clients.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        sendTo(ws as ClientState, {
+          type: "shutdown-warning",
+          remainingMs: SHUTDOWN_DRAIN_MS,
+        } as unknown as WsMessage);
+      }
+    });
+
+    // P043 – 0b. Wait for in-flight DB writes to complete (or timeout).
+    const drainStart = Date.now();
+    await waitForDrain(SHUTDOWN_DRAIN_MS);
+    const drained = inFlightWrites === 0;
+    logger.info(
+      { drained, elapsedMs: Date.now() - drainStart, remaining: inFlightWrites },
+      "shutdown: drain complete",
+    );
 
     // 1. Send close frames to all connected WebSocket clients (code 1001 = Going Away)
     wss.clients.forEach((client) => {

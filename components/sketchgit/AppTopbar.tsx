@@ -7,12 +7,14 @@
  * component only re-renders when auth state actually changes.
  *
  * P025: Landmarks and accessible labels added to all controls.
+ * P039: Export PNG/SVG download links for the current room's canvas.
  */
 
 import React from "react";
 import Link from "next/link";
 import type { Session } from "next-auth";
 import { signIn, signOut } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { SketchGitCall } from "@/components/sketchgit/types";
 
@@ -23,6 +25,11 @@ type AppTopbarProps = {
 };
 
 export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus }: AppTopbarProps) {
+  // P039: Resolve the current room ID from the URL query param for export links.
+  const searchParams = useSearchParams();
+  const roomId = searchParams.get("room") ?? "default";
+  const exportBase = `/api/rooms/${encodeURIComponent(roomId)}/export`;
+
   return (
     <header id="topbar" className="border-b border-slate-800" role="banner" aria-label="Application toolbar">
       <div className="logo" aria-label="SketchGit application logo">
@@ -86,6 +93,20 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         aria-label="Commit current drawing changes"
         aria-haspopup="dialog"
       >● Commit</Button>
+
+      {/* P039: Canvas export download links */}
+      <a
+        href={`${exportBase}?format=png`}
+        download={`canvas-${roomId}.png`}
+        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
+        aria-label="Export canvas as PNG image"
+      >⬇ PNG</a>
+      <a
+        href={`${exportBase}?format=svg`}
+        download={`canvas-${roomId}.svg`}
+        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
+        aria-label="Export canvas as SVG vector file"
+      >⬇ SVG</a>
 
       {/* Auth section */}
       <div className="sep" role="separator" aria-orientation="vertical"></div>

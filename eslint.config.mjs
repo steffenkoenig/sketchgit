@@ -31,6 +31,9 @@ export default [
       "lib/auth.ts",
       "lib/db/**/*.ts",
       "lib/api/**/*.ts",
+      "lib/export/**/*.ts",
+      "lib/email/**/*.ts",
+      "app/api/**/*.ts",
     ],
     languageOptions: {
       globals: {

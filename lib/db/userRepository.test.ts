@@ -3,9 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock Prisma before importing the module under test
 vi.mock('@/lib/db/prisma', () => ({
   prisma: {
+    $transaction: vi.fn(),
     user: {
       findUnique: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
+    },
+    verificationToken: {
+      upsert: vi.fn(),
+      findFirst: vi.fn(),
+      deleteMany: vi.fn(),
     },
   },
 }));
@@ -17,14 +24,21 @@ vi.mock('bcryptjs', () => ({
   },
 }));
 
-import { createUser, verifyCredentials } from './userRepository';
+import { createUser, verifyCredentials, createPasswordResetToken, resetPassword } from './userRepository';
 import { prisma } from '@/lib/db/prisma';
 import bcrypt from 'bcryptjs';
 
 const mockPrismaUser = {
   findUnique: prisma.user.findUnique as ReturnType<typeof vi.fn>,
   create: prisma.user.create as ReturnType<typeof vi.fn>,
+  update: prisma.user.update as ReturnType<typeof vi.fn>,
 };
+const mockVerificationToken = {
+  upsert: prisma.verificationToken.upsert as ReturnType<typeof vi.fn>,
+  findFirst: prisma.verificationToken.findFirst as ReturnType<typeof vi.fn>,
+  deleteMany: prisma.verificationToken.deleteMany as ReturnType<typeof vi.fn>,
+};
+const mockTransaction = prisma.$transaction as ReturnType<typeof vi.fn>;
 const mockBcrypt = {
   hash: bcrypt.hash as ReturnType<typeof vi.fn>,
   compare: bcrypt.compare as ReturnType<typeof vi.fn>,
@@ -124,5 +138,61 @@ describe('verifyCredentials', () => {
     expect(result!.email).toBe('alice@example.com');
     expect(result!.name).toBe('Alice');
     expect(result!.createdAt).toBe(now);
+  });
+});
+
+describe('createPasswordResetToken (P040)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns null when email is not registered', async () => {
+    mockPrismaUser.findUnique.mockResolvedValue(null);
+    const token = await createPasswordResetToken('unknown@example.com');
+    expect(token).toBeNull();
+    expect(mockVerificationToken.upsert).not.toHaveBeenCalled();
+  });
+
+  it('returns a 64-char hex string when user exists', async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
+    mockVerificationToken.upsert.mockResolvedValue({});
+    const token = await createPasswordResetToken('alice@example.com');
+    expect(typeof token).toBe('string');
+    expect(token!.length).toBe(64);
+    expect(/^[0-9a-f]+$/.test(token!)).toBe(true);
+  });
+
+  it('stores the token in verificationToken', async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
+    mockVerificationToken.upsert.mockResolvedValue({});
+    await createPasswordResetToken('alice@example.com');
+    expect(mockVerificationToken.upsert).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('resetPassword (P040)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns false when token is invalid or expired', async () => {
+    mockVerificationToken.findFirst.mockResolvedValue(null);
+    const result = await resetPassword('bad-token', 'NewPassword123!');
+    expect(result).toBe(false);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('returns true and updates password when token is valid', async () => {
+    mockVerificationToken.findFirst.mockResolvedValue({
+      identifier: 'alice@example.com',
+      token: 'valid_token',
+      expires: new Date(Date.now() + 60_000),
+    });
+    mockBcrypt.hash.mockResolvedValue('new_hash');
+    mockTransaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      return Promise.all(ops);
+    });
+    mockPrismaUser.update.mockResolvedValue({});
+    mockVerificationToken.deleteMany.mockResolvedValue({ count: 1 });
+    const result = await resetPassword('valid_token', 'NewPassword123!');
+    expect(result).toBe(true);
+    expect(mockBcrypt.hash).toHaveBeenCalledWith('NewPassword123!', expect.any(Number));
+    expect(mockTransaction).toHaveBeenCalled();
   });
 });

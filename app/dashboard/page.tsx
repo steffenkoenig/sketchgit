@@ -7,9 +7,11 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserRooms } from "@/lib/db/roomRepository";
+import { prisma } from "@/lib/db/prisma";
 import { getAuthSession } from "@/lib/authTypes";
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import { DeleteAccountButton } from "@/components/auth/DeleteAccountButton";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -22,6 +24,14 @@ export default async function DashboardPage() {
 
   const userId = authSession.user.id;
   const rooms = await getUserRooms(userId);
+
+  // P041: Check if the user has a credentials password to conditionally require
+  // password re-entry in the delete confirmation dialog.
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+  const hasPassword = !!userRecord?.passwordHash;
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
@@ -41,6 +51,7 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-400">{authSession.user.name ?? authSession.user.email}</span>
           <SignOutButton />
+          <DeleteAccountButton hasPassword={hasPassword} />
         </div>
       </header>
 

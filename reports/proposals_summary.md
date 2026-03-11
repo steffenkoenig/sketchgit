@@ -60,6 +60,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/done/P036_client-side-logging-abstraction.md) |
 | P037 | Implement an Undo/Redo History Stack in the Canvas Engine with Ctrl+Z / Ctrl+Shift+Z Support | Performance, UX | [P037](proposals/done/P037_undo-redo-stack.md) |
 | P038 | Add a Playwright End-to-End Test Suite Covering Critical User Journeys | Reliability, Maintainability | [P038](proposals/done/P038_e2e-playwright-test-suite.md) |
+| P039 | Add a REST Endpoint to Export the Current Room's Canvas as PNG or SVG | Maintainability, UX | [P039](proposals/done/P039_canvas-export-api.md) |
+| P040 | Implement Email-Based Password Reset for Credentials-Provider Users | Security, Reliability | [P040](proposals/done/P040_password-reset-flow.md) |
+| P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/done/P041_gdpr-account-deletion.md) |
+| P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/done/P043_graceful-shutdown-drain-window.md) |
+| P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/done/P045_docker-image-digest-trivy-scan.md) |
 
 ---
 
@@ -72,12 +77,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 ## Proposals – Not Started
 
 | ID | Title | Dimension(s) | File |
-|----|-------|--------------|------|
-| P039 | Add a REST Endpoint to Export the Current Room's Canvas as PNG or SVG | Maintainability, UX | [P039](proposals/P039_canvas-export-api.md) |
-| P040 | Implement Email-Based Password Reset for Credentials-Provider Users | Security, Reliability | [P040](proposals/P040_password-reset-flow.md) |
-| P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/P041_gdpr-account-deletion.md) |
-| P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/P043_graceful-shutdown-drain-window.md) |
-| P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/P045_docker-image-digest-trivy-scan.md) |
 | P046 | Replace In-memory Proxy Rate Limiter with Redis-backed Counter for Multi-instance Correctness | Security, Reliability | [P046](proposals/P046_redis-backed-rate-limiter.md) |
 | P047 | Add `safeBranchName()` and Commit Message Length Validation to Prevent Database Corruption | Security, Reliability | [P047](proposals/P047_branch-name-commit-message-sanitization.md) |
 | P048 | Send a Database-backed Fullsync to Every Connecting Client, Not Just the First | Reliability | [P048](proposals/P048_server-authoritative-fullsync.md) |
@@ -194,6 +193,11 @@ Some proposals build on or benefit from others. The table below shows key depend
 36. ~~**P036** – Client-side logging abstraction (lib/sketchgit/logger.ts, setLogLevel, onError hook, replaced 4× console.warn, ESLint no-console rule)~~ ✅ **Done**
 37. ~~**P037** – Undo/redo stack in CanvasEngine (undoStack/redoStack, pushHistory on mousedown, undo()/redo() with broadcast, Ctrl+Z/Shift+Z/Y)~~ ✅ **Done**
 38. ~~**P038** – Playwright E2E test suite (playwright.config.ts, 5 test scenarios in e2e/, test:e2e npm script, CI integration)~~ ✅ **Done**
+39. ~~**P039** – Canvas Export REST API (renderToSVG/renderToPNG via StaticCanvas, GET /api/rooms/[roomId]/export, PNG+SVG download links in AppTopbar)~~ ✅ **Done**
+40. ~~**P040** – Password reset flow (createPasswordResetToken+resetPassword in userRepository, POST forgot-password/reset-password endpoints, forgot-password+reset-password UI pages, "Forgot password?" link on signin)~~ ✅ **Done**
+41. ~~**P041** – GDPR account deletion (DELETE /api/auth/account, password re-confirmation for credentials users, DeleteAccountButton with modal dialog in dashboard)~~ ✅ **Done**
+42. ~~**P043** – Graceful shutdown drain window (inFlightWrites+beginWrite/endWrite/waitForDrain in server.ts, dbSaveCommit wrapped, shutdown-warning WsMessageType, SHUTDOWN_DRAIN_MS env var, toast in wsClient.ts)~~ ✅ **Done**
+43. ~~**P045** – Docker digest pinning + Trivy CI (FROM node:22-alpine@sha256:... in all 3 stages, docker-build+trivy-scan CI jobs, SARIF upload to GitHub Security)~~ ✅ **Done**
 
 ### New proposals (P029–P057)
 These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.

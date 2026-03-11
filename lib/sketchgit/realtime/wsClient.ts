@@ -137,6 +137,12 @@ export class WsClient {
         return;
       }
 
+      // P043 – server is about to restart; surface a brief informational toast.
+      if (data.type === 'shutdown-warning') {
+        showToast('🔄 Server restarting, reconnecting shortly…');
+        return;
+      }
+
       this.onMessage?.(data);
     });
 

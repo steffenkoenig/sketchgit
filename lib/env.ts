@@ -40,6 +40,9 @@ const EnvSchema = z.object({
   // events into a single broadcast that reflects the stable final state.
   PRESENCE_DEBOUNCE_MS: z.coerce.number().int().min(0).max(1000).default(80),
 
+  // ── Optional – shutdown drain window (P043) ─────────────────────────────
+  SHUTDOWN_DRAIN_MS: z.coerce.number().int().min(0).max(30_000).default(5_000),
+
   // ── Optional – WebSocket payload size limit (P031) ────────────────────────
   MAX_WS_PAYLOAD_BYTES: z.coerce.number().int().positive().default(524288), // 512 KB
 

@@ -112,7 +112,8 @@ export type WsMessageType =
   | "fullsync-request"
   | "fullsync"
   | "user-left"
-  | "error";
+  | "error"
+  | "shutdown-warning";
 
 export interface WsMessage {
   type: WsMessageType;
