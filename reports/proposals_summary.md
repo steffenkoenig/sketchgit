@@ -77,6 +77,12 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/P043_graceful-shutdown-drain-window.md) |
 | P044 | Debounce the `pushPresence` Broadcast to Prevent Ghost-Client Flicker During Simultaneous Connects | Performance, UX | [P044](proposals/P044_presence-broadcast-debouncing.md) |
 | P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/P045_docker-image-digest-trivy-scan.md) |
+| P046 | Replace In-memory Proxy Rate Limiter with Redis-backed Counter for Multi-instance Correctness | Security, Reliability | [P046](proposals/P046_redis-backed-rate-limiter.md) |
+| P047 | Add `safeBranchName()` and Commit Message Length Validation to Prevent Database Corruption | Security, Reliability | [P047](proposals/P047_branch-name-commit-message-sanitization.md) |
+| P048 | Send a Database-backed Fullsync to Every Connecting Client, Not Just the First | Reliability | [P048](proposals/P048_server-authoritative-fullsync.md) |
+| P049 | Add `PATCH /api/rooms/[roomId]` to Allow Room Owners to Set a Memorable Slug | UX, Maintainability | [P049](proposals/P049_room-slug-management-api.md) |
+| P050 | Integrate `next-intl` to Consume the Pre-existing `messages/en.json` and `messages/de.json` | UX, Maintainability | [P050](proposals/P050_i18n-wire-message-catalogue.md) |
+| P051 | Cancel Pending Room-cleanup Timers During Graceful Shutdown to Prevent Post-shutdown Errors | Reliability | [P051](proposals/P051_room-cleanup-timer-shutdown.md) |
 
 ---
 
@@ -126,6 +132,12 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P043 (Shutdown Drain) | P023 ✅ (graceful shutdown), P027 ✅ (env validation) |
 | P044 (Presence Debounce) | P023 ✅ (shutdown handler to extend), P035 (complements Redis presence) |
 | P045 (Docker Digest + Trivy) | P016 ✅ (CI pipeline), P026 ✅ (Dockerfile exists) |
+| P046 (Redis Rate Limiter) | P012 ✅ (ioredis installed), P015 ✅ (in-memory limiter to extend) |
+| P047 (Branch Sanitization) | P013 ✅ (server TypeScript), P031 (Zod WS validation — same allow-list constants) |
+| P048 (Server-auth Fullsync) | P011 ✅ (DB indices), P030 (LRU cache makes per-join DB cost negligible) |
+| P049 (Room Slug API) | P003 ✅ (Room.slug in schema), P007 ✅ (auth), P014 ✅ (Zod) |
+| P050 (i18n Wire-up) | P021 ✅ (React memoization); messages/en.json + de.json already complete |
+| P051 (Cleanup Timer Fix) | P023 ✅ (shutdown handler exists); complements P043 (drain window) |
 
 ---
 
@@ -161,7 +173,7 @@ Some proposals build on or benefit from others. The table below shows key depend
 27. ~~**P022** – Canvas rendering performance (requestRenderAll everywhere, pen Polyline in-place update, mouseup→Path conversion)~~ ✅ **Done**
 28. ~~**P012** – Horizontal scalability via Redis (ioredis pub/sub, broadcastLocalRoom + broadcastRoom, graceful shutdown, docker-compose redis service)~~ ✅ **Done**
 
-### New proposals (P029–P045)
+### New proposals (P029–P051)
 These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.
 
 ---
@@ -189,4 +201,8 @@ The following items can be implemented quickly and independently:
 | Pin `node:22-alpine` to SHA256 digest in Dockerfile | P045 | 15 minutes |
 | Add "Forgot password?" link to sign-in page (link only, no backend) | P040 | 5 minutes |
 | Add "Delete Account" button to dashboard (UI only, modal stub) | P041 | 30 minutes |
+| Add `safeBranchName()` + `safeCommitMessage()` to `dbSaveCommit` | P047 | 20 minutes |
+| Clear `roomCleanupTimers` in shutdown handler + add `.unref()` | P051 | 15 minutes |
+| Remove `room.size === 1` guard from fullsync send | P048 | 5 minutes |
+| Update dashboard room links to use `room.slug ?? room.id` | P049 | 5 minutes |
 
