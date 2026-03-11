@@ -69,5 +69,8 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.8.0",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "@swc/helpers": "^0.5.19"
   }
 }
