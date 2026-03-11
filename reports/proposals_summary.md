@@ -42,6 +42,9 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P017 | Further Decompose the app.ts Orchestrator into Feature-Focused Coordinators | Maintainability | [P017](proposals/done/P017_decompose-app-orchestrator.md) |
 | P026 | Add a Dockerfile and Multi-Stage Build for Reproducible Container Deployments | Reliability, Maintainability | [P026](proposals/done/P026_dockerfile-containerization.md) |
 | P028 | Expand Automated Test Coverage to Canvas, Collaboration, and API Layers | Reliability, Maintainability | [P028](proposals/done/P028_expanded-test-coverage.md) |
+| P021 | Reduce Unnecessary React Re-Renders with useCallback, useMemo, and Component Splitting | Performance | [P021](proposals/done/P021_react-performance-optimizations.md) |
+| P024 | Virtualize the Commit Timeline SVG to Support Large Commit Histories | Performance | [P024](proposals/done/P024_timeline-virtualization.md) |
+| P025 | Improve Application Accessibility: ARIA Roles, Keyboard Navigation, and Screen Reader Support | Maintainability | [P025](proposals/done/P025_accessibility-aria-keyboard.md) |
 
 ---
 
@@ -56,10 +59,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
 | P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/P012_horizontal-scalability-redis-pubsub.md) |
-| P021 | Reduce Unnecessary React Re-Renders with useCallback, useMemo, and Component Splitting | Performance | [P021](proposals/P021_react-performance-optimizations.md) |
 | P022 | Improve Canvas Rendering Performance: Batch Renders, Reduce Object Churn, and Cache Arrows | Performance | [P022](proposals/P022_canvas-rendering-performance.md) |
-| P024 | Virtualize the Commit Timeline SVG to Support Large Commit Histories | Performance | [P024](proposals/P024_timeline-virtualization.md) |
-| P025 | Improve Application Accessibility: ARIA Roles, Keyboard Navigation, and Screen Reader Support | Maintainability | [P025](proposals/P025_accessibility-aria-keyboard.md) |
 
 ---
 
@@ -121,15 +121,13 @@ Some proposals build on or benefit from others. The table below shows key depend
 21. ~~**P017** – Decompose app.ts orchestrator (5 coordinators + AppContext; app.ts slimmed to ~185 lines)~~ ✅ **Done**
 22. ~~**P026** – Dockerfile & containerization (multi-stage Dockerfile, .dockerignore, .nvmrc, docker-compose app service)~~ ✅ **Done**
 23. ~~**P028** – Expanded test coverage (register route tests, coordinator tests, vitest config updated)~~ ✅ **Done**
+24. ~~**P021** – React performance (useCallback for call(), React.memo on AppTopbar + LeftToolbar, useMemo for session)~~ ✅ **Done**
+25. ~~**P024** – Timeline virtualization (computeLayout() separated; getVisibleCommits() for scroll-based DOM culling)~~ ✅ **Done**
+26. ~~**P025** – Accessibility/ARIA (role=toolbar, aria-labels, focus-trap in modals, sr-only labels, skip link)~~ ✅ **Done**
 
-### Next wave (P012)
-24. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
-
-### Third wave (P021–P025)
-25. **P021** – React performance optimizations (measure first with Profiler)
-26. **P022** – Canvas rendering performance (measure first with DevTools)
-27. **P024** – Timeline virtualization (needed when commit count > 200)
-28. **P025** – Accessibility / ARIA (ongoing; start with quick wins)
+### Remaining
+27. **P022** – Canvas rendering performance (requestRenderAll, pen path in-place, arrow object reduction)
+28. **P012** – Horizontal scalability via Redis (architectural upgrade; do last)
 
 ---
 

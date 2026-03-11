@@ -71,6 +71,8 @@ describe('TimelineCoordinator', () => {
         ctx.git,
         expect.any(Function),
         expect.any(Function),
+        undefined, // scrollLeft (no #tlscroll in test DOM)
+        undefined, // viewportWidth
       );
     });
 

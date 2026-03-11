@@ -114,6 +114,8 @@ export function createSketchGitApp() {
   // ── Bootstrap ──────────────────────────────────────────────────────────────
 
   collaboration.init();
+  // P024: Wire the scroll listener so the timeline virtualizes on scroll.
+  tl.initScrollListener();
 
   // ── Timeline scroll controls ───────────────────────────────────────────────
 
@@ -176,6 +178,7 @@ export function createSketchGitApp() {
 
     // P020: Resource cleanup on React component unmount.
     destroy(): void {
+      tl.destroyScrollListener(); // P024: remove scroll virtualization listener
       ws.disconnect();
       collab.destroy();
       canvas.destroy();
