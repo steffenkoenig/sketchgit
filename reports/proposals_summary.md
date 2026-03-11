@@ -68,6 +68,15 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P034 | Enforce Room Membership and Visibility Rules on WebSocket Connection Upgrade | Security, Reliability | [P034](proposals/P034_room-access-control-enforcement.md) |
 | P035 | Aggregate Presence Across All Server Instances Using Redis Hash | Reliability | [P035](proposals/P035_cross-instance-presence-redis-hash.md) |
 | P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/P036_client-side-logging-abstraction.md) |
+| P037 | Implement an Undo/Redo History Stack in the Canvas Engine with Ctrl+Z / Ctrl+Shift+Z Support | Performance, UX | [P037](proposals/P037_undo-redo-stack.md) |
+| P038 | Add a Playwright End-to-End Test Suite Covering Critical User Journeys | Reliability, Maintainability | [P038](proposals/P038_e2e-playwright-test-suite.md) |
+| P039 | Add a REST Endpoint to Export the Current Room's Canvas as PNG or SVG | Maintainability, UX | [P039](proposals/P039_canvas-export-api.md) |
+| P040 | Implement Email-Based Password Reset for Credentials-Provider Users | Security, Reliability | [P040](proposals/P040_password-reset-flow.md) |
+| P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/P041_gdpr-account-deletion.md) |
+| P042 | Add the `@typescript-eslint/no-floating-promises` ESLint Rule to Catch Unhandled Promise Rejections | Reliability, Maintainability | [P042](proposals/P042_no-floating-promises-eslint-rule.md) |
+| P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/P043_graceful-shutdown-drain-window.md) |
+| P044 | Debounce the `pushPresence` Broadcast to Prevent Ghost-Client Flicker During Simultaneous Connects | Performance, UX | [P044](proposals/P044_presence-broadcast-debouncing.md) |
+| P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/P045_docker-image-digest-trivy-scan.md) |
 
 ---
 
@@ -108,6 +117,15 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P034 (Room Access Control) | P007 ✅ (auth established), P013 ✅ (TypeScript server) |
 | P035 (Cross-Instance Presence) | P012 ✅ (Redis pub/sub), P007 ✅ (userId on ClientState), P023 ✅ (shutdown handler) |
 | P036 (Client Logging) | P001 ✅ (module decomposition), P010 ✅ (pino server-side pattern) |
+| P037 (Undo/Redo) | P001 ✅ (module decomposition), P022 ✅ (canvas rendering, loadFromJSON) |
+| P038 (E2E Tests) | P016 ✅ (CI pipeline), P007 ✅ (auth flows), P023 ✅ (health endpoint) |
+| P039 (Canvas Export) | P011 ✅ (JSONB canvasJson), P014 ✅ (Zod), P018 ✅ (Fabric.js npm) |
+| P040 (Password Reset) | P007 ✅ (Credentials provider), P003 ✅ (VerificationToken model), P014 ✅ (Zod) |
+| P041 (GDPR Deletion) | P007 ✅ (auth session), P003 ✅ (cascade rules), P014 ✅ (Zod) |
+| P042 (no-floating-promises) | `@typescript-eslint/eslint-plugin` ✅ already installed and configured |
+| P043 (Shutdown Drain) | P023 ✅ (graceful shutdown), P027 ✅ (env validation) |
+| P044 (Presence Debounce) | P023 ✅ (shutdown handler to extend), P035 (complements Redis presence) |
+| P045 (Docker Digest + Trivy) | P016 ✅ (CI pipeline), P026 ✅ (Dockerfile exists) |
 
 ---
 
@@ -143,8 +161,8 @@ Some proposals build on or benefit from others. The table below shows key depend
 27. ~~**P022** – Canvas rendering performance (requestRenderAll everywhere, pen Polyline in-place update, mouseup→Path conversion)~~ ✅ **Done**
 28. ~~**P012** – Horizontal scalability via Redis (ioredis pub/sub, broadcastLocalRoom + broadcastRoom, graceful shutdown, docker-compose redis service)~~ ✅ **Done**
 
-### New proposals (P029–P036)
-These proposals address issues discovered in the next review cycle. They are listed in recommended implementation order in the "Not Started" table above.
+### New proposals (P029–P045)
+These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.
 
 ---
 
@@ -165,4 +183,10 @@ The following items can be implemented quickly and independently:
 | Add `take: 100` to `roomRepository.loadRoomSnapshot` | P029 | 15 minutes |
 | Clear pruning job timer in graceful shutdown handler | P032 | 15 minutes |
 | Add `no-console` ESLint rule for `lib/sketchgit/**` | P036 | 10 minutes |
+| Enable `@typescript-eslint/no-floating-promises` in ESLint config | P042 | 10 minutes |
+| Add `schedulePushPresence` debounce wrapper (replace direct calls) | P044 | 30 minutes |
+| Add drain-counter `beginWrite`/`endWrite` around `dbSaveCommit` | P043 | 30 minutes |
+| Pin `node:22-alpine` to SHA256 digest in Dockerfile | P045 | 15 minutes |
+| Add "Forgot password?" link to sign-in page (link only, no backend) | P040 | 5 minutes |
+| Add "Delete Account" button to dashboard (UI only, modal stub) | P041 | 30 minutes |
 

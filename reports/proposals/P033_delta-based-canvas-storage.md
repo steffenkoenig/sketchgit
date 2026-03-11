@@ -1,10 +1,10 @@
 # P033 – Delta-Based Canvas Commit Storage
 
 ## Title
-Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95 %
+Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95%
 
 ## Brief Summary
-Every commit currently stores a complete serialization of the entire Fabric.js canvas in the `canvasJson` JSONB column — potentially 50–200 KB per commit. For rooms with incremental workflows (small edits followed by frequent commits), consecutive commits are nearly identical, yet the database holds duplicate full copies. Switching to a delta-based storage model — persisting only the diff of added, modified, and removed objects relative to the parent commit — can reduce storage by 80–95 % for typical usage patterns while keeping the existing commit SHA chain and branch model completely unchanged.
+Every commit currently stores a complete serialization of the entire Fabric.js canvas in the `canvasJson` JSONB column — potentially 50–200 KB per commit. For rooms with incremental workflows (small edits followed by frequent commits), consecutive commits are nearly identical, yet the database holds duplicate full copies. Switching to a delta-based storage model — persisting only the diff of added, modified, and removed objects relative to the parent commit — can reduce storage by 80–95% for typical usage patterns while keeping the existing commit SHA chain and branch model completely unchanged.
 
 ## Current Situation
 Each `Commit` row stores `canvasJson` as a full JSONB snapshot:
