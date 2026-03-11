@@ -5,3 +5,4 @@ lib/sketchgit/createSketchGitApp.legacy.ts
 tsconfig.tsbuildinfo
 dist/
 coverage/
+tsconfig.server.tsbuildinfo
