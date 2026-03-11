@@ -101,17 +101,47 @@ function waitForDrain(timeoutMs: number): Promise<void> {
 ```
 
 ### 2. Wrap `dbSaveCommit` calls with `beginWrite`/`endWrite`
+
+The wrapping must be applied to each individual async DB operation within the message
+handler rather than around the entire switch, because different message types have
+different async operations and only DB writes need to be tracked.
+
 ```typescript
-// In the 'commit' message handler:
-case "commit":
-  beginWrite();
+// In the 'commit' message handler (the entire relevant section of ws.on('message')):
+client.on("message", async (raw) => {
+  let message: WsMessage;
   try {
-    await dbSaveCommit(roomId, sha, commitData, client.userId);
-  } finally {
-    endWrite();
+    message = JSON.parse(raw.toString()) as WsMessage;
+  } catch {
+    return;
   }
-  break;
+
+  // Drop heartbeat frames
+  if (message.type === "ping" || message.type === "pong") return;
+
+  // Persist commit messages – wrapped so shutdown drain waits for completion
+  if (message.type === "commit" && message.sha && message.commit) {
+    beginWrite();          // ← increment drain counter before async work
+    try {
+      await dbSaveCommit(
+        roomId,
+        message.sha as string,
+        message.commit as CommitData,
+        client.userId,
+      );
+    } finally {
+      endWrite();          // ← always decrement, even if dbSaveCommit throws
+    }
+  }
+
+  // Relay to peers (synchronous – no beginWrite needed)
+  const relay: WsMessage = { ...message, senderId: client.clientId, roomId };
+  broadcastRoom(roomId, relay, client.clientId);
+});
 ```
+
+The `try/finally` guarantees `endWrite()` is called even when `dbSaveCommit` throws,
+preventing the drain counter from leaking and causing the shutdown to hang indefinitely.
 
 ### 3. Update the shutdown handler to drain before closing
 ```typescript

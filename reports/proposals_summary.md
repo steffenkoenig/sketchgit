@@ -83,6 +83,12 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P049 | Add `PATCH /api/rooms/[roomId]` to Allow Room Owners to Set a Memorable Slug | UX, Maintainability | [P049](proposals/P049_room-slug-management-api.md) |
 | P050 | Integrate `next-intl` to Consume the Pre-existing `messages/en.json` and `messages/de.json` | UX, Maintainability | [P050](proposals/P050_i18n-wire-message-catalogue.md) |
 | P051 | Cancel Pending Room-cleanup Timers During Graceful Shutdown to Prevent Post-shutdown Errors | Reliability | [P051](proposals/P051_room-cleanup-timer-shutdown.md) |
+| P052 | Broadcast Merge Commits to Peers and Persist Them (Both Clean and Conflict-resolved Merges) | Reliability | [P052](proposals/P052_broadcast-merge-commits.md) |
+| P053 | Broadcast Branch Rollback and Branch-switch Operations to Peers to Prevent Silent Divergence | Reliability | [P053](proposals/P053_broadcast-branch-operations.md) |
+| P054 | Fix Timing Side-channel in `verifyCredentials` That Enables User-enumeration Attacks | Security | [P054](proposals/P054_constant-time-credential-verification.md) |
+| P055 | Replace `window.confirm()` in `cpRollback` with an Accessible In-app Confirmation Modal | UX, Accessibility | [P055](proposals/P055_replace-window-confirm.md) |
+| P056 | Implement Nonce-based CSP to Replace `'unsafe-inline'` in `script-src` and `style-src` | Security | [P056](proposals/P056_nonce-based-csp.md) |
+| P057 | Validate Commit SHA Format and Canvas Payload Size Before WebSocket DB Persistence | Security, Reliability | [P057](proposals/P057_commit-sha-payload-validation.md) |
 
 ---
 
@@ -138,6 +144,12 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P049 (Room Slug API) | P003 ✅ (Room.slug in schema), P007 ✅ (auth), P014 ✅ (Zod) |
 | P050 (i18n Wire-up) | P021 ✅ (React memoization); messages/en.json + de.json already complete |
 | P051 (Cleanup Timer Fix) | P023 ✅ (shutdown handler exists); complements P043 (drain window) |
+| P052 (Merge Broadcast) | P017 ✅ (MergeCoordinator + AppContext.ws), P004 ✅ (WsClient.send()); severity: High |
+| P053 (Branch Ops Broadcast) | P017 ✅ (coordinators), P004 ✅ (WsClient); new `branch-update` WS message type; severity: High |
+| P054 (Timing-safe Verify) | P003 ✅ (userRepository), P007 ✅ (credentials provider); complements P015 ✅ (rate limiting) |
+| P055 (Confirm Modal) | P017 ✅ (CommitCoordinator), P025 ✅ (openModal focus-trap), P055 pairs with P053 (cpRollback) |
+| P056 (Nonce CSP) | P019 ✅ (CSP framework, explicitly deferred nonce work), P013 ✅ (proxy.ts TypeScript) |
+| P057 (SHA/Payload Validation) | P013 ✅ (server TypeScript), P047 (branch sanitization — same boundary pattern) |
 
 ---
 
@@ -173,7 +185,7 @@ Some proposals build on or benefit from others. The table below shows key depend
 27. ~~**P022** – Canvas rendering performance (requestRenderAll everywhere, pen Polyline in-place update, mouseup→Path conversion)~~ ✅ **Done**
 28. ~~**P012** – Horizontal scalability via Redis (ioredis pub/sub, broadcastLocalRoom + broadcastRoom, graceful shutdown, docker-compose redis service)~~ ✅ **Done**
 
-### New proposals (P029–P051)
+### New proposals (P029–P057)
 These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.
 
 ---
@@ -205,4 +217,7 @@ The following items can be implemented quickly and independently:
 | Clear `roomCleanupTimers` in shutdown handler + add `.unref()` | P051 | 15 minutes |
 | Remove `room.size === 1` guard from fullsync send | P048 | 5 minutes |
 | Update dashboard room links to use `room.slug ?? room.id` | P049 | 5 minutes |
+| Add `ws.send({ type: 'commit', ... })` to `doMerge()` + `applyMergeResolution()` | P052 | 20 minutes |
+| Add constant-time dummy bcrypt compare in `verifyCredentials` | P054 | 15 minutes |
+| Add `validateCommitMessage()` before `dbSaveCommit` in server.ts | P057 | 30 minutes |
 
