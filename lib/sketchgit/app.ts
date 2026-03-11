@@ -94,8 +94,9 @@ export function createSketchGitApp() {
   const collaboration = new CollaborationCoordinator(ctx, refresh);
 
   // ── Outside-click handler – close panel/popup on backdrop click ────────────
+  // Store the bound reference so it can be removed in destroy().
 
-  document.addEventListener('click', (e) => {
+  const outsideClickHandler = (e: MouseEvent) => {
     const panel = document.getElementById('collab-panel');
     const target = e.target as EventTarget;
     if (
@@ -109,7 +110,9 @@ export function createSketchGitApp() {
     if (popup?.classList.contains('open') && !(target instanceof Node && popup.contains(target))) {
       commit.closeCommitPopup();
     }
-  });
+  };
+
+  document.addEventListener('click', outsideClickHandler);
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
 
@@ -178,6 +181,7 @@ export function createSketchGitApp() {
 
     // P020: Resource cleanup on React component unmount.
     destroy(): void {
+      document.removeEventListener('click', outsideClickHandler); // remove backdrop handler
       tl.destroyScrollListener(); // P024: remove scroll virtualization listener
       ws.disconnect();
       collab.destroy();

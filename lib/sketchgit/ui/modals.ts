@@ -33,6 +33,16 @@ const openModalState = new WeakMap<HTMLElement, ModalState>();
 export function openModal(id: string): void {
   const el = document.getElementById(id);
   if (!el) return;
+
+  // If the same modal is already open, clean up the existing focus-trap handler
+  // before installing a new one.  This prevents handler accumulation on
+  // programmatic re-opens or rapid double-clicks.
+  const existing = openModalState.get(el);
+  if (existing) {
+    el.removeEventListener('keydown', existing.focusTrapHandler);
+    openModalState.delete(el);
+  }
+
   el.classList.add('open');
 
   // Remember where focus was before the modal opened

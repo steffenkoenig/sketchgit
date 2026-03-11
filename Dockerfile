@@ -4,7 +4,7 @@
 # Stage 1 (deps):    Install all Node.js dependencies including devDependencies
 #                    needed for the build step.
 # Stage 2 (builder): Generate Prisma client and build the Next.js app.
-#                    Prune devDependencies and add tsx back for production use.
+#                    Prune devDependencies (tsx stays – it is in dependencies).
 # Stage 3 (runner):  Minimal production image – only built artefacts and
 #                    the pruned runtime node_modules.
 #
@@ -33,10 +33,9 @@ RUN npx prisma generate
 # Build the Next.js application (outputs to .next/standalone/ with standalone mode)
 RUN npm run build
 
-# Prune devDependencies to reduce the runtime image size, then re-add tsx.
-# tsx is declared as a devDependency but used in the production start command
-# ("start": "NODE_ENV=production tsx server.ts"), so it must be present at runtime.
-RUN npm prune --omit=dev && npm install tsx --no-package-lock --no-save
+# Prune devDependencies to reduce the runtime image size.
+# tsx is listed in `dependencies` (not devDependencies), so it is kept here.
+RUN npm prune --omit=dev
 
 # ─── Stage 3: Production runtime ─────────────────────────────────────────────
 FROM node:22-alpine AS runner

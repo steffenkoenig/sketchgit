@@ -52,6 +52,15 @@ const prisma = new PrismaClient({ log: ["warn", "error"] });
 /** Prefix for all room channels to avoid collisions with other Redis users. */
 const REDIS_CHANNEL_PREFIX = "sketchgit:room:";
 
+/**
+ * Unique identifier for this server instance.
+ * Embedded in every Redis envelope so that the pmessage subscriber can
+ * recognise and skip messages it published itself, preventing local clients
+ * from receiving duplicate delivery (once from the local broadcast and once
+ * from the Redis relay).
+ */
+const SERVER_INSTANCE_ID = randomUUID();
+
 type RedisClient = import("ioredis").default;
 
 let redisPub: RedisClient | null = null;
@@ -87,13 +96,16 @@ async function initRedis(): Promise<void> {
 
   redisSub.on("pmessage", (_pattern: string, channel: string, data: string) => {
     const roomId = channel.slice(REDIS_CHANNEL_PREFIX.length);
-    let envelope: { from: string; payload: WsMessage };
+    let envelope: { from: string; instanceId: string; payload: WsMessage };
     try {
-      envelope = JSON.parse(data) as { from: string; payload: WsMessage };
+      envelope = JSON.parse(data) as { from: string; instanceId: string; payload: WsMessage };
     } catch {
       logger.warn({ channel }, "redis: failed to parse pmessage payload");
       return;
     }
+    // Skip messages this instance published itself – those clients already
+    // received the message via the synchronous local broadcast in broadcastRoom().
+    if (envelope.instanceId === SERVER_INSTANCE_ID) return;
     // Relay to locally-connected clients only (excluding the original sender
     // whose clientId is embedded in the envelope to prevent echo-loops).
     broadcastLocalRoom(roomId, envelope.payload, envelope.from);
@@ -250,7 +262,7 @@ function broadcastRoom(
 
   // 2. Cross-instance broadcast via Redis (when available)
   if (redisPub && redisReady) {
-    const envelope = JSON.stringify({ from: excludeClientId ?? "", payload });
+    const envelope = JSON.stringify({ from: excludeClientId ?? "", instanceId: SERVER_INSTANCE_ID, payload });
     redisPub.publish(`${REDIS_CHANNEL_PREFIX}${roomId}`, envelope).catch((err) => {
       logger.warn({ roomId, err }, "redis: publish failed");
     });

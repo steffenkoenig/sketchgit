@@ -382,8 +382,15 @@ export class CanvasEngine {
 
   setTool(t: string): void {
     this.currentTool = t;
-    document.querySelectorAll('.tbtn').forEach((b) => b.classList.remove('on'));
-    document.getElementById('t' + t)?.classList.add('on');
+    // Reset all tool buttons, then mark the active one.
+    // aria-pressed is updated here so assistive tech always reflects the real state.
+    document.querySelectorAll('.tbtn').forEach((b) => {
+      b.classList.remove('on');
+      (b as HTMLElement).setAttribute('aria-pressed', 'false');
+    });
+    const btn = document.getElementById('t' + t);
+    btn?.classList.add('on');
+    btn?.setAttribute('aria-pressed', 'true');
     this.canvas.isDrawingMode = false;
     this.canvas.selection = t === 'select';
     this.canvas.defaultCursor = t === 'eraser' || t === 'pen' ? 'crosshair' : 'default';
@@ -408,15 +415,27 @@ export class CanvasEngine {
   toggleFill(): void {
     this.fillEnabled = !this.fillEnabled;
     const btn = document.getElementById('tfillToggle');
-    if (btn) btn.textContent = this.fillEnabled ? '⊠' : '⊡';
+    if (btn) {
+      btn.textContent = this.fillEnabled ? '⊠' : '⊡';
+      btn.setAttribute('aria-pressed', this.fillEnabled ? 'true' : 'false');
+    }
   }
 
   setStrokeWidth(w: number): void {
     this.strokeWidth = w;
-    ['sz1', 'sz3', 'sz5'].forEach((id) => document.getElementById(id)?.classList.remove('on'));
-    if (w === 1.5) document.getElementById('sz1')?.classList.add('on');
-    else if (w === 3) document.getElementById('sz3')?.classList.add('on');
-    else if (w === 5) document.getElementById('sz5')?.classList.add('on');
+    // Reset all size buttons, then mark the active one (aria-pressed stays in sync).
+    ['sz1', 'sz3', 'sz5'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const activeId = w === 1.5 ? 'sz1' : w === 3 ? 'sz3' : w === 5 ? 'sz5' : null;
+    if (activeId) {
+      const el = document.getElementById(activeId);
+      el?.classList.add('on');
+      el?.setAttribute('aria-pressed', 'true');
+    }
   }
 
   zoomIn(): void { this.canvas.setZoom(Math.min(this.canvas.getZoom() * 1.2, 10)); }

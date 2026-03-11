@@ -26,6 +26,9 @@ export class TimelineCoordinator {
   /** Cleanup function returned by the scroll-listener setup. */
   private _destroyScrollListener: (() => void) | null = null;
 
+  /** Pending requestAnimationFrame id from the scroll handler (may need cancellation). */
+  private _scrollRafId: ReturnType<typeof requestAnimationFrame> | null = null;
+
   constructor(private readonly ctx: AppContext) {}
 
   /**
@@ -42,12 +45,21 @@ export class TimelineCoordinator {
       if (rafId !== null) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         rafId = null;
+        this._scrollRafId = null;
         this.render();
       });
+      this._scrollRafId = rafId;
     };
 
     el.addEventListener('scroll', onScroll, { passive: true });
-    this._destroyScrollListener = () => el.removeEventListener('scroll', onScroll);
+    this._destroyScrollListener = () => {
+      el.removeEventListener('scroll', onScroll);
+      // Cancel any pending RAF so it cannot fire against torn-down subsystems.
+      if (this._scrollRafId !== null) {
+        cancelAnimationFrame(this._scrollRafId);
+        this._scrollRafId = null;
+      }
+    };
   }
 
   /** Remove the scroll event listener (called on destroy). */

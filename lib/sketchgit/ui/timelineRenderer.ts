@@ -157,12 +157,12 @@ export function renderTimeline(
   const visibleSet = new Set(visible.map((l) => l.sha));
 
   // Build a lookup map from sha → layout for edge drawing
-  const layoutByShа = new Map<string, CommitLayout>(allLayouts.map((l) => [l.sha, l]));
+  const layoutBySha = new Map<string, CommitLayout>(allLayouts.map((l) => [l.sha, l]));
 
   // Draw edges (only when at least one endpoint is visible)
   for (const c of visible) {
     c.parents.forEach((parentSha, pi) => {
-      const parent = layoutByShа.get(parentSha);
+      const parent = layoutBySha.get(parentSha);
       if (!parent) return;
       // Include edges even if the parent is off-screen (so lines don't snap in)
       const x1 = parent.x, y1 = parent.y;
@@ -240,7 +240,7 @@ export function renderTimeline(
   // Draw branch labels for branches whose tip is visible (or always for small histories)
   for (const [name, sha] of Object.entries(git.branches)) {
     if (!sha || !git.commits[sha]) continue;
-    const layout = layoutByShа.get(sha);
+    const layout = layoutBySha.get(sha);
     if (!layout) continue;
     // Only render the label when the commit is visible or we're rendering all commits
     if (scrollLeft !== undefined && !visibleSet.has(sha)) continue;
@@ -282,7 +282,7 @@ export function renderTimeline(
 
   // Auto-scroll to HEAD (only on initial render / full re-render)
   if (headSHA && scrollLeft === undefined) {
-    const headLayout = layoutByShа.get(headSHA);
+    const headLayout = layoutBySha.get(headSHA);
     if (headLayout) {
       const tlscroll = document.getElementById('tlscroll');
       if (tlscroll) tlscroll.scrollLeft = Math.max(0, headLayout.x - 100);

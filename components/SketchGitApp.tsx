@@ -130,7 +130,12 @@ export default function SketchGitApp() {
           role="button"
           tabIndex={0}
           aria-label="Room invite link — click to copy"
-          onKeyDown={(e) => e.key === 'Enter' && call("copyPeerId")}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault(); // prevent page scroll on Space
+              call("copyPeerId");
+            }
+          }}
         >Not connected</div>
         <div className="peer-label" style={{ marginTop: "8px" }}>
           <label htmlFor="remotePeerInput">Room ID</label>
@@ -152,12 +157,11 @@ export default function SketchGitApp() {
         <div id="connectedList" className="connected-list" role="list" aria-label="Connected peers"></div>
       </aside>
 
-      {/* P025: Commit popup – floating panel */}
+      {/* P025: Commit popup – floating popover panel (not a modal; no focus trap) */}
       <div
         id="commit-popup"
         role="dialog"
         aria-label="Commit details"
-        aria-modal="true"
       >
         <button className="cp-close" onClick={() => call("closeCommitPopup")} aria-label="Close commit popup">✕</button>
         <div id="cp-head-badge" className="cp-head-badge" style={{ display: "none" }} aria-label="This is the current HEAD commit">◉ HEAD</div>
