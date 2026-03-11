@@ -25,7 +25,7 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
-import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, type ClientRole } from "./lib/db/roomRepository.js";
+import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { validateCommitMessage } from "./lib/server/commitValidation.js";
 
@@ -569,7 +569,7 @@ async function dbSaveCommit(
 }
 
 interface RoomSnapshot {
-  commits: Record<string, unknown>;
+  commits: Record<string, CommitRecord>;
   branches: Record<string, string>;
   HEAD: string;
   detached: string | null;
@@ -598,7 +598,7 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
 
     // P033: reconstruct DELTA commits by replaying against parent canvas
     const canvasCache = new Map<string, string>();
-    const commitsMap: Record<string, unknown> = {};
+    const commitsMap: Record<string, CommitRecord> = {};
     for (const c of commits) {
       let canvasStr: string;
       if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
@@ -607,7 +607,7 @@ async function dbLoadSnapshot(roomId: string): Promise<RoomSnapshot | null> {
       } else {
         const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
         try {
-          canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
+          canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
         } catch {
           try { canvasStr = JSON.stringify(c.canvasJson); }
           catch { canvasStr = '{"objects":[]}'; }
@@ -862,7 +862,7 @@ void app.prepare()
 
       // Serve historical state from DB (or cache). Always send to each connecting
       // client so they get the latest committed state even when rejoining a room.
-      let snapshot = roomCache.get(roomId);
+      let snapshot: RoomSnapshot | null | undefined = roomCache.get(roomId);
       if (!snapshot) {
         snapshot = await dbLoadSnapshot(roomId);
         if (snapshot) roomCache.set(roomId, snapshot);
@@ -897,7 +897,7 @@ void app.prepare()
 
         const validated = InboundWsMessageSchema.safeParse(parsed);
         if (!validated.success) {
-          logger.warn({ clientId, roomId, errors: validated.error.errors }, "ws: invalid message schema");
+          logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema");
           sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
           return;
         }

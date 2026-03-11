@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { validate } from "@/lib/api/validate";
-import { CommitStorageType } from "@prisma/client";
+import { CommitStorageType, type Prisma } from "@prisma/client";
 import { replayCanvasDelta, type CanvasDelta } from "@/lib/sketchgit/git/canvasDelta";
 import { renderToSVG, renderToPNG } from "@/lib/export/canvasRenderer";
 import { auth } from "@/lib/auth";
@@ -37,7 +37,7 @@ async function resolveCanvasJson(
   const chain: {
     sha: string;
     parentSha: string | null;
-    canvasJson: unknown;
+    canvasJson: Prisma.JsonValue;
     storageType: CommitStorageType;
   }[] = [];
 
@@ -47,19 +47,24 @@ async function resolveCanvasJson(
   while (currentSha && depth < MAX_CHAIN_DEPTH) {
     if (visited.has(currentSha)) break; // cycle guard
 
-    const commit = await prisma.commit.findFirst({
+    const row: {
+      sha: string;
+      parentSha: string | null;
+      canvasJson: Prisma.JsonValue;
+      storageType: CommitStorageType;
+    } | null = await prisma.commit.findFirst({
       where: { roomId, sha: currentSha },
       select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
     });
 
-    if (!commit) return null; // missing ancestor
+    if (!row) return null; // missing ancestor
 
-    chain.push(commit);
+    chain.push(row);
     visited.add(currentSha);
     depth++;
 
-    if (commit.storageType === CommitStorageType.SNAPSHOT || !commit.parentSha) break;
-    currentSha = commit.parentSha;
+    if (row.storageType === CommitStorageType.SNAPSHOT || !row.parentSha) break;
+    currentSha = row.parentSha;
   }
 
   if (chain.length === 0) return null;
@@ -76,7 +81,7 @@ async function resolveCanvasJson(
     } else {
       const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
       try {
-        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
+        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
       } catch {
         try { canvasStr = JSON.stringify(c.canvasJson); }
         catch { canvasStr = '{"objects":[]}'; }
@@ -168,7 +173,7 @@ export async function GET(
   }
 
   const png = await renderToPNG(canvasJson);
-  return new NextResponse(png, {
+  return new NextResponse(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",
       "Content-Disposition": `attachment; filename="${filename}.png"`,

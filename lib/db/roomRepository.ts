@@ -149,7 +149,7 @@ export async function loadRoomSnapshot(
     } else {
       const parentCanvas = await resolveCanvas(ancestor.parentSha);
       try {
-        canvasStr = replayCanvasDelta(parentCanvas, ancestor.canvasJson as CanvasDelta);
+        canvasStr = replayCanvasDelta(parentCanvas, ancestor.canvasJson as unknown as CanvasDelta);
       } catch {
         try { canvasStr = JSON.stringify(ancestor.canvasJson); }
         catch { canvasStr = '{"objects":[]}'; }
@@ -169,7 +169,7 @@ export async function loadRoomSnapshot(
       // Fast path: parent is already in the cache (within this page).
       const parentCanvas = canvasCache.get(c.parentSha)!;
       try {
-        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
+        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
       } catch {
         try { canvasStr = JSON.stringify(c.canvasJson); }
         catch { canvasStr = '{"objects":[]}'; }
@@ -178,7 +178,7 @@ export async function loadRoomSnapshot(
       // Parent is outside this page – resolve via DB walk.
       const parentCanvas = await resolveCanvas(c.parentSha);
       try {
-        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
+        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
       } catch {
         try { canvasStr = JSON.stringify(c.canvasJson); }
         catch { canvasStr = '{"objects":[]}'; }

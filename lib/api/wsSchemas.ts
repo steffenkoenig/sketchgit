@@ -15,8 +15,8 @@ export const WsDrawSchema = z.object({
 
 export const WsDrawDeltaSchema = z.object({
   type: z.literal("draw-delta"),
-  added: z.array(z.record(z.unknown())).max(500),
-  modified: z.array(z.record(z.unknown())).max(500),
+  added: z.array(z.record(z.string(), z.unknown())).max(500),
+  modified: z.array(z.record(z.string(), z.unknown())).max(500),
   removed: z.array(z.string()).max(500),
 });
 
