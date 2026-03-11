@@ -3,6 +3,7 @@ import {
   WsDrawSchema,
   WsDrawDeltaSchema,
   WsCommitSchema,
+  WsBranchUpdateSchema,
   WsCursorSchema,
   WsProfileSchema,
   WsPingSchema,
@@ -40,9 +41,11 @@ describe('WsCommitSchema', () => {
   const valid = {
     type: 'commit',
     sha: 'abc12345',
-    branch: 'main',
-    message: 'Initial commit',
-    canvas: '{}',
+    commit: {
+      branch: 'main',
+      message: 'Initial commit',
+      canvas: '{}',
+    },
   };
 
   it('accepts valid commit', () => {
@@ -54,19 +57,19 @@ describe('WsCommitSchema', () => {
   });
 
   it('rejects empty message', () => {
-    expect(WsCommitSchema.safeParse({ ...valid, message: '' }).success).toBe(false);
+    expect(WsCommitSchema.safeParse({ ...valid, commit: { ...valid.commit, message: '' } }).success).toBe(false);
   });
 
   it('rejects empty branch', () => {
-    expect(WsCommitSchema.safeParse({ ...valid, branch: '' }).success).toBe(false);
+    expect(WsCommitSchema.safeParse({ ...valid, commit: { ...valid.commit, branch: '' } }).success).toBe(false);
   });
 
   it('accepts optional isMerge field', () => {
-    expect(WsCommitSchema.safeParse({ ...valid, isMerge: true }).success).toBe(true);
+    expect(WsCommitSchema.safeParse({ ...valid, commit: { ...valid.commit, isMerge: true } }).success).toBe(true);
   });
 
   it('accepts optional parents array', () => {
-    expect(WsCommitSchema.safeParse({ ...valid, parents: ['abc12345', 'def67890'] }).success).toBe(true);
+    expect(WsCommitSchema.safeParse({ ...valid, commit: { ...valid.commit, parents: ['abc12345', 'def67890'] } }).success).toBe(true);
   });
 });
 
@@ -104,11 +107,30 @@ describe('WsPingSchema / WsPongSchema', () => {
   });
 });
 
+describe('WsBranchUpdateSchema', () => {
+  it('accepts valid branch-update message', () => {
+    expect(WsBranchUpdateSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' }).success).toBe(true);
+  });
+
+  it('rejects missing headSha', () => {
+    expect(WsBranchUpdateSchema.safeParse({ type: 'branch-update', branch: 'main' }).success).toBe(false);
+  });
+
+  it('rejects empty branch', () => {
+    expect(WsBranchUpdateSchema.safeParse({ type: 'branch-update', branch: '', headSha: 'abc12345' }).success).toBe(false);
+  });
+});
+
 describe('InboundWsMessageSchema discriminated union', () => {
   it('dispatches to correct schema by type', () => {
     const result = InboundWsMessageSchema.safeParse({ type: 'ping' });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.type).toBe('ping');
+  });
+
+  it('accepts branch-update messages', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' });
+    expect(result.success).toBe(true);
   });
 
   it('rejects unknown type', () => {

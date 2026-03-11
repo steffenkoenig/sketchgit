@@ -11,6 +11,7 @@ vi.mock('@/lib/db/prisma', () => ({
     },
     verificationToken: {
       upsert: vi.fn(),
+      create: vi.fn(),
       findFirst: vi.fn(),
       deleteMany: vi.fn(),
     },
@@ -35,6 +36,7 @@ const mockPrismaUser = {
 };
 const mockVerificationToken = {
   upsert: prisma.verificationToken.upsert as ReturnType<typeof vi.fn>,
+  create: prisma.verificationToken.create as ReturnType<typeof vi.fn>,
   findFirst: prisma.verificationToken.findFirst as ReturnType<typeof vi.fn>,
   deleteMany: prisma.verificationToken.deleteMany as ReturnType<typeof vi.fn>,
 };
@@ -148,23 +150,26 @@ describe('createPasswordResetToken (P040)', () => {
     mockPrismaUser.findUnique.mockResolvedValue(null);
     const token = await createPasswordResetToken('unknown@example.com');
     expect(token).toBeNull();
-    expect(mockVerificationToken.upsert).not.toHaveBeenCalled();
+    expect(mockVerificationToken.create).not.toHaveBeenCalled();
   });
 
   it('returns a 64-char hex string when user exists', async () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
-    mockVerificationToken.upsert.mockResolvedValue({});
+    mockVerificationToken.deleteMany.mockResolvedValue({ count: 0 });
+    mockVerificationToken.create.mockResolvedValue({});
     const token = await createPasswordResetToken('alice@example.com');
     expect(typeof token).toBe('string');
     expect(token!.length).toBe(64);
     expect(/^[0-9a-f]+$/.test(token!)).toBe(true);
   });
 
-  it('stores the token in verificationToken', async () => {
+  it('stores the token in verificationToken after deleting old tokens', async () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
-    mockVerificationToken.upsert.mockResolvedValue({});
+    mockVerificationToken.deleteMany.mockResolvedValue({ count: 1 });
+    mockVerificationToken.create.mockResolvedValue({});
     await createPasswordResetToken('alice@example.com');
-    expect(mockVerificationToken.upsert).toHaveBeenCalledTimes(2);
+    expect(mockVerificationToken.deleteMany).toHaveBeenCalledWith({ where: { identifier: 'alice@example.com' } });
+    expect(mockVerificationToken.create).toHaveBeenCalledTimes(1);
   });
 });
 

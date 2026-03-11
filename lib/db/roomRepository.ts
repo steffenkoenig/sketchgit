@@ -126,16 +126,57 @@ export async function loadRoomSnapshot(
   // Restore chronological (oldest-first) order for client replay.
   commits.reverse();
 
-  // P033: reconstruct DELTA commits by replaying against parent canvas
+  // Build the set of SHAs present in this page so we can detect missing parents.
+  const pageShAs = new Set(commits.map((c) => c.sha));
+
+  // P033: reconstruct DELTA commits by replaying against parent canvas.
+  // When a DELTA's parent is outside the page, fetch the ancestor chain from the
+  // database so reconstruction is always correct regardless of page boundaries.
   const canvasCache = new Map<string, string>();
+
+  async function resolveCanvas(sha: string): Promise<string> {
+    if (canvasCache.has(sha)) return canvasCache.get(sha)!;
+    // Ancestor not in the current page – fetch it directly.
+    const ancestor = await prisma.commit.findFirst({
+      where: { roomId, sha },
+      select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
+    });
+    if (!ancestor) return '{"objects":[]}';
+    let canvasStr: string;
+    if (ancestor.storageType === CommitStorageType.SNAPSHOT || !ancestor.parentSha) {
+      try { canvasStr = JSON.stringify(ancestor.canvasJson); }
+      catch { canvasStr = '{"objects":[]}'; }
+    } else {
+      const parentCanvas = await resolveCanvas(ancestor.parentSha);
+      try {
+        canvasStr = replayCanvasDelta(parentCanvas, ancestor.canvasJson as CanvasDelta);
+      } catch {
+        try { canvasStr = JSON.stringify(ancestor.canvasJson); }
+        catch { canvasStr = '{"objects":[]}'; }
+      }
+    }
+    canvasCache.set(sha, canvasStr);
+    return canvasStr;
+  }
+
   const commitsMap: Record<string, CommitRecord> = {};
   for (const c of commits) {
     let canvasStr: string;
     if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
       try { canvasStr = JSON.stringify(c.canvasJson); }
       catch { canvasStr = '{"objects":[]}'; }
+    } else if (pageShAs.has(c.parentSha) && canvasCache.has(c.parentSha)) {
+      // Fast path: parent is already in the cache (within this page).
+      const parentCanvas = canvasCache.get(c.parentSha)!;
+      try {
+        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
+      } catch {
+        try { canvasStr = JSON.stringify(c.canvasJson); }
+        catch { canvasStr = '{"objects":[]}'; }
+      }
     } else {
-      const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
+      // Parent is outside this page – resolve via DB walk.
+      const parentCanvas = await resolveCanvas(c.parentSha);
       try {
         canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as CanvasDelta);
       } catch {

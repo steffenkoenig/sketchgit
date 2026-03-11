@@ -115,19 +115,12 @@ export async function createPasswordResetToken(email: string): Promise<string | 
   const token = randomBytes(32).toString("hex"); // 64-char hex, 256 bits of entropy
   const expires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
-  // Reuse the NextAuth VerificationToken model.  The `identifier` is the user's
-  // email; the sentinel `token` field value "reset" is the compound PK key so
-  // that only one active reset token per address exists at a time.
-  await prisma.verificationToken.upsert({
-    where: { identifier_token: { identifier: email, token: "reset" } },
-    create: { identifier: email, token: "reset", expires },
-    update: { expires },
-  });
-  // Store the actual secret token in a second row keyed by the token value.
-  await prisma.verificationToken.upsert({
-    where: { identifier_token: { identifier: email, token } },
-    create: { identifier: email, token, expires },
-    update: { expires },
+  // Delete all existing reset tokens for this email to ensure only one is active.
+  await prisma.verificationToken.deleteMany({ where: { identifier: email } });
+
+  // Store the actual secret token keyed by the token value.
+  await prisma.verificationToken.create({
+    data: { identifier: email, token, expires },
   });
 
   return token;

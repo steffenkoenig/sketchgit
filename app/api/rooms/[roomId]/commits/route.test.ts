@@ -6,9 +6,18 @@ vi.mock('@/lib/db/prisma', () => {
     prisma: {
       room: { findUnique: vi.fn() },
       commit: { findMany: vi.fn() },
+      roomMembership: { findUnique: vi.fn() },
     },
   };
 });
+
+vi.mock('@/lib/auth', () => ({
+  auth: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/lib/authTypes', () => ({
+  getAuthSession: vi.fn().mockReturnValue(null),
+}));
 
 import { GET } from './route';
 import { prisma } from '@/lib/db/prisma';
@@ -43,7 +52,7 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('returns commits page with nextCursor when more results exist', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1' });
+    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
     // Request take=2, return 3 (take+1) to signal hasMore
     const commits = [fakeCommit('c3'), fakeCommit('c2'), fakeCommit('c1')];
     mockCommitFindMany.mockResolvedValue(commits);
@@ -56,7 +65,7 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('returns null nextCursor on last page', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1' });
+    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
     mockCommitFindMany.mockResolvedValue([fakeCommit('c1')]);
 
     const res = await GET(makeRequest('room-1', { take: '50' }), { params: Promise.resolve({ roomId: 'room-1' }) });
@@ -65,13 +74,13 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('returns 422 for invalid take parameter', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1' });
+    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
     const res = await GET(makeRequest('room-1', { take: '999' }), { params: Promise.resolve({ roomId: 'room-1' }) });
     expect(res.status).toBe(422);
   });
 
   it('passes cursor to prisma when provided', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1' });
+    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
     mockCommitFindMany.mockResolvedValue([]);
 
     await GET(makeRequest('room-1', { cursor: 'abc123' }), { params: Promise.resolve({ roomId: 'room-1' }) });
@@ -81,7 +90,7 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('maps commit fields correctly', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1' });
+    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
     const commit = {
       sha: 'abc123',
       parentSha: 'parent1',
@@ -102,5 +111,11 @@ describe('GET /api/rooms/[roomId]/commits', () => {
       ts: 5000,
       isMerge: true,
     });
+  });
+
+  it('returns 401 for private room when unauthenticated', async () => {
+    mockRoomFindUnique.mockResolvedValue({ id: 'room-priv', isPublic: false });
+    const res = await GET(makeRequest('room-priv'), { params: Promise.resolve({ roomId: 'room-priv' }) });
+    expect(res.status).toBe(401);
   });
 });

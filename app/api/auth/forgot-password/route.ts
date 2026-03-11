@@ -15,9 +15,7 @@ const Schema = z.object({
   email: z.string().email().max(254),
 });
 
-const SAFE_RESPONSE = NextResponse.json({
-  message: "If that email is registered, you'll receive a reset link shortly.",
-});
+const SAFE_MESSAGE = "If that email is registered, you'll receive a reset link shortly.";
 
 export async function POST(req: NextRequest) {
   const body: unknown = await req.json().catch(() => null);
@@ -50,5 +48,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return SAFE_RESPONSE;
+  return NextResponse.json({ message: SAFE_MESSAGE });
 }

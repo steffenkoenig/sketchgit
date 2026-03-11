@@ -19,8 +19,9 @@ test.describe('Branch operations', () => {
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 5_000 });
     // Also check if the branch indicator is present (may require a commit)
     const isVisible = await branchIndicator.first().isVisible().catch(() => false);
-    // Either the branch controls are visible or the app loaded correctly
-    expect(isVisible || true).toBeTruthy();
+    if (!isVisible) {
+      test.skip(true, 'Branch indicator not visible; branch controls may require at least one commit.');
+    }
   });
 
   test('app loads and shows toolbar', async ({ page }) => {

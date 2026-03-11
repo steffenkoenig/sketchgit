@@ -48,9 +48,19 @@ function getRateLimit(): { max: number; windowMs: number } {
 // ── P046 – Redis sliding-window rate limit helper ─────────────────────────────
 
 /**
- * Atomic Redis INCR+EXPIRE sliding-window counter.
+ * Atomic Redis sliding-window counter using a Lua script.
+ * INCR and EXPIRE are executed atomically so the key can never be left
+ * without a TTL (which would cause permanent rate-limiting on crash).
  * Returns `{ limited: false }` on any Redis error (fail-open).
  */
+const RATE_LIMIT_LUA = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
+
 async function applyRateLimitRedis(
   key: string,
   max: number,
@@ -60,11 +70,7 @@ async function applyRateLimitRedis(
   if (!redis) return { limited: false, retryAfterSec: 0 };
   try {
     const windowSec = Math.ceil(windowMs / 1000);
-    const count = await redis.incr(key);
-    if (count === 1) {
-      // First hit in this window – set TTL atomically.
-      await redis.expire(key, windowSec);
-    }
+    const count = await redis.eval(RATE_LIMIT_LUA, 1, key, String(windowSec)) as number;
     if (count > max) {
       const ttl = await redis.ttl(key);
       return { limited: true, retryAfterSec: Math.max(ttl, 0) };

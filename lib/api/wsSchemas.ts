@@ -20,15 +20,30 @@ export const WsDrawDeltaSchema = z.object({
   removed: z.array(z.string()).max(500),
 });
 
-export const WsCommitSchema = z.object({
-  type: z.literal("commit"),
-  sha,
+/** Inner commit payload (nested under `commit` field). */
+const WsCommitPayloadSchema = z.object({
   parent: z.string().max(MAX_SHA_LEN).nullable().optional(),
   parents: z.array(z.string().max(MAX_SHA_LEN)).max(10).optional(),
   branch,
   message: z.string().min(1).max(MAX_MSG_LEN),
   canvas: z.string().min(2).max(MAX_CANVAS_BYTES),
   isMerge: z.boolean().optional(),
+});
+
+/**
+ * Commit message as sent by clients:
+ * `{ type: 'commit', sha, commit: { branch, message, canvas, ... } }`
+ */
+export const WsCommitSchema = z.object({
+  type: z.literal("commit"),
+  sha,
+  commit: WsCommitPayloadSchema,
+});
+
+export const WsBranchUpdateSchema = z.object({
+  type: z.literal("branch-update"),
+  branch,
+  headSha: sha,
 });
 
 export const WsCursorSchema = z.object({
@@ -50,6 +65,7 @@ export const InboundWsMessageSchema = z.discriminatedUnion("type", [
   WsDrawSchema,
   WsDrawDeltaSchema,
   WsCommitSchema,
+  WsBranchUpdateSchema,
   WsCursorSchema,
   WsProfileSchema,
   WsPingSchema,

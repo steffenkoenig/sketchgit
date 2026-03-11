@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { validate } from "@/lib/api/validate";
+import { auth } from "@/lib/auth";
+import { getAuthSession } from "@/lib/authTypes";
 
 const QuerySchema = z.object({
   cursor: z.string().max(64).optional(),
@@ -23,6 +25,22 @@ export async function GET(
   const room = await prisma.room.findUnique({ where: { id: roomId } });
   if (!room) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
+  }
+
+  // Private rooms require authentication and at least VIEWER membership.
+  if (!room.isPublic) {
+    const session = await auth();
+    const authSession = getAuthSession(session);
+    if (!authSession) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const membership = await prisma.roomMembership.findUnique({
+      where: { roomId_userId: { roomId, userId: authSession.user.id } },
+      select: { role: true },
+    });
+    if (!membership) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const commits = await prisma.commit.findMany({
