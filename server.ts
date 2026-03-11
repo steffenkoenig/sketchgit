@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import pino from "pino";
 import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
@@ -41,7 +42,10 @@ const handle = app.getRequestHandler();
 
 // ─── Database ────────────────────────────────────────────────────────────────
 // DATABASE_URL is guaranteed to be present (validated above).
-const prisma = new PrismaClient({ log: ["warn", "error"] });
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: env.DATABASE_URL }),
+  log: ["warn", "error"],
+});
 
 // ─── P012: Redis Pub/Sub (optional) ──────────────────────────────────────────
 // Two separate ioredis connections are required: one for publishing and one for
