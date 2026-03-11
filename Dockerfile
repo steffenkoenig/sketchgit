@@ -23,8 +23,10 @@ FROM node:22-alpine@sha256:8094c002d08262dba12645a3b4a15cd6cd627d30bc782f53229a2
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-# Install all dependencies (dev + prod) needed for Prisma generate and next build
-RUN npm ci
+# Install all dependencies (dev + prod) needed for Prisma generate and next build.
+# --ignore-scripts skips the postinstall `prisma generate` here; stage 2 runs it
+# explicitly after copying the full source tree (including prisma/schema.prisma).
+RUN npm ci --ignore-scripts
 
 # ─── Stage 2: Build ───────────────────────────────────────────────────────────
 FROM node:22-alpine@sha256:8094c002d08262dba12645a3b4a15cd6cd627d30bc782f53229a2ec13ee22a00 AS builder
