@@ -109,6 +109,16 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
+| P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/P081_react-error-boundaries.md) |
+| P082 | Automated Accessibility Testing with axe-core in CI | Reliability, Maintainability, Accessibility | [P082](proposals/P082_automated-accessibility-testing.md) |
+| P083 | Load and Stress Testing with k6 | Performance, Reliability | [P083](proposals/P083_load-and-stress-testing.md) |
+| P084 | Production Error Tracking with Sentry | Reliability, Maintainability, Observability | [P084](proposals/P084_sentry-error-tracking.md) |
+| P085 | Canvas JSON Schema Versioning and Migration | Reliability, Maintainability, Performance | [P085](proposals/P085_canvas-json-schema-versioning.md) |
+| P086 | GitHub Copilot Custom Skills for SketchGit | Maintainability, Developer Experience | [P086](proposals/P086_copilot-custom-skills.md) |
+| P087 | Visual Regression Testing with Playwright Snapshots | Reliability, Maintainability | [P087](proposals/P087_visual-regression-testing.md) |
+| P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
+| P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
+| P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/P090_feature-flag-system.md) |
 
 ---
 
@@ -193,6 +203,16 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P078 (Theme Toggle) | P050 ✅ (locale switcher pattern), P039 ✅ (export uses themed background), P056 ✅ (CSP nonce) |
 | P079 (Peer Branch Visibility) | P001 ✅ (modules), P012 ✅ (Redis presence), P017 ✅ (BranchCoordinator), P035 ✅ (cross-instance presence), P053 ✅ (branch-update) |
 | P080 (Presenter Mode) | P001 ✅ (modules), P017 ✅ (coordinators + AppContext), P020 ✅ (cleanup), P031 ✅ (WS validation), P053 ✅ (branch-update); P079 (checkoutBranchByName) |
+| P081 (Error Boundaries) | P036 ✅ (client logger), P009 ✅ (i18n), P068 ✅ (error codes), P074 ✅ (activity feed — CLIENT_ERROR event) |
+| P082 (A11y Testing) | P025 ✅ (ARIA/keyboard baseline), P038 ✅ (Playwright E2E), P016 ✅ (CI pipeline) |
+| P083 (Load Testing) | P016 ✅ (CI pipeline), P026 ✅ (Dockerfile), P069 ✅ (room capacity), P046 ✅ (Redis rate limiter), P023 ✅ (health endpoint) |
+| P084 (Sentry) | P010 ✅ (Pino logging), P027 ✅ (env validation), P016 ✅ (CI pipeline); P081 (error boundaries call Sentry), P061 (OpenTelemetry trace correlation) |
+| P085 (Canvas Schema Versioning) | P011 ✅ (JSONB column), P033 ✅ (delta storage), P031 ✅ (WS payload validation), P039 ✅ (export route) |
+| P086 (Copilot Custom Skills) | P063 ✅ (Copilot instructions), P014 ✅ (Zod), P068 ✅ (error codes), P077 ✅ (test factories), P062 ✅ (OpenAPI) |
+| P087 (Visual Regression) | P038 ✅ (Playwright E2E), P078 ✅ (theme toggle), P016 ✅ (CI pipeline), P025 ✅ (stable ARIA selectors) |
+| P088 (Read Replica) | P003 ✅ (Prisma), P023 ✅ (health check), P030 ✅ (LRU cache); P060 (PgBouncer) |
+| P089 (License Compliance) | P016 ✅ (CI pipeline), P045 ✅ (Trivy — complementary security scanning) |
+| P090 (Feature Flags) | P003 ✅ (Prisma), P077 ✅ (test factories), P074 ✅ (activity feed), P027 ✅ (env validation); P088 (first flag: read-replica routing) |
 
 ---
 
@@ -292,6 +312,23 @@ These proposals address issues discovered in subsequent review cycles. Proposals
 11. **P075** – Redis Sentinel/Cluster (infrastructure; needed before multi-region deployment)
 12. **P074** – Activity feed (new DB model + API endpoint; provides audit trail)
 
+### New proposals (P081–P090)
+These proposals address gaps discovered in a third review cycle, covering client-side
+resilience, operational observability, testing breadth, data integrity, and developer
+tooling.
+
+**Recommended order for P081–P090:**
+1. **P089** – License compliance scanning (zero-risk CI step; immediate compliance value)
+2. **P086** – Copilot custom skills (high leverage for all subsequent scaffolding tasks)
+3. **P081** – React error boundaries (critical reliability; prevents total UI crashes)
+4. **P085** – Canvas JSON schema versioning (data integrity; enables safe Fabric.js upgrades)
+5. **P084** – Sentry error tracking (observability; complements P010/P061)
+6. **P082** – Automated accessibility testing (extends P025/P038; CI gate for regressions)
+7. **P087** – Visual regression testing (extends P038; catches unintended UI changes)
+8. **P090** – Feature flag system (safe incremental rollout; unblocks phased feature releases)
+9. **P088** – Database read replica (scalability; requires P090 flag for progressive rollout)
+10. **P083** – Load and stress testing (validates the system after P088 and P090 are deployed)
+
 ---
 
 ## Quick Wins (Low effort, high impact)
@@ -324,4 +361,7 @@ The following items can be implemented quickly and independently:
 | Add `ws.send({ type: 'commit', ... })` to `doMerge()` + `applyMergeResolution()` | P052 | 20 minutes |
 | Add constant-time dummy bcrypt compare in `verifyCredentials` | P054 | 15 minutes |
 | Add `validateCommitMessage()` before `dbSaveCommit` in server.ts | P057 | 30 minutes |
+| Add top-level `AppErrorBoundary` wrapping `app/layout.tsx` | P081 | 1 hour |
+| Run `npx license-checker-rseidelsohn --production` and audit output | P089 | 30 minutes |
+| Add `schemaVersion: 1` field to `canvasEngine.ts` serialize output | P085 | 15 minutes |
 
