@@ -22,6 +22,7 @@ Resolved reports are archived in [`done/`](./done/).
 | [BUG-009](./done/BUG-009_ws-batch-return-drops-remaining-messages.md) | High | `server.ts` | `return` in WS batch loop silently drops all messages after an invalid one |
 | [BUG-010](./done/BUG-010_color-change-not-dirty-not-broadcast.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes to selected objects not marked dirty or broadcast to peers |
 | [BUG-011](./done/BUG-011_create-branch-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/branchCoordinator.ts` | `doCreateBranch()` doesn't send peer presence notifications |
+| [BUG-019](./done/BUG-019_three-way-merge-uses-base-canvas-discards-ours.md) | Medium | `lib/sketchgit/git/mergeEngine.ts` | Clean merge rebuilt from ancestor canvas; discarded ours canvas-level changes |
 
 ---
 
@@ -36,7 +37,7 @@ Resolved reports are archived in [`done/`](./done/).
 | [BUG-016](./BUG-016_reset-password-routes-not-rate-limited.md) | Medium | `proxy.ts` | `forgot-password` and `reset-password` routes absent from rate-limiter matcher |
 | [BUG-017](./BUG-017_rate-limit-429-uses-wrong-error-format.md) | Low | `proxy.ts` | 429 rate-limit response uses `{ error }` not `{ code, message }` |
 | [BUG-018](./BUG-018_openapi-export-format-missing-pdf.md) | Low | `lib/api/openapi.ts` | OpenAPI export `format` enum missing `"pdf"` value |
-| [BUG-019](./BUG-019_three-way-merge-uses-base-canvas-discards-ours.md) | Medium | `lib/sketchgit/git/mergeEngine.ts` | Clean merge rebuilds from ancestor canvas; discards our canvas-level changes |
+
 
 ---
 
@@ -123,17 +124,11 @@ The timeline SVG renders a clickable label for each branch. When clicked, `Timel
 
 ---
 
-### BUG-019 – `threeWayMerge()` rebuilds merged canvas from ancestor; discards "ours" canvas-level changes
+### BUG-019 – `threeWayMerge()` rebuilds merged canvas from ancestor; discards "ours" canvas-level changes ✅
 
 **Severity**: Medium
 
-In `lib/sketchgit/git/mergeEngine.ts`, the clean-merge return path (lines 169–172) does:
-```typescript
-const baseParsed = JSON.parse(baseData) as Record<string, unknown>;
-baseParsed.objects = resultObjects;
-return { result: JSON.stringify(baseParsed), autoMerged: true };
-```
-`baseParsed` is the **common ancestor** snapshot. Only the `objects` array is replaced; all other top-level Fabric.js canvas properties (`backgroundColor`, `backgroundImage`, `version`, etc.) retain the ancestor's values. If the user changed the canvas background colour or any other canvas-level setting on "our" branch since the divergence point, that change is silently discarded in the merged result — it reverts to the ancestor value with no warning.
+In `lib/sketchgit/git/mergeEngine.ts`, the clean-merge return path used `JSON.parse(baseData)` (the common ancestor) as the canvas envelope. Only `objects` was replaced; canvas-level properties like `background` reverted to the ancestor's value, making objects drawn with light colours invisible against the dark ancestor background — the canvas appeared empty. Fixed by parsing `oursData` instead of `baseData`, matching the correct behaviour already present in the conflict-resolution path.
 
 ---
 
@@ -224,3 +219,11 @@ The P073 batch message handler used `return` on schema-validation failure, exiti
 **Severity**: Low
 
 `doCreateBranch()` created and checked out a branch locally but sent no WebSocket messages. Fixed by adding `ws.send({ type: 'branch-update', ... })` and `ws.send({ type: 'profile', ... })` at the end of the method, matching the notifications sent by `openBranchModal()`.
+
+---
+
+### BUG-019 – `threeWayMerge()` rebuilds merged canvas from ancestor; discards "ours" canvas-level changes ✅
+
+**Severity**: Medium
+
+The clean-merge return path in `threeWayMerge()` used `JSON.parse(baseData)` (the common ancestor snapshot) as the canvas JSON envelope, replacing only the `objects` array. Canvas-level properties such as `background` reverted to the ancestor value. When the current branch had a light background and the ancestor had a dark one, objects became invisible — the canvas appeared empty after every clean merge. Fixed by replacing `JSON.parse(baseData)` with `JSON.parse(oursData)` so canvas-level properties are taken from the current branch (ours), consistent with the conflict-resolution path in `MergeCoordinator.applyMergeResolution()`.

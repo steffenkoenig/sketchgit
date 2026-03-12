@@ -190,6 +190,78 @@ describe('GitModel.merge – clean merge', () => {
     }
   });
 
+  it('preserves objects from both branches in the merged canvas', () => {
+    // Regression test: merging must NOT empty the canvas – objects from both
+    // branches (identified by _id) must all appear in the merged result.
+    const baseObj = { type: 'rect', _id: 'obj_base', fill: '#aaa' };
+    const git = newModel();
+    git.init(JSON.stringify({ version: '5.3.1', objects: [baseObj], background: '#0a0a0f' }));
+
+    // feature adds obj_feat
+    git.createBranch('feature');
+    git.checkout('feature');
+    const featObj = { type: 'ellipse', _id: 'obj_feat', fill: '#0f0' };
+    git.commit(
+      JSON.stringify({ version: '5.3.1', objects: [baseObj, featObj], background: '#0a0a0f' }),
+      'feature: add ellipse',
+    );
+
+    // main adds obj_main
+    git.checkout('main');
+    const mainObj = { type: 'rect', _id: 'obj_main', fill: '#00f' };
+    git.commit(
+      JSON.stringify({ version: '5.3.1', objects: [baseObj, mainObj], background: '#0a0a0f' }),
+      'main: add rect',
+    );
+
+    const result = git.merge('feature');
+    expect(result).not.toBeNull();
+    if (result && 'done' in result) {
+      const merged = JSON.parse(git.commits[result.sha].canvas) as { objects: { _id: string }[] };
+      const ids = merged.objects.map((o) => o._id);
+      expect(ids).toContain('obj_base');
+      expect(ids).toContain('obj_main');
+      expect(ids).toContain('obj_feat');
+    }
+  });
+
+  it('preserves the ours (main) canvas background after a clean merge', () => {
+    // Regression test for BUG-019: the merged canvas must use the canvas-level
+    // properties (e.g. background) from the current branch (ours), not from the
+    // common ancestor, so that objects remain visible after the merge.
+    const git = newModel();
+    git.init(JSON.stringify({ version: '5.3.1', objects: [], background: '#000000' }));
+
+    // feature branch: add an object, keep dark background
+    git.createBranch('feature');
+    git.checkout('feature');
+    const featObj = { type: 'rect', _id: 'obj_f1', fill: '#ff0000' };
+    git.commit(
+      JSON.stringify({ version: '5.3.1', objects: [featObj], background: '#000000' }),
+      'feature: add rect',
+    );
+
+    // main branch: change background to white (no object changes)
+    git.checkout('main');
+    git.commit(
+      JSON.stringify({ version: '5.3.1', objects: [], background: '#ffffff' }),
+      'main: white background',
+    );
+
+    const result = git.merge('feature');
+    expect(result).not.toBeNull();
+    if (result && 'done' in result) {
+      const merged = JSON.parse(git.commits[result.sha].canvas) as {
+        objects: { _id: string }[];
+        background: string;
+      };
+      // Canvas background must come from ours (main), not the ancestor
+      expect(merged.background).toBe('#ffffff');
+      // The object added on feature must still be present
+      expect(merged.objects.map((o) => o._id)).toContain('obj_f1');
+    }
+  });
+
   it('returns null when source branch does not exist', () => {
     const onError = vi.fn();
     const git = new GitModel(onError);
