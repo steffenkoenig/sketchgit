@@ -4,6 +4,7 @@ vi.mock('@/lib/db/prisma', () => ({
   prisma: {
     room: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
     commit: {
       findUnique: vi.fn(),
@@ -42,6 +43,7 @@ import { CommitStorageType } from '@prisma/client';
 
 const mock = {
   roomFindUnique: prisma.room.findUnique as ReturnType<typeof vi.fn>,
+  roomFindFirst: prisma.room.findFirst as ReturnType<typeof vi.fn>,
   commitFindUnique: prisma.commit.findUnique as ReturnType<typeof vi.fn>,
   commitFindFirst: prisma.commit.findFirst as ReturnType<typeof vi.fn>,
   roomStateFindUnique: prisma.roomState.findUnique as ReturnType<typeof vi.fn>,
@@ -66,7 +68,8 @@ const SNAPSHOT_COMMIT = {
 describe('GET /api/rooms/[roomId]/export', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: public room
+    // Default: resolveRoomId returns the canonical id; public room
+    mock.roomFindFirst.mockResolvedValue({ id: ROOM_ID });
     mock.roomFindUnique.mockResolvedValue({ isPublic: true });
   });
 
@@ -129,6 +132,7 @@ describe('GET /api/rooms/[roomId]/export', () => {
   });
 
   it('returns 404 when room itself is not found', async () => {
+    mock.roomFindFirst.mockResolvedValue(null);
     mock.roomFindUnique.mockResolvedValue(null);
     const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
     const res = await GET(req, { params });

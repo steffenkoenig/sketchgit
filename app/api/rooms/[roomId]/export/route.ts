@@ -16,6 +16,7 @@ import { replayCanvasDelta, type CanvasDelta } from "@/lib/sketchgit/git/canvasD
 import { renderToSVG, renderToPNG } from "@/lib/export/canvasRenderer";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
+import { resolveRoomId } from "@/lib/db/roomRepository";
 
 const QuerySchema = z.object({
   format: z.enum(["png", "svg"]).default("png"),
@@ -103,12 +104,18 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ roomId: string }> },
 ) {
-  const { roomId } = await params;
+  const { roomId: roomIdOrSlug } = await params;
   const rawQuery = Object.fromEntries(req.nextUrl.searchParams.entries());
   const v = validate(QuerySchema, rawQuery);
   if (!v.success) return v.response;
 
   const { format, sha: reqSha } = v.data;
+
+  // Resolve slug or canonical room ID → canonical ID.
+  const roomId = await resolveRoomId(roomIdOrSlug);
+  if (!roomId) {
+    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+  }
 
   // Access control: private rooms require authenticated membership.
   const room = await prisma.room.findUnique({
