@@ -4,7 +4,6 @@ description: >
   Scans the SketchGit codebase for bugs and inconsistent implementations,
   writes a detailed Markdown report for each confirmed bug in reports/bugs/,
   and maintains the consolidated reports/bugs/bug_summary.md registry.
-model: claude-sonnet-4-5
 tools:
   - glob
   - grep
