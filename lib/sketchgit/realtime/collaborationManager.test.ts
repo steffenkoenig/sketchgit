@@ -540,3 +540,138 @@ describe('CollaborationManager – destroy', () => {
     vi.useRealTimers();
   });
 });
+
+describe('P067 CollaborationManager – object-lock relay', () => {
+  let collab: CollaborationManager;
+  let ws: ReturnType<typeof makeMockWs>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cb: CollabCallbacks & { applyRemoteLock: any; clearRemoteLock: any };
+
+  beforeEach(() => {
+    setupDom();
+    ws = makeMockWs();
+    cb = {
+      ...makeCallbacks(),
+      applyRemoteLock: vi.fn(),
+      clearRemoteLock: vi.fn(),
+    };
+    collab = new CollaborationManager(ws as unknown as WsClient, cb);
+    (ws as unknown as { onMessage: (m: WsMessage) => void }).onMessage = () => {};
+  });
+
+  it('calls applyRemoteLock when an object-lock message arrives', () => {
+    vi.useFakeTimers();
+    (collab as unknown as { handleMessage: (m: WsMessage) => void }).handleMessage({
+      type: 'object-lock',
+      senderId: 'peer1',
+      senderColor: '#ff0',
+      objectIds: ['obj-a', 'obj-b'],
+    } as WsMessage);
+    expect(cb.applyRemoteLock).toHaveBeenCalledWith('peer1', ['obj-a', 'obj-b'], '#ff0');
+    vi.useRealTimers();
+  });
+
+  it('auto-expires lock after 5 seconds', () => {
+    vi.useFakeTimers();
+    (collab as unknown as { handleMessage: (m: WsMessage) => void }).handleMessage({
+      type: 'object-lock',
+      senderId: 'peer1',
+      senderColor: '#ff0',
+      objectIds: ['obj-a'],
+    } as WsMessage);
+    vi.advanceTimersByTime(5_001);
+    expect(cb.clearRemoteLock).toHaveBeenCalledWith('peer1');
+    vi.useRealTimers();
+  });
+
+  it('calls clearRemoteLock when an object-unlock message arrives', () => {
+    (collab as unknown as { handleMessage: (m: WsMessage) => void }).handleMessage({
+      type: 'object-unlock',
+      senderId: 'peer1',
+    } as WsMessage);
+    expect(cb.clearRemoteLock).toHaveBeenCalledWith('peer1');
+  });
+
+  it('clears lock when user-left is received for the locking peer', () => {
+    vi.useFakeTimers();
+    (collab as unknown as { handleMessage: (m: WsMessage) => void }).handleMessage({
+      type: 'object-lock',
+      senderId: 'peer1',
+      senderColor: '#ff0',
+      objectIds: ['obj-a'],
+    } as WsMessage);
+    (collab as unknown as { handleMessage: (m: WsMessage) => void }).handleMessage({
+      type: 'user-left',
+      clientId: 'peer1',
+    } as WsMessage);
+    expect(cb.clearRemoteLock).toHaveBeenCalledWith('peer1');
+    vi.useRealTimers();
+  });
+});
+
+describe('P079 CollaborationManager – updateCollabUI with branch label', () => {
+  it('shows branch label when peer has branch set', () => {
+    setupDom();
+    const ws = makeMockWs();
+    const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
+    (collab as unknown as { wsClientId: string }).wsClientId = 'me';
+    (collab as unknown as { presenceClients: import('../types').PresenceClient[] }).presenceClients = [
+      { clientId: 'peer1', name: 'Alice', color: '#ff0', branch: 'feature/x' },
+    ];
+    collab.updateCollabUI();
+    const list = document.getElementById('connectedList')!;
+    expect(list.innerHTML).toContain('feature/x');
+  });
+
+  it('shows no branch label when peer branch is absent', () => {
+    setupDom();
+    const ws = makeMockWs();
+    const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
+    (collab as unknown as { wsClientId: string }).wsClientId = 'me';
+    (collab as unknown as { presenceClients: import('../types').PresenceClient[] }).presenceClients = [
+      { clientId: 'peer1', name: 'Bob', color: '#f00' },
+    ];
+    collab.updateCollabUI();
+    const list = document.getElementById('connectedList')!;
+    expect(list.innerHTML).not.toContain('⎇');
+  });
+
+  it('getPresenceClients returns a copy of presenceClients', () => {
+    setupDom();
+    const ws = makeMockWs();
+    const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
+    const peers = [{ clientId: 'p1', name: 'X', color: '#f' }];
+    (collab as unknown as { presenceClients: import('../types').PresenceClient[] }).presenceClients = peers;
+    const result = collab.getPresenceClients();
+    expect(result).toEqual(peers);
+    expect(result).not.toBe(peers); // should be a copy
+  });
+});
+
+describe('P080 CollaborationManager – presenter mode', () => {
+  it('startPresenting sends follow-request and starts view-sync timer', () => {
+    vi.useFakeTimers();
+    setupDom();
+    const ws = makeMockWs();
+    const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
+    (collab as unknown as { wsClientId: string }).wsClientId = 'me';
+    collab.startPresenting();
+    expect(ws.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'follow-request' }));
+    expect(collab.isPresenting).toBe(true);
+    collab.stopPresenting();
+    vi.useRealTimers();
+  });
+
+  it('stopPresenting sends follow-stop and clears timer', () => {
+    vi.useFakeTimers();
+    setupDom();
+    const ws = makeMockWs();
+    const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
+    (collab as unknown as { wsClientId: string }).wsClientId = 'me';
+    collab.startPresenting();
+    collab.stopPresenting();
+    expect(ws.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'follow-stop' }));
+    expect(collab.isPresenting).toBe(false);
+    vi.useRealTimers();
+  });
+});

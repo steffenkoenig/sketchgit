@@ -17,13 +17,13 @@ import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
 import { CommitStorageType, type Prisma } from "@prisma/client";
 import { replayCanvasDelta, type CanvasDelta } from "@/lib/sketchgit/git/canvasDelta";
-import { renderToSVG, renderToPNG } from "@/lib/export/canvasRenderer";
+import { renderToSVG, renderToPNG, renderToPDF } from "@/lib/export/canvasRenderer";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import { resolveRoomId } from "@/lib/db/roomRepository";
 
 export const ExportQuerySchema = z.object({
-  format: z.enum(["png", "svg"]).default("png"),
+  format: z.enum(["png", "svg", "pdf"]).default("png"),
   sha: z.string().max(64).optional(),
   theme: z.enum(["dark", "light"]).default("dark"),
 });
@@ -189,6 +189,17 @@ export async function GET(
       headers: {
         "Content-Type": "image/svg+xml",
         "Content-Disposition": `attachment; filename="${filename}.svg"`,
+        ...cacheHdrs,
+      },
+    });
+  }
+
+  if (format === "pdf") {
+    const pdf = await renderToPDF(canvasJson, theme);
+    return new NextResponse(Buffer.from(pdf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}.pdf"`,
         ...cacheHdrs,
       },
     });

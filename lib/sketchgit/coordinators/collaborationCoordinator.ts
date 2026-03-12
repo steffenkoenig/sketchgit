@@ -84,4 +84,9 @@ export class CollaborationCoordinator {
   toggleCollabPanel(): void {
     this.ctx.collab.toggleCollabPanel();
   }
+
+  // P080 – Presenter mode
+  togglePresenting(): void {
+    this.ctx.collab.togglePresenting();
+  }
 }

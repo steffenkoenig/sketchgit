@@ -27,8 +27,16 @@ const EnvSchema = z.object({
   GITHUB_ID: z.string().optional(),
   GITHUB_SECRET: z.string().optional(),
 
-  // ── Optional – Redis (P012) ────────────────────────────────────────────────
+  // ── Optional – Redis (P012, P075) ─────────────────────────────────────────
   REDIS_URL: z.string().url().optional(),
+  // P075 – Redis connection mode (sentinel / cluster for HA deployments)
+  REDIS_MODE: z.enum(["standalone", "sentinel", "cluster"]).default("standalone"),
+  // Sentinel: comma-separated "host:port" pairs (e.g. "sentinel1:26379,sentinel2:26379")
+  REDIS_SENTINEL_HOSTS: z.string().optional(),
+  // Sentinel master name (default: "mymaster")
+  REDIS_SENTINEL_NAME: z.string().default("mymaster"),
+  // Cluster: comma-separated "host:port" node addresses
+  REDIS_CLUSTER_NODES: z.string().optional(),
 
   // ── Optional – rate limiting (P015) ───────────────────────────────────────
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),

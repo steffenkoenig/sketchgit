@@ -182,6 +182,13 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
         aria-label="Export canvas as SVG vector file"
       >{t("toolbar.exportSvg")}</a>
+      {/* P076 – PDF export link */}
+      <a
+        href={`${exportBase}?format=pdf`}
+        download={`canvas-${roomId}.pdf`}
+        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
+        aria-label="Export canvas as PDF document"
+      >{t("toolbar.exportPdf")}</a>
 
       {/* Auth section */}
       <div className="sep" role="separator" aria-orientation="vertical"></div>

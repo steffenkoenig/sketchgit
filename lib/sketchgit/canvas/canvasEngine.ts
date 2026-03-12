@@ -55,16 +55,26 @@ export class CanvasEngine {
   private boundResize: (() => void) | null = null;
   private boundKeydown: ((e: KeyboardEvent) => void) | null = null;
 
+  // ── P067: Remote object locks (clientId → { objectIds, color, origStyles }) ─
+  private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number; strokeDashArray: number[] | undefined }> }>();
+
   // ── Callbacks provided by the orchestrator ────────────────────────────────
   private readonly onBroadcastDraw: (immediate?: boolean) => void;
   private readonly onBroadcastCursor: (e: { e: MouseEvent }) => void;
+  /** P067 – broadcast that the local user selected/deselected objects */
+  private onBroadcastLock?: (objectIds: string[]) => void;
+  private onBroadcastUnlock?: () => void;
 
   constructor(
     onBroadcastDraw: (immediate?: boolean) => void,
     onBroadcastCursor: (e: { e: MouseEvent }) => void,
+    onBroadcastLock?: (objectIds: string[]) => void,
+    onBroadcastUnlock?: () => void,
   ) {
     this.onBroadcastDraw = onBroadcastDraw;
     this.onBroadcastCursor = onBroadcastCursor;
+    this.onBroadcastLock = onBroadcastLock;
+    this.onBroadcastUnlock = onBroadcastUnlock;
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -87,6 +97,23 @@ export class CanvasEngine {
     this.canvas.on('object:modified', () => { this.pushHistory(); this.markDirty(); this.onBroadcastDraw(true); });
     this.canvas.on('object:added', (e: { target?: FabricObject }) => { if (e.target) ensureObjId(e.target); });
     this.canvas.on('mouse:wheel', (e: TPointerEventInfo<WheelEvent>) => this.onWheel(e));
+
+    // P067 – broadcast selection events so peers can show soft-lock indicator
+    this.canvas.on('selection:created', (e: { selected?: FabricObject[] }) => {
+      const ids = (e.selected ?? [])
+        .map((obj) => (obj as FabricObject & { _id?: string })._id ?? '')
+        .filter(Boolean);
+      if (ids.length > 0) this.onBroadcastLock?.(ids);
+    });
+    this.canvas.on('selection:updated', (e: { selected?: FabricObject[] }) => {
+      const ids = (e.selected ?? [])
+        .map((obj) => (obj as FabricObject & { _id?: string })._id ?? '')
+        .filter(Boolean);
+      if (ids.length > 0) this.onBroadcastLock?.(ids);
+    });
+    this.canvas.on('selection:cleared', () => {
+      this.onBroadcastUnlock?.();
+    });
 
     // P020: store bound references so they can be removed in destroy()
     this.boundResize = () => {
@@ -117,6 +144,76 @@ export class CanvasEngine {
       void this.canvas.dispose(); // Fabric.js built-in: removes internal listeners & clears element
       this.canvas = null;
     }
+    // P067 – clear all remote lock records on destroy
+    this.remoteLocks.clear();
+  }
+
+  // ── P067: Remote object lock indicators ───────────────────────────────────
+
+  /**
+   * Apply a coloured dashed-border lock indicator to objects selected by a
+   * remote peer. Saves original stroke styles for later restoration.
+   */
+  applyRemoteLock(clientId: string, objectIds: string[], color: string): void {
+    if (!this.canvas) return;
+    this.clearRemoteLock(clientId);
+    const lockedSet = new Set(objectIds);
+    const origStyles = new Map<string, { stroke: string | undefined; strokeWidth: number; strokeDashArray: number[] | undefined }>();
+    for (const obj of this.canvas.getObjects()) {
+      const id = (obj as FabricObject & { _id?: string })._id ?? '';
+      if (!lockedSet.has(id)) continue;
+      origStyles.set(id, {
+        stroke: obj.get('stroke') as string | undefined,
+        strokeWidth: (obj.get('strokeWidth') as number | undefined) ?? 1,
+        strokeDashArray: obj.get('strokeDashArray') as number[] | undefined,
+      });
+      obj.set({ stroke: color, strokeWidth: 2, strokeDashArray: [5, 3] });
+    }
+    this.remoteLocks.set(clientId, { objectIds: lockedSet, color, origStyles });
+    this.canvas.requestRenderAll();
+  }
+
+  /** Remove the lock indicator for a peer and restore original object styles. */
+  clearRemoteLock(clientId: string): void {
+    if (!this.canvas) return;
+    const lock = this.remoteLocks.get(clientId);
+    if (!lock) return;
+    for (const obj of this.canvas.getObjects()) {
+      const id = (obj as FabricObject & { _id?: string })._id ?? '';
+      if (!lock.objectIds.has(id)) continue;
+      const orig = lock.origStyles.get(id);
+      if (orig) {
+        obj.set({
+          stroke: orig.stroke,
+          strokeWidth: orig.strokeWidth,
+          strokeDashArray: orig.strokeDashArray,
+        });
+      }
+    }
+    this.remoteLocks.delete(clientId);
+    this.canvas.requestRenderAll();
+  }
+
+  // ── P080: Presenter mode – viewport helpers ────────────────────────────────
+
+  /**
+   * Return the current Fabric.js viewport transform for serialisation.
+   * Used by CollaborationManager to build view-sync payloads.
+   */
+  getViewport(): [number, number, number, number, number, number] {
+    const vpt = this.canvas?.viewportTransform;
+    if (!vpt || vpt.length < 6) return [1, 0, 0, 1, 0, 0];
+    return [vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]] as [number, number, number, number, number, number];
+  }
+
+  /**
+   * Apply a remote viewport transform received from the presenter.
+   * Does NOT trigger onBroadcastDraw – viewport changes are display-only.
+   */
+  applyViewport(vpt: [number, number, number, number, number, number]): void {
+    if (!this.canvas) return;
+    this.canvas.setViewportTransform(vpt);
+    this.canvas.requestRenderAll();
   }
 
   // ── Serialisation ─────────────────────────────────────────────────────────

@@ -44,7 +44,10 @@ function makeCtx(): AppContext {
       clearDirty: vi.fn(),
     } as unknown as AppContext['canvas'],
     ws: { send: vi.fn() } as unknown as AppContext['ws'],
-    collab: {} as AppContext['collab'],
+    collab: {
+      getPresenceClients: vi.fn().mockReturnValue([]),
+      getMyClientId: vi.fn().mockReturnValue(''),
+    } as unknown as AppContext['collab'],
   };
 }
 

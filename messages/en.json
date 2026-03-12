@@ -15,7 +15,8 @@
     "uncommittedChanges": "Uncommitted changes",
     "skipToCanvas": "Skip to canvas",
     "exportPng": "Export as PNG",
-    "exportSvg": "Export as SVG"
+    "exportSvg": "Export as SVG",
+    "exportPdf": "Export as PDF"
   },
   "topbar": {
     "collab": "⟳ Collab",
@@ -76,7 +77,8 @@
     "notConnected": "Not connected",
     "roomIdLabel": "Room ID",
     "roomPlaceholder": "e.g. sketch-session",
-    "joinRoom": "Join Room"
+    "joinRoom": "Join Room",
+    "present": "Present to everyone"
   },
   "timeline": {
     "title": "⌥ Version Timeline"

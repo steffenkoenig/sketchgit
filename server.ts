@@ -82,19 +82,55 @@ let redisSub: RedisClient | null = null;
 let redisReady = false;
 
 async function initRedis(): Promise<void> {
-  if (!env.REDIS_URL) return; // optional feature – skip when not configured
+  const mode = env.REDIS_MODE;
+
+  // Standalone mode requires REDIS_URL; other modes have their own checks.
+  if (mode === "standalone" && !env.REDIS_URL) return;
+  if (mode === "sentinel" && !env.REDIS_SENTINEL_HOSTS) return;
+  if (mode === "cluster" && !env.REDIS_CLUSTER_NODES) return;
 
   const { default: Redis } = await import("ioredis");
 
-  const redisOpts = {
+  /** Parse comma-separated "host:port" into ioredis node objects. */
+  function parseNodes(csv: string): Array<{ host: string; port: number }> {
+    return csv.split(",").map((e) => {
+      const t = e.trim();
+      const c = t.lastIndexOf(":");
+      return c === -1
+        ? { host: t, port: 6379 }
+        : { host: t.slice(0, c), port: parseInt(t.slice(c + 1), 10) || 6379 };
+    });
+  }
+
+  const standaloneOpts = {
     lazyConnect: true,
     maxRetriesPerRequest: 3,
     enableReadyCheck: true,
     retryStrategy: (times: number) => Math.min(times * 200, 5_000),
   };
 
-  redisPub = new Redis(env.REDIS_URL, redisOpts);
-  redisSub = new Redis(env.REDIS_URL, redisOpts);
+  function makeClient(): RedisClient {
+    if (mode === "sentinel") {
+      return new Redis({
+        sentinels: parseNodes(env.REDIS_SENTINEL_HOSTS!),
+        name: env.REDIS_SENTINEL_NAME,
+        lazyConnect: true,
+        maxRetriesPerRequest: 3,
+      }) as unknown as RedisClient;
+    }
+    if (mode === "cluster") {
+      return new Redis.Cluster(parseNodes(env.REDIS_CLUSTER_NODES!), {
+        redisOptions: { maxRetriesPerRequest: 3 },
+        clusterRetryStrategy: (times: number) => Math.min(times * 200, 5_000),
+        lazyConnect: true,
+      }) as unknown as RedisClient;
+    }
+    // standalone
+    return new Redis(env.REDIS_URL!, standaloneOpts);
+  }
+
+  redisPub = makeClient();
+  redisSub = makeClient();
 
   redisPub.on("error", (err) => logger.error({ err }, "redis: pub connection error"));
   redisSub.on("error", (err) => logger.error({ err }, "redis: sub connection error"));
@@ -137,6 +173,10 @@ type ClientState = WebSocket & {
   role: ClientRole;
   displayName: string;
   displayColor: string;
+  /** P079 – current branch the client has checked out (default: 'main') */
+  currentBranch: string;
+  /** P079 – HEAD SHA for the client's current branch tip */
+  currentHeadSha: string | null;
   /** Internal: user id resolved during WebSocket upgrade */
   _userId?: string | null;
   /** Internal: remote IP captured during the HTTP upgrade */
@@ -357,8 +397,8 @@ const REDIS_PRESENCE_TTL_SECONDS = 30;
  */
 async function getGlobalPresence(
   roomId: string,
-  localClients: Array<{ clientId: string; name: string; color: string; userId: string | null }>,
-): Promise<Array<{ clientId: string; name: string; color: string; userId: string | null }>> {
+  localClients: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>,
+): Promise<Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>> {
   if (!redisPub || !redisReady) return localClients;
 
   try {
@@ -367,13 +407,13 @@ async function getGlobalPresence(
     if (!allFields) return localClients;
 
     const seen = new Set<string>();
-    const merged: Array<{ clientId: string; name: string; color: string; userId: string | null }> = [];
+    const merged: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }> = [];
     for (const value of Object.values(allFields)) {
-      const clients = JSON.parse(value) as Array<{ clientId: string; name: string; color: string; userId: string | null }>;
+      const clients = JSON.parse(value) as Array<{ clientId: string; name: string; color: string; userId: string | null; branch?: string; headSha?: string | null }>;
       for (const c of clients) {
         if (!seen.has(c.clientId)) {
           seen.add(c.clientId);
-          merged.push(c);
+          merged.push({ ...c, branch: c.branch ?? 'main', headSha: c.headSha ?? null });
         }
       }
     }
@@ -387,7 +427,7 @@ async function getGlobalPresence(
 function pushPresence(roomId: string): void {
   const room = rooms.get(roomId);
   // Compute local client list regardless of Redis availability
-  const localClients: Array<{ clientId: string; name: string; color: string; userId: string | null }> = [];
+  const localClients: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }> = [];
   if (room) {
     for (const [clientId, client] of room.entries()) {
       localClients.push({
@@ -395,6 +435,8 @@ function pushPresence(roomId: string): void {
         name: client.displayName,
         color: client.displayColor,
         userId: client.userId ?? null,
+        branch: client.currentBranch,
+        headSha: client.currentHeadSha,
       });
     }
   }
@@ -869,6 +911,13 @@ void app.prepare()
         client.displayColor = safeColor(
           typeof message.color === "string" ? message.color : null,
         );
+        // P079 – update branch position if supplied (optional, backward-compatible)
+        if (typeof message.branch === "string" && message.branch.length > 0) {
+          client.currentBranch = safeBranchName(message.branch);
+        }
+        if (typeof message.headSha === "string") {
+          client.currentHeadSha = message.headSha.slice(0, 64) || null;
+        }
         schedulePushPresence(roomId);
         return;
       }
@@ -925,8 +974,15 @@ void app.prepare()
       }
 
       // P074 – append BRANCH_CHECKOUT / ROLLBACK event for branch-update messages
+      // P079 – update the client's branch position on the server for presence
       if (message.type === "branch-update") {
         const buMsg = message as WsMessage & { branch?: string; headSha?: string; isRollback?: boolean };
+        // Store new branch position so presence reflects it
+        if (typeof buMsg.branch === "string" && buMsg.branch.length > 0) {
+          client.currentBranch = safeBranchName(buMsg.branch);
+          client.currentHeadSha = typeof buMsg.headSha === "string" ? buMsg.headSha.slice(0, 64) : null;
+          schedulePushPresence(roomId);
+        }
         const evType = buMsg.isRollback ? "ROLLBACK" : "BRANCH_CHECKOUT";
         void appendRoomEvent(roomId, evType, client.userId, {
           branch: buMsg.branch,
@@ -959,6 +1015,9 @@ void app.prepare()
       client.userId = client._userId ?? null;
       client.displayName = safeName(reqUrl.searchParams.get("name"));
       client.displayColor = safeColor(reqUrl.searchParams.get("color"));
+      // P079 – initialise branch position to 'main'; updated via profile/branch-update
+      client.currentBranch = 'main';
+      client.currentHeadSha = null;
 
       // P034 – Enforce room access control before adding the client to the room.
       // P066 – If access is denied but the client presents a valid invitation

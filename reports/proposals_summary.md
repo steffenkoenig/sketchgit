@@ -86,6 +86,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |
+| P067 | Canvas Object Selection and Locking (Optimistic Object Reservation) | Reliability, UX | [P067](proposals/done/P067_canvas-object-locking.md) |
+| P075 | Support Redis Sentinel and Cluster Connection Modes | Reliability | [P075](proposals/done/P075_redis-sentinel-cluster.md) |
+| P076 | Add PDF Export for Canvas Drawings | UX | [P076](proposals/done/P076_canvas-pdf-export.md) |
+| P079 | Show Peer Branch Positions in Presence Panel and Branch Modal | UX, Reliability | [P079](proposals/done/P079_cross-branch-peer-visibility.md) |
+| P080 | Add a Presenter Mode for Real-Time View Follow | UX, Reliability | [P080](proposals/done/P080_presenter-follow-view.md) |
 | P058 | Reduce JavaScript Bundle Size Through Bundle Analysis and Dynamic Code Splitting | Performance, Maintainability | [P058](proposals/done/P058_bundle-analysis-code-splitting.md) |
 | P059 | Enable WebSocket Per-Message Deflate Compression | Performance | [P059](proposals/done/P059_websocket-permessage-deflate.md) |
 | P062 | Auto-generate OpenAPI 3.1 Specification from Zod Schemas | Maintainability | [P062](proposals/done/P062_openapi-documentation.md) |
@@ -104,13 +109,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
-| P060 | Add PgBouncer Transaction-Mode Connection Pooling | Performance, Reliability | [P060](proposals/P060_pgbouncer-connection-pooling.md) |
-| P061 | Instrument with OpenTelemetry Distributed Tracing and Metrics | Reliability, Maintainability | [P061](proposals/P061_opentelemetry-tracing-metrics.md) |
-| P067 | Prevent Conflicting Concurrent Edits via Canvas Object Reservation (Soft Lock) | Reliability, UX | [P067](proposals/P067_canvas-object-locking.md) |
-| P075 | Support Redis Sentinel and Cluster Connection Modes | Reliability | [P075](proposals/P075_redis-sentinel-cluster.md) |
-| P076 | Add PDF Export for Canvas Drawings | UX | [P076](proposals/P076_canvas-pdf-export.md) |
-| P079 | Show Peer Branch Positions in Presence Panel and Branch Modal, with One-Click Branch Follow | UX, Reliability | [P079](proposals/P079_cross-branch-peer-visibility.md) |
-| P080 | Add a Presenter Mode That Lets a User Ask Peers to Follow Their Canvas View in Real Time | UX, Reliability | [P080](proposals/P080_presenter-follow-view.md) |
 
 ---
 
