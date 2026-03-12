@@ -25,7 +25,7 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
-import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
+import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { validateCommitMessage } from "./lib/server/commitValidation.js";
 
@@ -650,7 +650,7 @@ void initRedis().catch((err) =>
 );
 
 // P032 – periodic room pruning job
-function startPruningJob(intervalMs: number, retentionDays: number): ReturnType<typeof setInterval> {
+function startPruningJob(intervalMs: number, retentionDays: number, eventRetentionDays: number): ReturnType<typeof setInterval> {
   let running = false;
   const timer = setInterval(() => {
     if (running) {
@@ -659,7 +659,7 @@ function startPruningJob(intervalMs: number, retentionDays: number): ReturnType<
     }
     running = true;
     const activeRoomIds = [...rooms.keys()];
-    pruneInactiveRooms(retentionDays, activeRoomIds)
+    pruneInactiveRooms(retentionDays, activeRoomIds, eventRetentionDays)
       .then((count) => {
         if (count > 0) {
           logger.info({ count, retentionDays }, "pruning: removed inactive rooms");
@@ -680,6 +680,7 @@ let pruneJobTimer: ReturnType<typeof setInterval> | null = null;
 pruneJobTimer = startPruningJob(
   env.PRUNE_INTERVAL_HOURS * 60 * 60 * 1000,
   env.PRUNE_INACTIVE_ROOMS_DAYS,
+  env.ROOM_EVENT_RETENTION_DAYS,
 );
 
 /**
@@ -912,8 +913,25 @@ void app.prepare()
         } finally {
           endWrite();
         }
+        // P074 – append COMMIT event to activity log (non-blocking)
+        const commitData = message.commit as CommitData;
+        void appendRoomEvent(roomId, "COMMIT", client.userId, {
+          sha: message.sha,
+          branch: commitData.branch,
+          message: commitData.message,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append COMMIT"));
         // P030: invalidate cached snapshot so next connection loads fresh state
         roomCache.invalidate(roomId);
+      }
+
+      // P074 – append BRANCH_CHECKOUT / ROLLBACK event for branch-update messages
+      if (message.type === "branch-update") {
+        const buMsg = message as WsMessage & { branch?: string; headSha?: string; isRollback?: boolean };
+        const evType = buMsg.isRollback ? "ROLLBACK" : "BRANCH_CHECKOUT";
+        void appendRoomEvent(roomId, evType, client.userId, {
+          branch: buMsg.branch,
+          headSha: buMsg.headSha,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append branch event"));
       }
 
       // Relay to peers
@@ -934,6 +952,7 @@ void app.prepare()
       const resolvedId = rawRoom ? await resolveRoomId(rawRoom) : null;
       const roomId = resolvedId ?? safeRoomId(rawRoom);
       const clientId = randomUUID().slice(0, 8);
+      const connectionStartMs = Date.now(); // P074 – for MEMBER_LEAVE durationMs
 
       client.clientId = clientId;
       client.roomId = roomId;
@@ -942,7 +961,39 @@ void app.prepare()
       client.displayColor = safeColor(reqUrl.searchParams.get("color"));
 
       // P034 – Enforce room access control before adding the client to the room.
-      const access = await checkRoomAccess(roomId, client.userId);
+      // P066 – If access is denied but the client presents a valid invitation
+      //         token, grant access as EDITOR for the duration of the session.
+      let access = await checkRoomAccess(roomId, client.userId);
+      if (!access.allowed) {
+        const inviteToken = reqUrl.searchParams.get("invite");
+        if (inviteToken) {
+          const invitation = await prisma.roomInvitation.findUnique({
+            where: { token: inviteToken },
+            select: { roomId: true, expiresAt: true, maxUses: true, useCount: true },
+          });
+          if (
+            invitation &&
+            invitation.roomId === roomId &&
+            invitation.expiresAt > new Date() &&
+            invitation.useCount < invitation.maxUses
+          ) {
+            // Grant EDITOR access via invite; increment use count
+            await prisma.roomInvitation.update({
+              where: { token: inviteToken },
+              data: { useCount: { increment: 1 } },
+            });
+            // Also add as a room member so future connections don't need the token
+            if (client.userId) {
+              await prisma.roomMembership.upsert({
+                where: { roomId_userId: { roomId, userId: client.userId } },
+                update: {},
+                create: { roomId, userId: client.userId, role: "EDITOR" },
+              });
+            }
+            access = { allowed: true, role: "EDITOR" };
+          }
+        }
+      }
       if (!access.allowed) {
         logger.warn({ roomId, userId: client.userId, reason: access.reason }, "ws: access denied");
         sendTo(client, { type: "error", code: "ACCESS_DENIED", reason: access.reason });
@@ -980,6 +1031,11 @@ void app.prepare()
       await dbEnsureRoom(roomId, client.userId);
 
       logger.info({ clientId, roomId, userId: client.userId ?? null }, "ws: client connected");
+
+      // P074 – append MEMBER_JOIN event (non-blocking)
+      void appendRoomEvent(roomId, "MEMBER_JOIN", client.userId, {
+        displayName: client.displayName,
+      }).catch((err: unknown) => logger.warn({ err }, "events: failed to append MEMBER_JOIN"));
 
       sendTo(client, { type: "welcome", roomId, clientId });
       schedulePushPresence(roomId);
@@ -1037,6 +1093,12 @@ void app.prepare()
 
       client.on("close", () => {
         logger.info({ clientId, roomId }, "ws: client disconnected");
+
+        // P074 – append MEMBER_LEAVE event (non-blocking)
+        void appendRoomEvent(roomId, "MEMBER_LEAVE", client.userId, {
+          displayName: client.displayName,
+          durationMs: Date.now() - connectionStartMs,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append MEMBER_LEAVE"));
 
         // P015 – decrement per-IP connection counter
         const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;

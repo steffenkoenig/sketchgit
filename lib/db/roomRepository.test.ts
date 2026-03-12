@@ -28,6 +28,11 @@ vi.mock('@/lib/db/prisma', () => {
         findMany: vi.fn(),
         findUnique: vi.fn(),
       },
+      roomEvent: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     },
   };
 });

@@ -186,4 +186,38 @@ describe('validateEnv', () => {
     expect(env.WS_COMPRESSION_THRESHOLD).toBe(2048);
     delete process.env.WS_COMPRESSION_THRESHOLD;
   });
+
+  it('applies default of 90 for ROOM_EVENT_RETENTION_DAYS', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    delete process.env.ROOM_EVENT_RETENTION_DAYS;
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.ROOM_EVENT_RETENTION_DAYS).toBe(90);
+  });
+
+  it('accepts a custom ROOM_EVENT_RETENTION_DAYS value', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.ROOM_EVENT_RETENTION_DAYS = '30';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.ROOM_EVENT_RETENTION_DAYS).toBe(30);
+    delete process.env.ROOM_EVENT_RETENTION_DAYS;
+  });
+
+  it('INVITATION_SECRET is optional and defaults to undefined', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    delete process.env.INVITATION_SECRET;
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.INVITATION_SECRET).toBeUndefined();
+  });
 });

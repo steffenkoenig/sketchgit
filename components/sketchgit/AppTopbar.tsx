@@ -60,6 +60,42 @@ function LocaleSwitcher() {
   );
 }
 
+/**
+ * P078 – Theme toggle button.
+ * Stores the user's choice in a `THEME` cookie (same pattern as LocaleSwitcher).
+ * Applies `theme-light` class to `<html>` immediately for instant feedback
+ * without requiring a page reload (unlike the locale switcher).
+ */
+function ThemeToggle() {
+  const t = useTranslations();
+  const [isDark, setIsDark] = React.useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const cookie = document.cookie.match(/THEME=(\w+)/)?.[1];
+    if (cookie) return cookie !== "light";
+    return !window.matchMedia("(prefers-color-scheme: light)").matches;
+  });
+
+  function toggle() {
+    const nextDark = !isDark;
+    setIsDark(nextDark);
+    const theme = nextDark ? "dark" : "light";
+    document.cookie = `THEME=${theme}; path=/; max-age=31536000; SameSite=Lax`;
+    document.documentElement.classList.toggle("theme-light", !nextDark);
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      className="text-[16px] px-1.5 transition-colors text-slate-400 hover:text-slate-200"
+      aria-label={isDark ? t("topbar.switchToLight") : t("topbar.switchToDark")}
+      aria-pressed={!isDark}
+      title={isDark ? t("topbar.switchToLight") : t("topbar.switchToDark")}
+    >
+      {isDark ? "☀" : "🌙"}
+    </button>
+  );
+}
+
 export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus }: AppTopbarProps) {
   // P039: Resolve the current room ID from the URL query param for export links.
   const searchParams = useSearchParams();
@@ -152,6 +188,9 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
 
       {/* P050 – Locale switcher (EN / DE) */}
       <LocaleSwitcher />
+
+      {/* P078 – Theme toggle (dark/light) */}
+      <ThemeToggle />
 
       <div className="sep" role="separator" aria-orientation="vertical"></div>
 

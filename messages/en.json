@@ -24,7 +24,9 @@
     "commit": "● Commit",
     "signIn": "👤 Sign in",
     "signOut": "⤴ Sign out",
-    "myDrawings": "My Drawings"
+    "myDrawings": "My Drawings",
+    "switchToLight": "Switch to light theme",
+    "switchToDark": "Switch to dark theme"
   },
   "modal": {
     "commit": {

@@ -22,10 +22,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts    Account[]
-  ownedRooms  Room[]           @relation("RoomOwner")
-  memberships RoomMembership[]
-  commits     Commit[]
+  accounts         Account[]
+  ownedRooms       Room[]           @relation("RoomOwner")
+  memberships      RoomMembership[]
+  commits          Commit[]
+  roomEvents       RoomEvent[]      @relation("RoomEventActor")
+  createdInvitations RoomInvitation[] @relation("RoomInvitationCreator")
 }
 
 model Account {
@@ -70,6 +72,8 @@ model Room {
   commits     Commit[]
   branches    Branch[]
   state       RoomState?
+  events      RoomEvent[]
+  invitations RoomInvitation[]
 }
 
 model RoomMembership {
@@ -143,4 +147,49 @@ model RoomState {
   updatedAt   DateTime @updatedAt
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+// ─── Activity feed / audit log (P074) ─────────────────────────────────────────
+
+enum RoomEventType {
+  COMMIT
+  BRANCH_CREATE
+  BRANCH_CHECKOUT
+  ROLLBACK
+  MEMBER_JOIN
+  MEMBER_LEAVE
+}
+
+model RoomEvent {
+  id         String        @id @default(cuid())
+  roomId     String
+  eventType  RoomEventType
+  actorId    String?
+  payload    Json
+  createdAt  DateTime      @default(now())
+
+  room  Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  actor User? @relation("RoomEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, createdAt])
+  @@index([actorId])
+}
+
+// ─── Room invitation tokens (P066) ────────────────────────────────────────────
+
+model RoomInvitation {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  roomId    String
+  createdBy String?
+  expiresAt DateTime
+  maxUses   Int      @default(1)
+  useCount  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  room    Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  creator User? @relation("RoomInvitationCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([roomId])
+  @@index([expiresAt])
 }

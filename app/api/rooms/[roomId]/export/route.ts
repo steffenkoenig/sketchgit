@@ -25,6 +25,7 @@ import { resolveRoomId } from "@/lib/db/roomRepository";
 export const ExportQuerySchema = z.object({
   format: z.enum(["png", "svg"]).default("png"),
   sha: z.string().max(64).optional(),
+  theme: z.enum(["dark", "light"]).default("dark"),
 });
 
 const MAX_CHAIN_DEPTH = 10_000;
@@ -113,7 +114,7 @@ export async function GET(
   const v = validate(ExportQuerySchema, rawQuery);
   if (!v.success) return v.response;
 
-  const { format, sha: reqSha } = v.data;
+  const { format, sha: reqSha, theme } = v.data;
 
   // Resolve slug or canonical room ID → canonical ID.
   const roomId = await resolveRoomId(roomIdOrSlug);
@@ -183,7 +184,7 @@ export async function GET(
   const cacheHdrs = reqSha ? immutableHeaders(reqSha) : mutableHeaders();
 
   if (format === "svg") {
-    const svg = await renderToSVG(canvasJson);
+    const svg = await renderToSVG(canvasJson, theme);
     return new NextResponse(svg, {
       headers: {
         "Content-Type": "image/svg+xml",
@@ -193,7 +194,7 @@ export async function GET(
     });
   }
 
-  const png = await renderToPNG(canvasJson);
+  const png = await renderToPNG(canvasJson, theme);
   return new NextResponse(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",

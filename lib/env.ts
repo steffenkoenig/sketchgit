@@ -70,6 +70,15 @@ const EnvSchema = z.object({
   // tiny messages like heartbeat pongs or cursor updates under 1 KB.
   WS_COMPRESSION_THRESHOLD: z.coerce.number().int().min(0).default(1024),
 
+  // ── Room activity feed event retention (P074) ─────────────────────────────
+  // RoomEvent rows older than this many days are deleted by the pruning job.
+  ROOM_EVENT_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+
+  // ── Room invitation token secret (P066) ───────────────────────────────────
+  // HMAC secret used to sign invitation tokens. Falls back to AUTH_SECRET when
+  // not explicitly set. Must be at least 32 characters.
+  INVITATION_SECRET: z.string().min(32).optional(),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

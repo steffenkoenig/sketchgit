@@ -24,7 +24,9 @@
     "commit": "● Commit",
     "signIn": "👤 Anmelden",
     "signOut": "⤴ Abmelden",
-    "myDrawings": "Meine Zeichnungen"
+    "myDrawings": "Meine Zeichnungen",
+    "switchToLight": "Zum hellen Design wechseln",
+    "switchToDark": "Zum dunklen Design wechseln"
   },
   "modal": {
     "commit": {

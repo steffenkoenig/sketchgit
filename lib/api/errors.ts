@@ -34,6 +34,10 @@ export const ApiErrorCode = {
   // ── Export ───────────────────────────────────────────────────────────────
   EXPORT_FAILED: "EXPORT_FAILED",
   CANVAS_NOT_FOUND: "CANVAS_NOT_FOUND",
+  // ── Invitations (P066) ───────────────────────────────────────────────────
+  INVITATION_EXPIRED: "INVITATION_EXPIRED",
+  INVITATION_EXHAUSTED: "INVITATION_EXHAUSTED",
+  INVITATION_INVALID: "INVITATION_INVALID",
   // ── Server ────────────────────────────────────────────────────────────────
   INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;
