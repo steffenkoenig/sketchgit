@@ -80,6 +80,22 @@ export class CanvasEngine {
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   init(): void {
+    // In Fabric.js v7, canvas.toJSON() calls toObject() with no arguments and
+    // therefore ignores any propertiesToInclude list passed to it.  The correct
+    // mechanism for custom properties in v7 is FabricObject.customProperties:
+    // any key listed there is always included by every object's toObject() /
+    // toJSON() call regardless of how the canvas is serialised.
+    //
+    // Registering _id and _isArrow here ensures that every committed canvas
+    // snapshot contains these fields so the merge engine can track objects by
+    // their stable identity across branches.
+    if (!FabricObject.customProperties.includes('_id')) {
+      FabricObject.customProperties.push('_id');
+    }
+    if (!FabricObject.customProperties.includes('_isArrow')) {
+      FabricObject.customProperties.push('_isArrow');
+    }
+
     const wrap = document.getElementById('canvas-wrap');
     if (!wrap) return;
 
@@ -227,17 +243,13 @@ export class CanvasEngine {
   getCanvasData(): string {
     if (!this.canvas) return JSON.stringify(undefined);
     this.canvas.getObjects().forEach((o: FabricObject) => ensureObjId(o));
-    // Fabric v7: toJSON() must be called as a bound method on the canvas instance.
-    // Storing canvas?.toJSON in a variable drops the 'this' binding in strict mode,
-    // causing a TypeError when Fabric's toJSON tries to access this._objects etc.
-    // Calling it as (this.canvas.toJSON as X)([...]) keeps 'this' = this.canvas.
-    // The string array forwards custom property names (_id, _isArrow) so they are
-    // included in the serialised snapshot (Fabric v6/v7 compatible convention).
-    return JSON.stringify(
-      (this.canvas.toJSON as unknown as (propertiesToInclude: string[]) => object)(
-        ['_isArrow', '_id'],
-      ),
-    );
+    // Fabric v7: canvas.toJSON() ignores any propertiesToInclude argument because its
+    // signature is toJSON() (no params) – it just delegates to toObject() with no args.
+    // canvas.toObject(propertiesToInclude) DOES forward the list to each object's
+    // toObject(), so _id and _isArrow are included in the output.
+    // NOTE: FabricObject.customProperties is also set in init() as a belt-and-suspenders
+    // guard so that any call path (toJSON included) always serialises these fields.
+    return JSON.stringify(this.canvas.toObject(['_isArrow', '_id']));
   }
 
   loadCanvasData(data: string): void {

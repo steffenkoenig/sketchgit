@@ -124,14 +124,6 @@ The timeline SVG renders a clickable label for each branch. When clicked, `Timel
 
 ---
 
-### BUG-019 – `threeWayMerge()` rebuilds merged canvas from ancestor; discards "ours" canvas-level changes ✅
-
-**Severity**: Medium
-
-In `lib/sketchgit/git/mergeEngine.ts`, the clean-merge return path used `JSON.parse(baseData)` (the common ancestor) as the canvas envelope. Only `objects` was replaced; canvas-level properties like `background` reverted to the ancestor's value, making objects drawn with light colours invisible against the dark ancestor background — the canvas appeared empty. Fixed by parsing `oursData` instead of `baseData`, matching the correct behaviour already present in the conflict-resolution path.
-
----
-
 ## Fixed Bug Detail Index
 
 ### BUG-001 – Direct Prisma imports in API route handlers ✅

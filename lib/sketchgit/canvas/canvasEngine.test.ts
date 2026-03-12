@@ -48,6 +48,7 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
     // Fabric v7: loadFromJSON is promise-based (no callback).
     loadFromJSON: vi.fn().mockResolvedValue(undefined),
     toJSON: vi.fn().mockReturnValue({ version: '5', objects: [] }),
+    toObject: vi.fn().mockReturnValue({ version: '5', objects: [] }),
     isDrawingMode: false,
     selection: true,
     defaultCursor: 'default',
@@ -69,14 +70,14 @@ vi.mock('fabric', () => ({
   IText: vi.fn(function FabricIText(_t: string, opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   Polygon: vi.fn(function FabricPolygon(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   Group: vi.fn(function FabricGroup(_items: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
-  FabricObject: class FabricObject {},
+  FabricObject: class FabricObject { static customProperties: string[] = []; },
   // Fabric v7: Point is used by zoomToPoint; provide a minimal implementation.
   Point: vi.fn(function MockPoint(this: { x: number; y: number }, x: number, y: number) {
     this.x = x; this.y = y;
   }),
 }));
 
-import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group } from 'fabric';
+import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group, FabricObject } from 'fabric';
 import { CanvasEngine } from './canvasEngine';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -143,6 +144,8 @@ function resetMocks() {
   mockCanvasInstance.getZoom.mockReturnValue(1);
   mockCanvasInstance.toJSON.mockReset();
   mockCanvasInstance.toJSON.mockReturnValue({ version: '5', objects: [] });
+  mockCanvasInstance.toObject.mockReset();
+  mockCanvasInstance.toObject.mockReturnValue({ version: '5', objects: [] });
   mockCanvasInstance.loadFromJSON.mockReset();
   // Fabric v7: loadFromJSON is promise-based.
   mockCanvasInstance.loadFromJSON.mockResolvedValue(undefined);
@@ -255,6 +258,27 @@ describe('CanvasEngine – serialisation', () => {
     engine.init();
     const data = engine.getCanvasData();
     expect(() => JSON.parse(data)).not.toThrow();
+  });
+
+  it('getCanvasData() calls canvas.toObject (not toJSON) to include custom properties', () => {
+    // Regression: canvas.toJSON() in Fabric.js v7 ignores propertiesToInclude,
+    // so _id was never written to committed JSON → merge engine saw empty maps
+    // → every merge produced an empty canvas.
+    const { engine } = makeEngine();
+    engine.init();
+    engine.getCanvasData();
+    expect(mockCanvasInstance.toObject).toHaveBeenCalledWith(['_isArrow', '_id']);
+    expect(mockCanvasInstance.toJSON).not.toHaveBeenCalled();
+  });
+
+  it('init() registers _id and _isArrow in FabricObject.customProperties', () => {
+    // Regression: FabricObject.customProperties is the Fabric v7 mechanism that
+    // causes toJSON() to include custom fields even when called without args.
+    const { engine } = makeEngine();
+    (FabricObject as unknown as { customProperties: string[] }).customProperties = [];
+    engine.init();
+    expect((FabricObject as unknown as { customProperties: string[] }).customProperties).toContain('_id');
+    expect((FabricObject as unknown as { customProperties: string[] }).customProperties).toContain('_isArrow');
   });
 
   it('loadCanvasData() calls canvas.loadFromJSON', () => {
