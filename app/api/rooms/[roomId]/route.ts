@@ -23,7 +23,7 @@ import { validate } from "@/lib/api/validate";
 import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
-const PatchRoomSchema = z.object({
+export const PatchRoomSchema = z.object({
   slug: z
     .string()
     .min(3, "Slug must be at least 3 characters.")

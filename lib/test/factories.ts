@@ -34,6 +34,9 @@ export function makeUser(overrides: Partial<User> = {}): User {
     id,
     email: `user-${id}@example.com`,
     name: `User ${id}`,
+    // Intentionally invalid bcrypt-format hash for tests that mock verifyCredentials.
+    // Real tests that exercise hashing should supply a valid argon2id or bcrypt hash
+    // via the `overrides` parameter, or mock argon2/bcryptjs directly.
     passwordHash: "$2b$12$placeholderhashfortest",
     emailVerified: null,
     image: null,

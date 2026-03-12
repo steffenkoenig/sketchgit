@@ -64,6 +64,12 @@ const EnvSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // ── WebSocket compression (P059) ──────────────────────────────────────────
+  // Minimum uncompressed message size (bytes) below which zlib compression is
+  // skipped. Compression adds ~50–100 µs overhead; it is not worth compressing
+  // tiny messages like heartbeat pongs or cursor updates under 1 KB.
+  WS_COMPRESSION_THRESHOLD: z.coerce.number().int().min(0).default(1024),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

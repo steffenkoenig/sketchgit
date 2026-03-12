@@ -14,6 +14,7 @@ function makeMockWs() {
     onStatusChange: null as ((status: ConnectionStatus) => void) | null,
     onClientId: null as ((id: string) => void) | null,
     send: vi.fn(),
+    sendBatched: vi.fn(),
     connect: vi.fn(),
     disconnect: vi.fn(),
     isConnected: vi.fn().mockReturnValue(true),
@@ -380,8 +381,8 @@ describe('CollaborationManager – broadcastDraw', () => {
     // Change the canvas
     const canvas2 = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect', fill: 'blue' }] });
     cb.getCanvasData.mockReturnValue(canvas2);
-    collab.broadcastDraw(true); // should send draw-delta
-    const types = ws.send.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
+    collab.broadcastDraw(true); // should send draw-delta via sendBatched
+    const types = ws.sendBatched.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
     expect(types).toContain('draw-delta');
   });
 
@@ -390,8 +391,10 @@ describe('CollaborationManager – broadcastDraw', () => {
     cb.getCanvasData.mockReturnValue(canvas);
     collab.broadcastDraw(true); // sets snapshot
     ws.send.mockClear();
+    ws.sendBatched.mockClear();
     collab.broadcastDraw(true); // no changes
     expect(ws.send).not.toHaveBeenCalled();
+    expect(ws.sendBatched).not.toHaveBeenCalled();
   });
 });
 
@@ -413,7 +416,8 @@ describe('CollaborationManager – broadcastCursor', () => {
     });
     (collab as unknown as { lastCursorSent: number }).lastCursorSent = 0;
     collab.broadcastCursor({ e: { clientX: 100, clientY: 200 } as MouseEvent });
-    const types = ws.send.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
+    // cursor uses sendBatched (P073)
+    const types = ws.sendBatched.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
     expect(types).toContain('cursor');
   });
 
@@ -425,7 +429,7 @@ describe('CollaborationManager – broadcastCursor', () => {
     });
     (collab as unknown as { lastCursorSent: number }).lastCursorSent = Date.now(); // just sent
     collab.broadcastCursor({ e: { clientX: 100, clientY: 200 } as MouseEvent });
-    const types = ws.send.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
+    const types = ws.sendBatched.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
     expect(types).not.toContain('cursor');
   });
 
@@ -433,6 +437,7 @@ describe('CollaborationManager – broadcastCursor', () => {
     ws.isConnected.mockReturnValue(false);
     collab.broadcastCursor({ e: { clientX: 10, clientY: 20 } as MouseEvent });
     expect(ws.send).not.toHaveBeenCalled();
+    expect(ws.sendBatched).not.toHaveBeenCalled();
   });
 });
 

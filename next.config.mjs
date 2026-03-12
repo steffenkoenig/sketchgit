@@ -1,7 +1,10 @@
 // P050 – Wire the existing i18n message catalogue via next-intl.
 import createNextIntlPlugin from 'next-intl/plugin';
+// P058 – Bundle analysis. Run `ANALYZE=true npm run build` to generate report.
+import bundleAnalyzer from '@next/bundle-analyzer';
 
 const withNextIntl = createNextIntlPlugin('./i18n.ts');
+const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === 'true' });
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -54,4 +57,4 @@ const nextConfig = {
 	},
 };
 
-export default withNextIntl(nextConfig);
+export default withBundleAnalyzer(withNextIntl(nextConfig));

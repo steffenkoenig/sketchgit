@@ -9,7 +9,7 @@ import { validate } from "@/lib/api/validate";
 import { resetPassword } from "@/lib/db/userRepository";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
-const Schema = z.object({
+export const ResetPasswordSchema = z.object({
   token: z.string().max(128),
   password: z
     .string()
@@ -19,7 +19,7 @@ const Schema = z.object({
 
 export async function POST(req: NextRequest) {
   const body: unknown = await req.json().catch(() => null);
-  const v = validate(Schema, body);
+  const v = validate(ResetPasswordSchema, body);
   if (!v.success) return v.response;
 
   const { token, password } = v.data;

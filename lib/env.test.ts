@@ -163,4 +163,27 @@ describe('validateEnv', () => {
     expect(env.LOG_QUERIES).toBe(false);
     delete process.env.LOG_QUERIES;
   });
+
+  it('applies default of 1024 for WS_COMPRESSION_THRESHOLD', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    delete process.env.WS_COMPRESSION_THRESHOLD;
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.WS_COMPRESSION_THRESHOLD).toBe(1024);
+  });
+
+  it('accepts a custom WS_COMPRESSION_THRESHOLD value', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.WS_COMPRESSION_THRESHOLD = '2048';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.WS_COMPRESSION_THRESHOLD).toBe(2048);
+    delete process.env.WS_COMPRESSION_THRESHOLD;
+  });
 });

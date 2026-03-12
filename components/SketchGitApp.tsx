@@ -23,7 +23,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useTranslations } from "next-intl";
-import { createSketchGitApp } from "../lib/sketchgit/createSketchGitApp";
 import { AppTopbar } from "./sketchgit/AppTopbar";
 import { LeftToolbar } from "./sketchgit/LeftToolbar";
 import type { SketchGitAppApi } from "./sketchgit/types";
@@ -40,10 +39,20 @@ export default function SketchGitApp() {
   //       in React Strict Mode and during component re-mounts.
   useEffect(() => {
     if (appRef.current) return;
-    const app = createSketchGitApp();
-    appRef.current = app;
+    let cancelled = false;
+    let app: SketchGitAppApi | null = null;
+
+    // P058 – Dynamic import: the Fabric.js canvas engine (~350 KB gzip) is only
+    // downloaded when the canvas component mounts, not on every page.
+    void import("../lib/sketchgit/createSketchGitApp").then(({ createSketchGitApp }) => {
+      if (cancelled) return;
+      app = createSketchGitApp();
+      appRef.current = app;
+    });
+
     return () => {
-      app.destroy();
+      cancelled = true;
+      app?.destroy();
       appRef.current = null;
     };
   }, []);

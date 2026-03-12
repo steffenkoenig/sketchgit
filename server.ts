@@ -743,7 +743,39 @@ void app.prepare()
         }
       });
     });
-    const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
+    const wss = new WebSocketServer({
+      noServer: true,
+      /**
+       * P059 – perMessageDeflate: enable RFC 7692 permessage-deflate extension.
+       *
+       * Configuration rationale:
+       *  - serverMaxWindowBits: 15 — maximum LZ77 sliding window (32 KB).
+       *    The browser negotiates downwards automatically; using 15 maximises
+       *    compression ratio for large canvas payloads (Fabric.js JSON is
+       *    highly repetitive: repeated property names, coordinates, hex colors).
+       *  - clientMaxWindowBits: 15 — request the same window from the client.
+       *  - threshold: skip zlib for messages below this size (bytes).
+       *    Tiny messages (heartbeat pong ~20 bytes, cursor ~100 bytes) incur
+       *    50–100 µs of zlib overhead with negligible saving; skipping them
+       *    reduces CPU pressure on busy servers.  Default: 1024 (1 KB).
+       *    Configurable via WS_COMPRESSION_THRESHOLD env var.
+       *
+       * Memory implications:
+       *  Each compressed connection requires ~128 KB for the zlib context.
+       *  At 1000 concurrent clients: ~128 MB.
+       *  At 5000+ clients: reduce zlibDeflateOptions.memLevel from 8 to 5–6
+       *  (halves per-connection memory at ~5% compression ratio cost).
+       *
+       * Browser support: all modern browsers (Chrome, Firefox, Safari, Edge)
+       * advertise permessage-deflate automatically; clients that do not support
+       * it connect uncompressed without error.
+       */
+      perMessageDeflate: {
+        serverMaxWindowBits: 15,
+        clientMaxWindowBits: 15,
+        threshold: env.WS_COMPRESSION_THRESHOLD,
+      },
+    });
 
     server.on("upgrade", (req: IncomingMessage, socket, head) => {
       void (async () => {
@@ -816,6 +848,84 @@ void app.prepare()
         socket.destroy(err instanceof Error ? err : new Error(String(err)));
       });
     });
+
+    /**
+     * P073 – Process a single validated WsMessage for a connected client.
+     * Extracted so the P073 batch handler can call it for each message in a batch.
+     */
+    async function handleWsMessage(
+      client: ClientState,
+      message: WsMessage,
+      roomId: string,
+      clientId: string,
+    ): Promise<void> {
+      if (message.type === "profile") {
+        // Guard against non-string values from malicious clients; safeName/safeColor
+        // call .trim() internally and would throw on numbers/objects.
+        client.displayName = safeName(
+          typeof message.name === "string" ? message.name : null,
+        );
+        client.displayColor = safeColor(
+          typeof message.color === "string" ? message.color : null,
+        );
+        schedulePushPresence(roomId);
+        return;
+      }
+
+      // Drop ping/pong before any further processing – heartbeat only
+      if (message.type === "ping" || message.type === "pong") return;
+
+      // P034 – Enforce write permissions: only VIEWER role cannot modify
+      // shared canvas state. ANONYMOUS users are allowed to draw and commit
+      // in public rooms (the anonymous-first UX design).
+      if (
+        (message.type === "draw" ||
+          message.type === "draw-delta" ||
+          message.type === "commit" ||
+          message.type === "branch-update") &&
+        client.role === "VIEWER"
+      ) {
+        sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
+        return;
+      }
+
+      // Persist commit messages to the database
+      if (message.type === "commit" && message.sha && message.commit) {
+        // P057 – Validate SHA format and payload size before persisting or relaying
+        const isValid = validateCommitMessage(
+          message.sha,
+          message.commit,
+          (reason) => logger.warn({ clientId, roomId, reason }, "ws: commit rejected"),
+        );
+        if (!isValid) return;
+
+        logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
+        // P043 – Track in-flight DB writes so graceful shutdown can drain them.
+        beginWrite();
+        try {
+          await dbSaveCommit(
+            roomId,
+            message.sha as string,
+            message.commit as CommitData,
+            client.userId,
+          );
+        } finally {
+          endWrite();
+        }
+        // P030: invalidate cached snapshot so next connection loads fresh state
+        roomCache.invalidate(roomId);
+      }
+
+      // Relay to peers
+      const relay: WsMessage = {
+        ...message,
+        senderId: client.clientId,
+        senderName: client.displayName,
+        senderColor: client.displayColor,
+        roomId,
+      };
+      broadcastRoom(roomId, relay, client.clientId);
+    }
 
     wss.on("connection", asyncHandler("ws:connection", async (ws: WebSocket, reqUrl: URL) => {
       const client = ws as ClientState;
@@ -909,80 +1019,20 @@ void app.prepare()
           return;
         }
 
-        const validated = InboundWsMessageSchema.safeParse(parsed);
-        if (!validated.success) {
-          logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema");
-          sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
-          return;
-        }
-        const message = validated.data as unknown as WsMessage;
+        // P073 – Batch support: client may send a JSON array of WsMessages.
+        // Unwrap and process each message in order.  Single-message frames
+        // remain backward-compatible (not wrapped in an array).
+        const messages: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
 
-        if (message.type === "profile") {
-          // Guard against non-string values from malicious clients; safeName/safeColor
-          // call .trim() internally and would throw on numbers/objects.
-          client.displayName = safeName(
-            typeof message.name === "string" ? message.name : null,
-          );
-          client.displayColor = safeColor(
-            typeof message.color === "string" ? message.color : null,
-          );
-          schedulePushPresence(roomId);
-          return;
-        }
-
-        // Drop ping/pong before any further processing – heartbeat only
-        if (message.type === "ping" || message.type === "pong") return;
-
-        // P034 – Enforce write permissions: only VIEWER role cannot modify
-        // shared canvas state. ANONYMOUS users are allowed to draw and commit
-        // in public rooms (the anonymous-first UX design).
-        if (
-          (message.type === "draw" ||
-            message.type === "draw-delta" ||
-            message.type === "commit" ||
-            message.type === "branch-update") &&
-          client.role === "VIEWER"
-        ) {
-          sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
-          return;
-        }
-
-        // Persist commit messages to the database
-        if (message.type === "commit" && message.sha && message.commit) {
-          // P057 – Validate SHA format and payload size before persisting or relaying
-          const isValid = validateCommitMessage(
-            message.sha,
-            message.commit,
-            (reason) => logger.warn({ clientId, roomId, reason }, "ws: commit rejected"),
-          );
-          if (!isValid) return;
-
-          logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
-          // P043 – Track in-flight DB writes so graceful shutdown can drain them.
-          beginWrite();
-          try {
-            await dbSaveCommit(
-              roomId,
-              message.sha as string,
-              message.commit as CommitData,
-              client.userId,
-            );
-          } finally {
-            endWrite();
+        for (const msg of messages) {
+          const validated = InboundWsMessageSchema.safeParse(msg);
+          if (!validated.success) {
+            logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema");
+            sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
+            return;
           }
-          // P030: invalidate cached snapshot so next connection loads fresh state
-          roomCache.invalidate(roomId);
+          await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId);
         }
-
-        // Relay to peers
-        const relay: WsMessage = {
-          ...message,
-          senderId: client.clientId,
-          senderName: client.displayName,
-          senderColor: client.displayColor,
-          roomId,
-        };
-        broadcastRoom(roomId, relay, client.clientId);
       }));
 
       client.on("close", () => {

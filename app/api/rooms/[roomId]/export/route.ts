@@ -22,7 +22,7 @@ import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import { resolveRoomId } from "@/lib/db/roomRepository";
 
-const QuerySchema = z.object({
+export const ExportQuerySchema = z.object({
   format: z.enum(["png", "svg"]).default("png"),
   sha: z.string().max(64).optional(),
 });
@@ -110,7 +110,7 @@ export async function GET(
 ) {
   const { roomId: roomIdOrSlug } = await params;
   const rawQuery = Object.fromEntries(req.nextUrl.searchParams.entries());
-  const v = validate(QuerySchema, rawQuery);
+  const v = validate(ExportQuerySchema, rawQuery);
   if (!v.success) return v.response;
 
   const { format, sha: reqSha } = v.data;

@@ -10,7 +10,7 @@ import { createUser } from "@/lib/db/userRepository";
 import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
-const RegisterSchema = z.object({
+export const RegisterSchema = z.object({
   email: z.string().email("A valid email address is required.").max(254),
   password: z
     .string()

@@ -294,7 +294,6 @@ export class CollaborationManager {
       this.lastBroadcastSnapshot = currentSnapshot;
       return;
     }
-
     const added: Record<string, unknown>[] = [];
     // `modified` carries only the _id plus changed properties (minimal patch).
     const modified: Record<string, unknown>[] = [];
@@ -326,7 +325,9 @@ export class CollaborationManager {
 
     if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
 
-    this.ws.send({ type: 'draw-delta', added, modified, removed });
+    // P073 – use sendBatched so a concurrent cursor update is coalesced into
+    // a single WebSocket frame (same microtask tick).
+    this.ws.sendBatched({ type: 'draw-delta', added, modified, removed });
     this.lastBroadcastSnapshot = currentSnapshot;
   }
 
@@ -382,7 +383,8 @@ export class CollaborationManager {
 
     const rect = document.getElementById('canvas-wrap')?.getBoundingClientRect();
     if (!rect) return;
-    this.ws.send({
+    // P073 – use sendBatched to coalesce with a concurrent draw-delta.
+    this.ws.sendBatched({
       type: 'cursor',
       x: e.e.clientX - rect.left,
       y: e.e.clientY - rect.top,

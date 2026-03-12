@@ -7,7 +7,7 @@ import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
 
-const QuerySchema = z.object({
+export const CommitsQuerySchema = z.object({
   cursor: z.string().max(64).optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -20,7 +20,7 @@ export async function GET(
   const url = new URL(req.url);
   const rawQuery = Object.fromEntries(url.searchParams);
 
-  const v = validate(QuerySchema, rawQuery);
+  const v = validate(CommitsQuerySchema, rawQuery);
   if (!v.success) return v.response;
   const { cursor, take } = v.data;
 
