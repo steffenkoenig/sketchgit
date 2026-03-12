@@ -63,8 +63,5 @@ export function apiError(
   status: number,
   details?: unknown,
 ): NextResponse<ApiErrorBody> {
-  const body: ApiErrorBody = details !== undefined
-    ? { code, message, details }
-    : { code, message };
-  return NextResponse.json(body, { status });
+  return NextResponse.json({ code, message, details }, { status });
 }

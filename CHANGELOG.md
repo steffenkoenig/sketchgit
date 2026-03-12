@@ -3,7 +3,7 @@
 All notable changes to SketchGit are documented in this file.
 
 This changelog is maintained automatically by [Release Please](https://github.com/googleapis/release-please).
-After `P064` is merged, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
+Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
 ## [1.0.0] – Initial Release

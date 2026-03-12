@@ -38,7 +38,8 @@ function createPrismaClient(): PrismaClient {
 
     if (logAllQueries) {
       // Development: log every query for N+1 pattern detection.
-      // Uses console.warn since console.debug is not in the ESLint allowlist.
+      // ESLint allowlist only permits console.warn/error (not console.debug),
+      // so WARN is used here. This is intentional for dev-mode verbosity.
       console.warn(`[prisma:query] ${sql} (${duration}ms)`);
     } else if (duration > slowQueryMs) {
       // Production: log only queries exceeding the slow-query threshold.
