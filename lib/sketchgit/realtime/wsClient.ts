@@ -16,6 +16,7 @@
 
 import { ConnectionStatus, WsMessage } from '../types';
 import { showToast } from '../ui/toast';
+import { logger } from '../logger';
 
 // ─── Reconnect configuration ─────────────────────────────────────────────────
 
@@ -136,12 +137,18 @@ export class WsClient {
         return;
       }
 
+      // P043 – server is about to restart; surface a brief informational toast.
+      if (data.type === 'shutdown-warning') {
+        showToast('🔄 Server restarting, reconnecting shortly…');
+        return;
+      }
+
       this.onMessage?.(data);
     });
 
     ws.addEventListener('error', () => {
       // onerror is always followed by onclose; log and let onclose handle retry
-      console.warn('[WsClient] WebSocket error – will retry on close');
+      logger.warn('[WsClient] WebSocket error – will retry on close');
     });
 
     ws.addEventListener('close', (ev) => {
@@ -194,7 +201,7 @@ export class WsClient {
     this._clearHeartbeat();
     this.heartbeatTimer = setTimeout(() => {
       // No message received in HEARTBEAT_TIMEOUT_MS — assume zombie connection
-      console.warn('[WsClient] Heartbeat timeout — closing socket');
+      logger.warn('[WsClient] Heartbeat timeout — closing socket');
       try { this.socket?.close(); } catch { /* ignore */ }
     }, HEARTBEAT_TIMEOUT_MS);
   }

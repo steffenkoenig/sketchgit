@@ -19,7 +19,9 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -30,12 +32,15 @@
     "clsx": "^2.1.1",
     "fabric": "^7.2.0",
     "ioredis": "^5.10.0",
+    "lru-cache": "^11.2.6",
     "next": "^16.0.0",
     "next-auth": "^5.0.0-beta.30",
+    "next-intl": "^4.8.3",
     "pg": "^8.20.0",
     "pino": "^10.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "resend": "^6.9.3",
     "tailwind-merge": "^3.5.0",
     "tsx": "^4.21.0",
     "ws": "^8.18.0",
@@ -43,6 +48,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/fabric": "^5.3.11",
@@ -64,5 +70,8 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.8.0",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "@swc/helpers": "^0.5.19"
   }
 }

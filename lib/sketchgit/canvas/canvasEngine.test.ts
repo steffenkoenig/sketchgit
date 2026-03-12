@@ -110,6 +110,11 @@ function makeEngine() {
   return { engine, onBroadcastDraw, onBroadcastCursor };
 }
 
+/** Helper available to all describe blocks. */
+function makeMouseEvent(type: string, init?: MouseEventInit) {
+  return new MouseEvent(type, init);
+}
+
 function resetMocks() {
   // Clear call histories (NOT implementations) on fabric constructors
   [Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group,
@@ -464,10 +469,6 @@ describe('CanvasEngine – mouse events', () => {
   // Fabric v7: events include scenePoint (replaces canvas.getPointer(e.e))
   const defaultScenePoint = { x: 10, y: 20 };
 
-  function makeMouseEvent(type: string, init?: MouseEventInit) {
-    return new MouseEvent(type, init);
-  }
-
   function fireMouseDown(tool: string, engine: CanvasEngine, scenePoint = defaultScenePoint) {
     engine.setTool(tool);
     canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint });
@@ -606,5 +607,99 @@ describe('CanvasEngine – mouse events', () => {
     canvasEventHandlers['object:modified']?.({});
     expect(engine.isDirty).toBe(true);
     expect(onBroadcastDraw).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('CanvasEngine – undo/redo (P037)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('undo() with empty stack is a no-op (no crash)', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    expect(() => engine.undo()).not.toThrow();
+  });
+
+  it('redo() with empty stack is a no-op (no crash)', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    expect(() => engine.redo()).not.toThrow();
+  });
+
+  it('pushHistory via mousedown pushes to undoStack and clears redoStack', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    // mousedown calls pushHistory internally
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 10, y: 10 } });
+    // Access undoStack via type assertion to test private state
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[] };
+    expect(e.undoStack.length).toBe(1);
+    expect(e.redoStack.length).toBe(0);
+  });
+
+  it('undo() pops from undoStack and pushes current state to redoStack', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    // Push a history entry
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 10, y: 10 } });
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[] };
+    expect(e.undoStack.length).toBe(1);
+    engine.undo();
+    expect(e.undoStack.length).toBe(0);
+    expect(e.redoStack.length).toBe(1);
+    expect(mockCanvasInstance.loadFromJSON).toHaveBeenCalled();
+  });
+
+  it('redo() pops from redoStack and pushes current state to undoStack', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 10, y: 10 } });
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[] };
+    engine.undo();
+    expect(e.redoStack.length).toBe(1);
+    mockCanvasInstance.loadFromJSON.mockClear();
+    engine.redo();
+    expect(e.redoStack.length).toBe(0);
+    expect(e.undoStack.length).toBe(1);
+    expect(mockCanvasInstance.loadFromJSON).toHaveBeenCalled();
+  });
+
+  it('new action after undo clears redoStack', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 10, y: 10 } });
+    engine.undo();
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[] };
+    expect(e.redoStack.length).toBe(1);
+    // Another mousedown clears redo
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 20, y: 20 } });
+    expect(e.redoStack.length).toBe(0);
+  });
+
+  it('stack eviction: after MAX_HISTORY+1 pushes stack length stays at MAX_HISTORY', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[]; MAX_HISTORY: number };
+    const limit = e.MAX_HISTORY;
+    for (let i = 0; i < limit + 5; i++) {
+      canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: i, y: i } });
+    }
+    expect(e.undoStack.length).toBeLessThanOrEqual(limit);
+  });
+
+  it('loadCanvasData clears both stacks', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 10, y: 10 } });
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[] };
+    expect(e.undoStack.length).toBeGreaterThan(0);
+    engine.loadCanvasData(JSON.stringify({ version: '5', objects: [] }));
+    expect(e.undoStack.length).toBe(0);
+    expect(e.redoStack.length).toBe(0);
   });
 });

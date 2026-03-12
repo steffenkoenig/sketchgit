@@ -205,4 +205,64 @@ describe('CommitCoordinator', () => {
       expect(ctx.ws.send).not.toHaveBeenCalled();
     });
   });
+
+  // ─── P053: cpCheckout sends branch-update ─────────────────────────────────
+
+  describe('P053: cpCheckout()', () => {
+    it('sends branch-update with detached=true after checkout', () => {
+      (coord as unknown as { popupSHA: string }).popupSHA = 'sha0';
+      (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha1'); // different sha
+      coord.cpCheckout();
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'branch-update', detached: true, headSha: 'sha0' }),
+      );
+    });
+
+    it('does NOT send branch-update when already at that commit', () => {
+      (coord as unknown as { popupSHA: string }).popupSHA = 'sha0';
+      (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha0');
+      coord.cpCheckout();
+      expect(ctx.ws.send).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── P053/P055: cpRollback uses confirm modal ────────────────────────────────
+
+  describe('P053/P055: cpRollback()', () => {
+    beforeEach(() => {
+      document.body.innerHTML += `
+        <p id="confirmModalMessage"></p>
+        <button id="confirmModalOkBtn">Confirm</button>
+        <div id="confirmModal"></div>
+      `;
+    });
+
+    it('opens the confirm modal instead of calling window.confirm()', () => {
+      const confirmSpy = vi.spyOn(window, 'confirm');
+      (coord as unknown as { popupSHA: string }).popupSHA = 'sha0';
+      ctx.git.detached = null;
+      coord.cpRollback();
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(mockOpenModal).toHaveBeenCalledWith('confirmModal');
+    });
+
+    it('sends branch-update after acceptConfirm', () => {
+      (coord as unknown as { popupSHA: string }).popupSHA = 'sha0';
+      ctx.git.detached = null;
+      coord.cpRollback();
+      coord.acceptConfirm();
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'branch-update', isRollback: true, headSha: 'sha0' }),
+      );
+    });
+
+    it('does NOT perform rollback after cancelConfirm', () => {
+      (coord as unknown as { popupSHA: string }).popupSHA = 'sha0';
+      ctx.git.detached = null;
+      coord.cpRollback();
+      coord.cancelConfirm();
+      expect(ctx.ws.send).not.toHaveBeenCalled();
+      expect(ctx.canvas.loadCanvasData).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -7,9 +7,12 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserRooms } from "@/lib/db/roomRepository";
+import { prisma } from "@/lib/db/prisma";
 import { getAuthSession } from "@/lib/authTypes";
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import { DeleteAccountButton } from "@/components/auth/DeleteAccountButton";
+import { RenameRoomButton } from "@/components/dashboard/RenameRoomButton";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -22,6 +25,14 @@ export default async function DashboardPage() {
 
   const userId = authSession.user.id;
   const rooms = await getUserRooms(userId);
+
+  // P041: Check if the user has a credentials password to conditionally require
+  // password re-entry in the delete confirmation dialog.
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+  const hasPassword = !!userRecord?.passwordHash;
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
@@ -41,6 +52,7 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-400">{authSession.user.name ?? authSession.user.email}</span>
           <SignOutButton />
+          <DeleteAccountButton hasPassword={hasPassword} />
         </div>
       </header>
 
@@ -78,29 +90,37 @@ export default async function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {rooms.map((room) => (
-              <Link
-                key={room.id}
-                href={`/?room=${encodeURIComponent(room.id)}`}
-                className="group block bg-[#12121a] border border-slate-800 hover:border-violet-700 rounded-xl p-5 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🖼</span>
-                    <span className="font-medium text-sm truncate max-w-[140px]">
-                      {room.slug ?? room.id}
-                    </span>
+              <div key={room.id} className="group block bg-[#12121a] border border-slate-800 hover:border-violet-700 rounded-xl p-5 transition-colors">
+                <Link
+                  href={`/?room=${encodeURIComponent(room.slug ?? room.id)}`}
+                  className="block"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🖼</span>
+                      <span className="font-medium text-sm truncate max-w-[140px]">
+                        {room.slug ?? room.id}
+                      </span>
+                    </div>
+                    <RoleBadge role={room.role} />
                   </div>
-                  <RoleBadge role={room.role} />
-                </div>
 
-                <div className="text-xs text-slate-500 space-y-1">
-                  <div className="flex justify-between">
-                    <span>{room.commitCount} commit{room.commitCount === 1 ? "" : "s"}</span>
-                    <span>{room.isPublic ? "Public" : "Private"}</span>
+                  <div className="text-xs text-slate-500 space-y-1">
+                    <div className="flex justify-between">
+                      <span>{room.commitCount} commit{room.commitCount === 1 ? "" : "s"}</span>
+                      <span>{room.isPublic ? "Public" : "Private"}</span>
+                    </div>
+                    <div>Updated {formatRelative(room.updatedAt)}</div>
                   </div>
-                  <div>Updated {formatRelative(room.updatedAt)}</div>
-                </div>
-              </Link>
+                </Link>
+
+                {/* P049 – inline rename for owners */}
+                <RenameRoomButton
+                  roomId={room.id}
+                  currentSlug={room.slug}
+                  isOwner={room.role === "OWNER"}
+                />
+              </div>
             ))}
           </div>
         )}

@@ -127,6 +127,11 @@ function SignInForm() {
         </form>
 
         <p className="text-center text-xs text-slate-500">
+          <Link href="/auth/forgot-password" className="text-violet-400 hover:underline">
+            Forgot password?
+          </Link>
+        </p>
+        <p className="text-center text-xs text-slate-500">
           Don&apos;t have an account?{" "}
           <Link
             href={`/auth/register${callbackUrl !== "/" ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ""}`}

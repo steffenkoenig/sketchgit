@@ -175,13 +175,22 @@ describe('createSketchGitApp', () => {
     expect(showToast).toHaveBeenCalledWith('⚠ Not on a branch', true);
   });
 
-  it('cpRollback rolls back after confirm', () => {
-    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+  it('cpRollback rolls back after confirm', async () => {
+    const { openModal } = await import('./ui/modals');
+    // Add the confirmModal elements to the DOM
+    document.body.innerHTML += `
+      <div id="confirmModal"></div>
+      <p id="confirmModalMessage"></p>
+      <button id="confirmModalOkBtn">Confirm</button>
+    `;
     const app = createSketchGitApp();
     mocks.tlCallbacks.onCommitClick('sha0', 100, 100);
     app.cpRollback();
+    // The confirm modal should be opened (not window.confirm)
+    expect(openModal).toHaveBeenCalledWith('confirmModal');
+    // Simulate user clicking Confirm
+    app.acceptConfirm();
     expect(mocks.mockCanvas.loadCanvasData).toHaveBeenCalled();
-    vi.unstubAllGlobals();
   });
 
   it('openCommitModal shows toast when not dirty', async () => {

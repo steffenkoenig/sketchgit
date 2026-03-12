@@ -9,6 +9,7 @@ vi.mock('@/lib/db/prisma', () => {
       room: {
         upsert: vi.fn(),
         findMany: vi.fn(),
+        findUnique: vi.fn(),
         deleteMany: vi.fn(),
       },
       commit: {
@@ -25,6 +26,7 @@ vi.mock('@/lib/db/prisma', () => {
       },
       roomMembership: {
         findMany: vi.fn(),
+        findUnique: vi.fn(),
       },
     },
   };
@@ -36,6 +38,8 @@ import {
   loadRoomSnapshot,
   getUserRooms,
   pruneInactiveRooms,
+  checkRoomAccess,
+  COMMIT_PAGE_SIZE,
   type CommitRecord,
 } from './roomRepository';
 import { prisma } from '@/lib/db/prisma';
@@ -43,10 +47,12 @@ import { prisma } from '@/lib/db/prisma';
 const mock = {
   transaction: prisma.$transaction as ReturnType<typeof vi.fn>,
   roomUpsert: prisma.room.upsert as ReturnType<typeof vi.fn>,
+  roomFindUnique: prisma.room.findUnique as ReturnType<typeof vi.fn>,
   commitFindMany: prisma.commit.findMany as ReturnType<typeof vi.fn>,
   branchFindMany: prisma.branch.findMany as ReturnType<typeof vi.fn>,
   roomStateFindUnique: prisma.roomState.findUnique as ReturnType<typeof vi.fn>,
   membershipFindMany: prisma.roomMembership.findMany as ReturnType<typeof vi.fn>,
+  membershipFindUnique: prisma.roomMembership.findUnique as ReturnType<typeof vi.fn>,
   roomFindMany: prisma.room.findMany as ReturnType<typeof vi.fn>,
   roomDeleteMany: prisma.room.deleteMany as ReturnType<typeof vi.fn>,
 };
@@ -185,6 +191,32 @@ describe('loadRoomSnapshot', () => {
     const snap = await loadRoomSnapshot('room-1');
     expect(snap!.detached).toBe('def456');
   });
+
+  it('calls findMany with take: COMMIT_PAGE_SIZE by default', async () => {
+    mock.commitFindMany.mockResolvedValue([]);
+    mock.branchFindMany.mockResolvedValue([]);
+    mock.roomStateFindUnique.mockResolvedValue(null);
+
+    await loadRoomSnapshot('room-1');
+    expect(mock.commitFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: COMMIT_PAGE_SIZE }),
+    );
+  });
+
+  it('passes cursor and skip when cursor option is provided', async () => {
+    mock.commitFindMany.mockResolvedValue([]);
+    mock.branchFindMany.mockResolvedValue([]);
+    mock.roomStateFindUnique.mockResolvedValue(null);
+
+    await loadRoomSnapshot('room-1', { cursor: 'abc123', take: 10 });
+    expect(mock.commitFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 10,
+        cursor: { sha: 'abc123' },
+        skip: 1,
+      }),
+    );
+  });
 });
 
 describe('getUserRooms', () => {
@@ -241,5 +273,75 @@ describe('pruneInactiveRooms', () => {
     mock.roomDeleteMany.mockResolvedValue({ count: 0 });
     await pruneInactiveRooms();
     expect(mock.roomDeleteMany).toHaveBeenCalled();
+  });
+
+  it('excludes active room ids when provided', async () => {
+    mock.roomDeleteMany.mockResolvedValue({ count: 1 });
+    await pruneInactiveRooms(30, ['room-active-1', 'room-active-2']);
+    expect(mock.roomDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { notIn: ['room-active-1', 'room-active-2'] },
+        }),
+      }),
+    );
+  });
+
+  it('does not add id filter when excludeRoomIds is empty', async () => {
+    mock.roomDeleteMany.mockResolvedValue({ count: 0 });
+    await pruneInactiveRooms(30, []);
+    const call = mock.roomDeleteMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(call.where).not.toHaveProperty('id');
+  });
+});
+
+
+describe('checkRoomAccess (P034)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('allows anonymous access to a non-existent room (creation-on-join)', async () => {
+    mock.roomFindUnique.mockResolvedValue(null);
+    const result = await checkRoomAccess('new-room', null);
+    expect(result).toEqual({ allowed: true, role: 'EDITOR' });
+  });
+
+  it('allows anonymous access to a public room', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true });
+    const result = await checkRoomAccess('pub-room', null);
+    expect(result).toEqual({ allowed: true, role: 'EDITOR' });
+  });
+
+  it('resolves EDITOR role for authenticated user with membership on a public room', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true });
+    mock.membershipFindUnique.mockResolvedValue({ role: 'EDITOR' });
+    const result = await checkRoomAccess('pub-room', 'usr_1');
+    expect(result).toEqual({ allowed: true, role: 'EDITOR' });
+  });
+
+  it('denies unauthenticated access to a private room', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: false });
+    const result = await checkRoomAccess('priv-room', null);
+    expect(result).toEqual({ allowed: false, reason: 'PRIVATE_ROOM' });
+  });
+
+  it('denies authenticated non-member access to a private room', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: false });
+    mock.membershipFindUnique.mockResolvedValue(null);
+    const result = await checkRoomAccess('priv-room', 'usr_stranger');
+    expect(result).toEqual({ allowed: false, reason: 'NOT_A_MEMBER' });
+  });
+
+  it('allows VIEWER role member to access a private room', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: false });
+    mock.membershipFindUnique.mockResolvedValue({ role: 'VIEWER' });
+    const result = await checkRoomAccess('priv-room', 'usr_viewer');
+    expect(result).toEqual({ allowed: true, role: 'VIEWER' });
+  });
+
+  it('allows OWNER role member to access a private room', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: false });
+    mock.membershipFindUnique.mockResolvedValue({ role: 'OWNER' });
+    const result = await checkRoomAccess('priv-room', 'usr_owner');
+    expect(result).toEqual({ allowed: true, role: 'OWNER' });
   });
 });

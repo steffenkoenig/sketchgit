@@ -6,6 +6,7 @@
 import { WsMessage, PresenceClient } from '../types';
 import { WsClient } from './wsClient';
 import { showToast } from '../ui/toast';
+import { logger } from '../logger';
 
 // ─── Throttle constants (P006) ────────────────────────────────────────────────
 
@@ -28,6 +29,11 @@ export interface CollabCallbacks {
   applyGitState: (state: { commits: Record<string, unknown>; branches: Record<string, string>; HEAD: string; detached: string | null }) => void;
   /** Called when a peer broadcasts a commit we don't have yet. */
   receiveCommit: (sha: string, commit: unknown) => void;
+  /**
+   * P053 – Apply a branch pointer update received from a peer (rollback relay).
+   * Only called when `isRollback` is true in the branch-update message.
+   */
+  applyBranchUpdate: (branch: string, headSha: string) => void;
 }
 
 export class CollaborationManager {
@@ -148,6 +154,16 @@ export class CollaborationManager {
         break;
       }
 
+      // P053 – handle branch pointer updates (rollback/switch) from peers
+      case 'branch-update': {
+        if (data.isRollback && typeof data.branch === 'string' && typeof data.headSha === 'string') {
+          this.cb.applyBranchUpdate(data.branch, data.headSha);
+        }
+        this.cb.renderTimeline();
+        this.cb.updateUI();
+        break;
+      }
+
       case 'fullsync-request': {
         const gitState = this.cb.getGitState();
         this.ws.send({
@@ -258,7 +274,7 @@ export class CollaborationManager {
     try {
       parsed = JSON.parse(canvasJson) as Record<string, unknown>;
     } catch {
-      console.warn('[CollabManager] Failed to parse canvas JSON for delta');
+      logger.warn('[CollabManager] Failed to parse canvas JSON for delta');
       return;
     }
     const objects = (parsed.objects as Record<string, unknown>[] | undefined) ?? [];
@@ -324,7 +340,7 @@ export class CollaborationManager {
     try {
       parsed = JSON.parse(this.cb.getCanvasData()) as Record<string, unknown>;
     } catch {
-      console.warn('[CollabManager] Failed to parse canvas JSON for delta apply');
+      logger.warn('[CollabManager] Failed to parse canvas JSON for delta apply');
       return;
     }
 
@@ -429,7 +445,7 @@ export class CollaborationManager {
 
   copyPeerId(): void {
     const link = this.roomInviteLink(this.currentRoomId || 'default');
-    navigator.clipboard.writeText(link).then(() => showToast('✓ Invite link copied'));
+    void navigator.clipboard.writeText(link).then(() => showToast('✓ Invite link copied'));
   }
 
   toggleCollabPanel(): void {

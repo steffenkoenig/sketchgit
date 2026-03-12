@@ -23,6 +23,7 @@ import {
 import type { TPointerEventInfo, XY } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
+import { logger } from '../logger';
 
 export class CanvasEngine {
   // ── Fabric.js canvas instance (set by init()) ──────────────────────────────
@@ -44,6 +45,11 @@ export class CanvasEngine {
 
   // ── Dirty flag ────────────────────────────────────────────────────────────
   isDirty = false;
+
+  // ── P037: Undo/redo history stack ─────────────────────────────────────────
+  private readonly MAX_HISTORY = 50;
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
 
   // ── P020: Bound listener references for proper cleanup ───────────────────
   private boundResize: (() => void) | null = null;
@@ -78,7 +84,7 @@ export class CanvasEngine {
     this.canvas.on('mouse:down', (e: TPointerEventInfo) => this.onMouseDown(e));
     this.canvas.on('mouse:move', (e: TPointerEventInfo) => this.onMouseMove(e));
     this.canvas.on('mouse:up', (e: TPointerEventInfo) => this.onMouseUp(e));
-    this.canvas.on('object:modified', () => { this.markDirty(); this.onBroadcastDraw(true); });
+    this.canvas.on('object:modified', () => { this.pushHistory(); this.markDirty(); this.onBroadcastDraw(true); });
     this.canvas.on('object:added', (e: { target?: FabricObject }) => { if (e.target) ensureObjId(e.target); });
     this.canvas.on('mouse:wheel', (e: TPointerEventInfo<WheelEvent>) => this.onWheel(e));
 
@@ -108,7 +114,7 @@ export class CanvasEngine {
       this.boundKeydown = null;
     }
     if (this.canvas) {
-      this.canvas.dispose(); // Fabric.js built-in: removes internal listeners & clears element
+      void this.canvas.dispose(); // Fabric.js built-in: removes internal listeners & clears element
       this.canvas = null;
     }
   }
@@ -126,11 +132,62 @@ export class CanvasEngine {
   }
 
   loadCanvasData(data: string): void {
+    // P037: Clear undo/redo stacks when an external canvas state is loaded
+    // (e.g. git checkout, merge) — local history is no longer valid.
+    this.undoStack = [];
+    this.redoStack = [];
     // P022: requestRenderAll() in the loadFromJSON callback schedules a single
     // frame render rather than forcing a synchronous repaint.
     // Fabric v7: loadFromJSON is promise-based; use .then() instead of a callback.
-    this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
+    void this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
       this.canvas?.requestRenderAll();
+    }).catch((err: unknown) => {
+      logger.error({ err }, 'loadCanvasData: failed to load canvas JSON');
+    });
+  }
+
+  // ── P037: Undo / Redo ─────────────────────────────────────────────────────
+
+  /**
+   * Capture the current canvas state onto the undo stack.
+   * Called before each user-initiated drawing gesture.
+   */
+  private pushHistory(): void {
+    const json = this.getCanvasData();
+    this.undoStack.push(json);
+    if (this.undoStack.length > this.MAX_HISTORY) {
+      this.undoStack.shift(); // evict oldest to keep stack bounded
+    }
+    this.redoStack = []; // any new action clears the redo stack
+  }
+
+  /** Undo the last drawing action (Ctrl+Z). Broadcasts restored state to peers. */
+  undo(): void {
+    const snapshot = this.undoStack.pop();
+    if (!snapshot) return;
+    const current = this.getCanvasData();
+    this.redoStack.push(current);
+    void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }).catch((err: unknown) => {
+      logger.error({ err }, 'undo: failed to load snapshot');
+    });
+  }
+
+  /** Redo the last undone action (Ctrl+Shift+Z / Ctrl+Y). Broadcasts restored state to peers. */
+  redo(): void {
+    const snapshot = this.redoStack.pop();
+    if (!snapshot) return;
+    const current = this.getCanvasData();
+    this.undoStack.push(current);
+    void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }).catch((err: unknown) => {
+      logger.error({ err }, 'redo: failed to load snapshot');
     });
   }
 
@@ -150,6 +207,8 @@ export class CanvasEngine {
 
   private onMouseDown(e: TPointerEventInfo): void {
     if (this.currentTool === 'select') return;
+    // P037: Snapshot the canvas state before this gesture so Ctrl+Z can restore it.
+    this.pushHistory();
     // Fabric v7: scenePoint is supplied directly on the event info object
     const p = e.scenePoint;
     this.startX = p.x;
@@ -382,10 +441,23 @@ export class CanvasEngine {
     else if (k === '-') this.zoomOut();
     else if (k === '0') this.resetZoom();
     else if ((e.ctrlKey || e.metaKey) && k === 'z') {
-      this.markDirty();
+      e.preventDefault();
+      if (e.shiftKey) {
+        this.redo();
+      } else {
+        this.undo();
+      }
+    } else if ((e.ctrlKey || e.metaKey) && k === 'y') {
+      e.preventDefault();
+      this.redo();
     } else if (k === 'delete' || k === 'backspace') {
       const obj = this.canvas?.getActiveObject();
-      if (obj) { this.canvas?.remove(obj); this.markDirty(); this.onBroadcastDraw(true); }
+      if (obj) {
+        this.pushHistory();
+        this.canvas?.remove(obj);
+        this.markDirty();
+        this.onBroadcastDraw(true);
+      }
     }
   }
 

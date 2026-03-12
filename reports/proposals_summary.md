@@ -47,6 +47,34 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P025 | Improve Application Accessibility: ARIA Roles, Keyboard Navigation, and Screen Reader Support | Maintainability | [P025](proposals/done/P025_accessibility-aria-keyboard.md) |
 | P022 | Improve Canvas Rendering Performance: Batch Renders, Reduce Object Churn, and Cache Arrows | Performance | [P022](proposals/done/P022_canvas-rendering-performance.md) |
 | P012 | Horizontal Scalability: Replace In-Memory Room State with Redis Pub/Sub | Reliability, Performance | [P012](proposals/done/P012_horizontal-scalability-redis-pubsub.md) |
+| P042 | Add the `@typescript-eslint/no-floating-promises` ESLint Rule to Catch Unhandled Promise Rejections | Reliability, Maintainability | [P042](proposals/done/P042_no-floating-promises-eslint-rule.md) |
+| P044 | Debounce the `pushPresence` Broadcast to Prevent Ghost-Client Flicker During Simultaneous Connects | Performance, UX | [P044](proposals/done/P044_presence-broadcast-debouncing.md) |
+| P054 | Fix Timing Side-channel in `verifyCredentials` That Enables User-enumeration Attacks | Security | [P054](proposals/done/P054_constant-time-credential-verification.md) |
+| P029 | Fix Unbounded Commit Query in `roomRepository.loadRoomSnapshot` and Add Paginated Commit History REST API | Performance, Reliability | [P029](proposals/done/P029_paginated-commit-history-api.md) |
+| P030 | Add an LRU In-Memory Cache for Room Snapshots to Avoid Repeated Database Loads on Reconnect | Performance | [P030](proposals/done/P030_in-memory-room-snapshot-cache.md) |
+| P031 | Validate Incoming WebSocket Message Payloads with Zod Schemas and Enforce Per-Message Size Limits | Reliability, Security | [P031](proposals/done/P031_websocket-message-validation.md) |
+| P032 | Invoke `pruneInactiveRooms` on a Recurring Schedule to Prevent Unbounded Database Growth | Reliability, Performance | [P032](proposals/done/P032_automated-room-pruning-job.md) |
+| P033 | Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95% | Performance | [P033](proposals/done/P033_delta-based-canvas-storage.md) |
+| P034 | Enforce Room Membership and Visibility Rules on WebSocket Connection Upgrade | Security, Reliability | [P034](proposals/done/P034_room-access-control-enforcement.md) |
+| P035 | Aggregate Presence Across All Server Instances Using Redis Hash | Reliability | [P035](proposals/done/P035_cross-instance-presence-redis-hash.md) |
+| P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/done/P036_client-side-logging-abstraction.md) |
+| P037 | Implement an Undo/Redo History Stack in the Canvas Engine with Ctrl+Z / Ctrl+Shift+Z Support | Performance, UX | [P037](proposals/done/P037_undo-redo-stack.md) |
+| P038 | Add a Playwright End-to-End Test Suite Covering Critical User Journeys | Reliability, Maintainability | [P038](proposals/done/P038_e2e-playwright-test-suite.md) |
+| P039 | Add a REST Endpoint to Export the Current Room's Canvas as PNG or SVG | Maintainability, UX | [P039](proposals/done/P039_canvas-export-api.md) |
+| P040 | Implement Email-Based Password Reset for Credentials-Provider Users | Security, Reliability | [P040](proposals/done/P040_password-reset-flow.md) |
+| P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/done/P041_gdpr-account-deletion.md) |
+| P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/done/P043_graceful-shutdown-drain-window.md) |
+| P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/done/P045_docker-image-digest-trivy-scan.md) |
+| P046 | Replace In-memory Proxy Rate Limiter with Redis-backed Counter for Multi-instance Correctness | Security, Reliability | [P046](proposals/done/P046_redis-backed-rate-limiter.md) |
+| P047 | Add `safeBranchName()` and Commit Message Length Validation to Prevent Database Corruption | Security, Reliability | [P047](proposals/done/P047_branch-name-commit-message-sanitization.md) |
+| P049 | Add `PATCH /api/rooms/[roomId]` to Allow Room Owners to Set a Memorable Slug | UX, Maintainability | [P049](proposals/done/P049_room-slug-management-api.md) |
+| P050 | Integrate `next-intl` to Consume the Pre-existing `messages/en.json` and `messages/de.json` | UX, Maintainability | [P050](proposals/done/P050_i18n-wire-message-catalogue.md) |
+| P051 | Cancel Pending Room-cleanup Timers During Graceful Shutdown to Prevent Post-shutdown Errors | Reliability | [P051](proposals/done/P051_room-cleanup-timer-shutdown.md) |
+| P052 | Broadcast Merge Commits to Peers and Persist Them (Both Clean and Conflict-resolved Merges) | Reliability | [P052](proposals/done/P052_broadcast-merge-commits.md) |
+| P053 | Broadcast Branch Rollback and Branch-switch Operations to Peers to Prevent Silent Divergence | Reliability | [P053](proposals/done/P053_broadcast-branch-operations.md) |
+| P055 | Replace `window.confirm()` in `cpRollback` with an Accessible In-app Confirmation Modal | UX, Accessibility | [P055](proposals/done/P055_replace-window-confirm.md) |
+| P056 | Implement Nonce-based CSP to Replace `'unsafe-inline'` in `script-src` and `style-src` | Security | [P056](proposals/done/P056_nonce-based-csp.md) |
+| P057 | Validate Commit SHA Format and Canvas Payload Size Before WebSocket DB Persistence | Security, Reliability | [P057](proposals/done/P057_commit-sha-payload-validation.md) |
 
 ---
 
@@ -59,36 +87,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 ## Proposals – Not Started
 
 | ID | Title | Dimension(s) | File |
-|----|-------|--------------|------|
-| P029 | Fix Unbounded Commit Query in `roomRepository.loadRoomSnapshot` and Add Paginated Commit History REST API | Performance, Reliability | [P029](proposals/P029_paginated-commit-history-api.md) |
-| P030 | Add an LRU In-Memory Cache for Room Snapshots to Avoid Repeated Database Loads on Reconnect | Performance | [P030](proposals/P030_in-memory-room-snapshot-cache.md) |
-| P031 | Validate Incoming WebSocket Message Payloads with Zod Schemas and Enforce Per-Message Size Limits | Reliability, Security | [P031](proposals/P031_websocket-message-validation.md) |
-| P032 | Invoke `pruneInactiveRooms` on a Recurring Schedule to Prevent Unbounded Database Growth | Reliability, Performance | [P032](proposals/P032_automated-room-pruning-job.md) |
-| P033 | Store Incremental Canvas Diffs Instead of Full Snapshots per Commit to Reduce Database Storage by 80–95% | Performance | [P033](proposals/P033_delta-based-canvas-storage.md) |
-| P034 | Enforce Room Membership and Visibility Rules on WebSocket Connection Upgrade | Security, Reliability | [P034](proposals/P034_room-access-control-enforcement.md) |
-| P035 | Aggregate Presence Across All Server Instances Using Redis Hash | Reliability | [P035](proposals/P035_cross-instance-presence-redis-hash.md) |
-| P036 | Replace Ad-hoc `console.warn`/`console.error` Calls with a Unified Client-Side Logging Abstraction | Maintainability | [P036](proposals/P036_client-side-logging-abstraction.md) |
-| P037 | Implement an Undo/Redo History Stack in the Canvas Engine with Ctrl+Z / Ctrl+Shift+Z Support | Performance, UX | [P037](proposals/P037_undo-redo-stack.md) |
-| P038 | Add a Playwright End-to-End Test Suite Covering Critical User Journeys | Reliability, Maintainability | [P038](proposals/P038_e2e-playwright-test-suite.md) |
-| P039 | Add a REST Endpoint to Export the Current Room's Canvas as PNG or SVG | Maintainability, UX | [P039](proposals/P039_canvas-export-api.md) |
-| P040 | Implement Email-Based Password Reset for Credentials-Provider Users | Security, Reliability | [P040](proposals/P040_password-reset-flow.md) |
-| P041 | Implement a User Account Self-Deletion Endpoint (GDPR Right to Erasure) | Security, Compliance | [P041](proposals/P041_gdpr-account-deletion.md) |
-| P042 | Add the `@typescript-eslint/no-floating-promises` ESLint Rule to Catch Unhandled Promise Rejections | Reliability, Maintainability | [P042](proposals/P042_no-floating-promises-eslint-rule.md) |
-| P043 | Add a Drain Window Before Closing WebSocket Connections During Graceful Shutdown | Reliability | [P043](proposals/P043_graceful-shutdown-drain-window.md) |
-| P044 | Debounce the `pushPresence` Broadcast to Prevent Ghost-Client Flicker During Simultaneous Connects | Performance, UX | [P044](proposals/P044_presence-broadcast-debouncing.md) |
-| P045 | Pin Docker Base Images to SHA256 Digests and Add Trivy Vulnerability Scanning in CI | Security, Reliability | [P045](proposals/P045_docker-image-digest-trivy-scan.md) |
-| P046 | Replace In-memory Proxy Rate Limiter with Redis-backed Counter for Multi-instance Correctness | Security, Reliability | [P046](proposals/P046_redis-backed-rate-limiter.md) |
-| P047 | Add `safeBranchName()` and Commit Message Length Validation to Prevent Database Corruption | Security, Reliability | [P047](proposals/P047_branch-name-commit-message-sanitization.md) |
-| P048 | Send a Database-backed Fullsync to Every Connecting Client, Not Just the First | Reliability | [P048](proposals/P048_server-authoritative-fullsync.md) |
-| P049 | Add `PATCH /api/rooms/[roomId]` to Allow Room Owners to Set a Memorable Slug | UX, Maintainability | [P049](proposals/P049_room-slug-management-api.md) |
-| P050 | Integrate `next-intl` to Consume the Pre-existing `messages/en.json` and `messages/de.json` | UX, Maintainability | [P050](proposals/P050_i18n-wire-message-catalogue.md) |
-| P051 | Cancel Pending Room-cleanup Timers During Graceful Shutdown to Prevent Post-shutdown Errors | Reliability | [P051](proposals/P051_room-cleanup-timer-shutdown.md) |
-| P052 | Broadcast Merge Commits to Peers and Persist Them (Both Clean and Conflict-resolved Merges) | Reliability | [P052](proposals/P052_broadcast-merge-commits.md) |
-| P053 | Broadcast Branch Rollback and Branch-switch Operations to Peers to Prevent Silent Divergence | Reliability | [P053](proposals/P053_broadcast-branch-operations.md) |
-| P054 | Fix Timing Side-channel in `verifyCredentials` That Enables User-enumeration Attacks | Security | [P054](proposals/P054_constant-time-credential-verification.md) |
-| P055 | Replace `window.confirm()` in `cpRollback` with an Accessible In-app Confirmation Modal | UX, Accessibility | [P055](proposals/P055_replace-window-confirm.md) |
-| P056 | Implement Nonce-based CSP to Replace `'unsafe-inline'` in `script-src` and `style-src` | Security | [P056](proposals/P056_nonce-based-csp.md) |
-| P057 | Validate Commit SHA Format and Canvas Payload Size Before WebSocket DB Persistence | Security, Reliability | [P057](proposals/P057_commit-sha-payload-validation.md) |
 
 ---
 
@@ -184,6 +182,32 @@ Some proposals build on or benefit from others. The table below shows key depend
 26. ~~**P025** – Accessibility/ARIA (role=toolbar, aria-labels, focus-trap in modals, sr-only labels, skip link)~~ ✅ **Done**
 27. ~~**P022** – Canvas rendering performance (requestRenderAll everywhere, pen Polyline in-place update, mouseup→Path conversion)~~ ✅ **Done**
 28. ~~**P012** – Horizontal scalability via Redis (ioredis pub/sub, broadcastLocalRoom + broadcastRoom, graceful shutdown, docker-compose redis service)~~ ✅ **Done**
+29. ~~**P029** – Paginated commit history API + bounded loadRoomSnapshot (take: 100, cursor pagination, GET /api/rooms/[roomId]/commits)~~ ✅ **Done**
+30. ~~**P030** – LRU in-memory room snapshot cache (lru-cache, createRoomSnapshotCache, invalidate on commit, stats in /api/health)~~ ✅ **Done**
+31. ~~**P031** – WebSocket message validation (InboundWsMessageSchema, size gate, safeParse, PAYLOAD_TOO_LARGE/INVALID_PAYLOAD errors)~~ ✅ **Done**
+32. ~~**P032** – Automated room pruning job (startPruningJob, excludeRoomIds, PRUNE_INACTIVE_ROOMS_DAYS + PRUNE_INTERVAL_HOURS env vars)~~ ✅ **Done**
+33. ~~**P033** – Delta-based canvas storage (CommitStorageType enum, computeCanvasDelta + replayCanvasDelta, DELTA/SNAPSHOT on write + reconstruct on read)~~ ✅ **Done**
+34. ~~**P034** – Room access control (checkRoomAccess, ClientRole, ACCESS_DENIED on upgrade, FORBIDDEN on draw/commit for VIEWER/ANONYMOUS)~~ ✅ **Done**
+35. ~~**P035** – Cross-instance presence via Redis Hash (REDIS_PRESENCE_PREFIX, getGlobalPresence, HSET+EXPIRE pipeline, hdel on shutdown)~~ ✅ **Done**
+36. ~~**P036** – Client-side logging abstraction (lib/sketchgit/logger.ts, setLogLevel, onError hook, replaced 4× console.warn, ESLint no-console rule)~~ ✅ **Done**
+37. ~~**P037** – Undo/redo stack in CanvasEngine (undoStack/redoStack, pushHistory on mousedown, undo()/redo() with broadcast, Ctrl+Z/Shift+Z/Y)~~ ✅ **Done**
+38. ~~**P038** – Playwright E2E test suite (playwright.config.ts, 5 test scenarios in e2e/, test:e2e npm script, CI integration)~~ ✅ **Done**
+39. ~~**P039** – Canvas Export REST API (renderToSVG/renderToPNG via StaticCanvas, GET /api/rooms/[roomId]/export, PNG+SVG download links in AppTopbar)~~ ✅ **Done**
+40. ~~**P040** – Password reset flow (createPasswordResetToken+resetPassword in userRepository, POST forgot-password/reset-password endpoints, forgot-password+reset-password UI pages, "Forgot password?" link on signin)~~ ✅ **Done**
+41. ~~**P041** – GDPR account deletion (DELETE /api/auth/account, password re-confirmation for credentials users, DeleteAccountButton with modal dialog in dashboard)~~ ✅ **Done**
+42. ~~**P043** – Graceful shutdown drain window (inFlightWrites+beginWrite/endWrite/waitForDrain in server.ts, dbSaveCommit wrapped, shutdown-warning WsMessageType, SHUTDOWN_DRAIN_MS env var, toast in wsClient.ts)~~ ✅ **Done**
+43. ~~**P045** – Docker digest pinning + Trivy CI (FROM node:22-alpine@sha256:... in all 3 stages, docker-build+trivy-scan CI jobs, SARIF upload to GitHub Security)~~ ✅ **Done**
+44. ~~**P046** – Redis-backed rate limiter (lib/redis.ts getRedisClient() singleton, applyRateLimitRedis INCR+EXPIRE atomic counter, fail-open on Redis error, proxy.ts async delegation when REDIS_URL set)~~ ✅ **Done**
+45. ~~**P047** – Branch name + commit message sanitization (safeBranchName/safeCommitMessage in server.ts, applied in dbSaveCommit, 100-char branch limit, 500-char message limit)~~ ✅ **Done**
+46. ~~**P048** – Server-authoritative fullsync (room.size === 1 guard removed; every connecting client receives DB snapshot via P030 LRU cache; peer-to-peer fullsync-request retained as fallback)~~ ✅ **Done**
+47. ~~**P049** – Room slug management API (PATCH /api/rooms/[roomId] with Zod validation + ownership check, resolveRoomId in roomRepository, slug resolution in WS upgrade, RenameRoomButton inline editor in dashboard, slug links)~~ ✅ **Done**
+48. ~~**P050** – i18n message catalogue wired (next-intl installed, i18n.ts with cookie+Accept-Language locale detection, withNextIntl in next.config.mjs, NextIntlClientProvider in layout, useTranslations in SketchGitApp.tsx + AppTopbar.tsx, EN/DE LocaleSwitcher)~~ ✅ **Done**
+49. ~~**P051** – Room cleanup timer shutdown (roomCleanupTimers.clear() in shutdown handler + timer.unref() on creation)~~ ✅ **Done**
+50. ~~**P052** – Merge commit broadcast (ws.send in doMerge + applyMergeResolution; isMerge=true commit relayed to peers and persisted via existing commit message path)~~ ✅ **Done**
+51. ~~**P053** – Branch-update message type (new `branch-update` WsMessageType; sent after cpRollback, cpCheckout, openBranchModal switch; handled in collaborationManager.applyBranchUpdate; relayed by server with write-permission check; branch-update blocked for VIEWER/ANONYMOUS)~~ ✅ **Done**
+52. ~~**P055** – Replace window.confirm() with accessible modal (confirmModal overlay in SketchGitApp.tsx; showConfirm/acceptConfirm/cancelConfirm in CommitCoordinator; cpRollback uses showConfirm with callback; exposed in app API)~~ ✅ **Done**
+53. ~~**P056** – Nonce-based CSP (buildCsp in lib/server/csp.ts; randomBytes nonce in proxy.ts per request; x-nonce header forwarded to layout.tsx; 'unsafe-inline' removed from next.config.mjs; NextIntlClientProvider + SessionProvider receive nonce; next.config.mjs experimental.nonce=true)~~ ✅ **Done**
+54. ~~**P057** – Commit SHA/payload validation (validateCommitMessage in lib/server/commitValidation.ts; SHA regex /^[0-9a-f]{8,64}$/; canvas 2 MB limit + JSON.parse check; parents max 2, each valid SHA; applied before dbSaveCommit in server.ts; invalid messages logged + dropped)~~ ✅ **Done**
 
 ### New proposals (P029–P057)
 These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.

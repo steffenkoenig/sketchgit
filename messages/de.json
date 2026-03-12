@@ -11,7 +11,11 @@
     "toggleFill": "Füllung umschalten",
     "zoomIn": "Vergrößern (+)",
     "zoomOut": "Verkleinern (-)",
-    "resetView": "Ansicht zurücksetzen"
+    "resetView": "Ansicht zurücksetzen",
+    "uncommittedChanges": "Nicht committete Änderungen",
+    "skipToCanvas": "Zur Zeichenfläche springen",
+    "exportPng": "Als PNG exportieren",
+    "exportSvg": "Als SVG exportieren"
   },
   "topbar": {
     "collab": "⟳ Zusammenarbeit",

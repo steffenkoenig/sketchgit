@@ -10,18 +10,26 @@
 #
 # Build:  docker build -t sketchgit .
 # Run:    docker compose up
+#
+# P045 – All three FROM lines are pinned to a SHA256 digest for reproducible
+# builds and supply-chain security.  To update the digest:
+#   docker pull node:22-alpine
+#   docker inspect node:22-alpine --format '{{index .RepoDigests 0}}'
+# Then replace the digest on all three FROM lines below and commit.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ─── Stage 1: Install all dependencies ───────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:22-alpine@sha256:8094c002d08262dba12645a3b4a15cd6cd627d30bc782f53229a2ec13ee22a00 AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-# Install all dependencies (dev + prod) needed for Prisma generate and next build
-RUN npm ci
+# Install all dependencies (dev + prod) needed for Prisma generate and next build.
+# --ignore-scripts skips the postinstall `prisma generate` here; stage 2 runs it
+# explicitly after copying the full source tree (including prisma/schema.prisma).
+RUN npm ci --ignore-scripts
 
 # ─── Stage 2: Build ───────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:22-alpine@sha256:8094c002d08262dba12645a3b4a15cd6cd627d30bc782f53229a2ec13ee22a00 AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -38,7 +46,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ─── Stage 3: Production runtime ─────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:22-alpine@sha256:8094c002d08262dba12645a3b4a15cd6cd627d30bc782f53229a2ec13ee22a00 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

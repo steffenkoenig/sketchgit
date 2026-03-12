@@ -21,6 +21,12 @@ export class CommitCoordinator {
   private popupSHA: string | null = null;
 
   /**
+   * P055 – Pending confirmation callback; set by showConfirm() and consumed by
+   * acceptConfirm() / cancelConfirm().
+   */
+  private pendingConfirm: ((confirmed: boolean) => void) | null = null;
+
+  /**
    * @param ctx              – shared subsystem references
    * @param refresh          – re-renders timeline + updates UI (provided by app.ts wiring)
    * @param openBranchCreate – delegate to BranchCoordinator.openBranchCreate()
@@ -75,7 +81,7 @@ export class CommitCoordinator {
   /** Checkout the commit currently shown in the popup. */
   cpCheckout(): void {
     if (!this.popupSHA) return;
-    const { git, canvas } = this.ctx;
+    const { git, canvas, ws } = this.ctx;
     const sha = this.popupSHA;
     this.closeCommitPopup();
     if (sha === git.currentSHA()) { showToast('Already at this commit'); return; }
@@ -84,6 +90,8 @@ export class CommitCoordinator {
     canvas.clearDirty();
     this.refresh();
     showToast('⤵ Viewing commit ' + sha.slice(0, 7) + ' — detached HEAD');
+    // P053 – notify peers of detached HEAD checkout
+    ws.send({ type: 'branch-update', branch: null, headSha: sha, detached: true });
   }
 
   /** Open the branch-create modal from the current popup commit. */
@@ -97,17 +105,30 @@ export class CommitCoordinator {
   /** Roll back the current branch tip to the commit shown in the popup. */
   cpRollback(): void {
     if (!this.popupSHA) return;
-    const { git, canvas } = this.ctx;
+    const { git } = this.ctx;
     const sha = this.popupSHA;
     if (git.detached) { showToast('⚠ Not on a branch', true); this.closeCommitPopup(); return; }
-    if (!confirm(`Rollback branch '${git.HEAD}' to ${sha.slice(0, 7)}? This cannot be undone.`)) return;
+
+    const branch = git.HEAD;
     this.closeCommitPopup();
-    git.branches[git.HEAD] = sha;
-    git.detached = null;
-    canvas.loadCanvasData(git.commits[sha].canvas);
-    canvas.clearDirty();
-    this.refresh();
-    showToast('Rolled back to ' + sha.slice(0, 7));
+
+    // P055 – open accessible confirm modal instead of window.confirm()
+    this.showConfirm(
+      `Rollback branch '${branch}' to ${sha.slice(0, 7)}? This cannot be undone.`,
+      '⚠ Rollback',
+      (confirmed) => {
+        if (!confirmed) return;
+        const { git: g, canvas, ws } = this.ctx;
+        g.branches[branch] = sha;
+        g.detached = null;
+        canvas.loadCanvasData(g.commits[sha].canvas);
+        canvas.clearDirty();
+        this.refresh();
+        showToast('Rolled back to ' + sha.slice(0, 7));
+        // P053 – notify peers that this branch tip was rolled back
+        ws.send({ type: 'branch-update', branch, headSha: sha, isRollback: true });
+      },
+    );
   }
 
   // ─── Commit modal ──────────────────────────────────────────────────────────
@@ -135,5 +156,36 @@ export class CommitCoordinator {
     this.refresh();
     showToast(`✓ Committed: ${msg}`);
     ws.send({ type: 'commit', sha, commit: git.commits[sha] });
+  }
+
+  // ─── P055: Accessible confirmation dialog ─────────────────────────────────
+
+  /**
+   * Open the accessible confirm modal (replaces window.confirm()).
+   * `onResult` is called with `true` when confirmed, `false` when cancelled.
+   */
+  private showConfirm(message: string, confirmLabel: string, onResult: (ok: boolean) => void): void {
+    const msgEl = document.getElementById('confirmModalMessage');
+    if (msgEl) msgEl.textContent = message;
+    const okBtn = document.getElementById('confirmModalOkBtn');
+    if (okBtn) okBtn.textContent = confirmLabel;
+    this.pendingConfirm = onResult;
+    openModal('confirmModal');
+  }
+
+  /** Called when the user clicks the Confirm button in the confirm modal. */
+  acceptConfirm(): void {
+    const cb = this.pendingConfirm;
+    this.pendingConfirm = null;
+    closeModal('confirmModal');
+    cb?.(true);
+  }
+
+  /** Called when the user clicks Cancel or presses Escape in the confirm modal. */
+  cancelConfirm(): void {
+    const cb = this.pendingConfirm;
+    this.pendingConfirm = null;
+    closeModal('confirmModal');
+    cb?.(false);
   }
 }

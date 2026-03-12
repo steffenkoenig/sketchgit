@@ -59,13 +59,16 @@ export class BranchCoordinator {
       item.appendChild(shaSpan);
 
       item.addEventListener('click', () => {
+        const branchTip = git.branches[name];
         git.checkout(name);
-        const c = git.commits[git.branches[name]];
+        const c = git.commits[branchTip];
         if (c) canvas.loadCanvasData(c.canvas);
         canvas.clearDirty();
         closeModal('branchModal');
         this.refresh();
         showToast(`Switched to branch '${name}'`);
+        // P053 – notify peers of HEAD change (no new commit; updates presence display)
+        this.ctx.ws.send({ type: 'branch-update', branch: name, headSha: branchTip, isRollback: false });
       });
       list.appendChild(item);
     }
