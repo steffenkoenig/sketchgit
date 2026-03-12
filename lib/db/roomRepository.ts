@@ -3,7 +3,7 @@
  * All functions are async and interact with PostgreSQL via the Prisma client.
  */
 import { prisma } from "@/lib/db/prisma";
-import { CommitStorageType, MemberRole, RoomEventType } from "@prisma/client";
+import { Prisma, CommitStorageType, MemberRole, RoomEventType } from "@prisma/client";
 import { replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 
 export type { RoomEventType };
@@ -594,13 +594,14 @@ export async function resolveCommitCanvas(
   roomId: string,
   maxDepth = 10_000,
 ): Promise<object | null> {
-  const visited = new Set<string>();
-  const chain: {
+  type CommitRow = {
     sha: string;
     parentSha: string | null;
-    canvasJson: import("@prisma/client").Prisma.JsonValue;
-    storageType: import("@prisma/client").CommitStorageType;
-  }[] = [];
+    canvasJson: Prisma.JsonValue;
+    storageType: CommitStorageType;
+  };
+  const visited = new Set<string>();
+  const chain: CommitRow[] = [];
 
   let currentSha: string | null = sha;
   let depth = 0;
@@ -608,7 +609,7 @@ export async function resolveCommitCanvas(
   while (currentSha && depth < maxDepth) {
     if (visited.has(currentSha)) break; // cycle guard
 
-    const row = await prisma.commit.findFirst({
+    const row: CommitRow | null = await prisma.commit.findFirst({
       where: { roomId, sha: currentSha },
       select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
     });
