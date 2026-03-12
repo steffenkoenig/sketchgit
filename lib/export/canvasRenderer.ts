@@ -73,6 +73,10 @@ export async function renderToPNG(
  * Strategy: rasterise the canvas at 3× (≈300 dpi for A4) and embed the PNG
  * into an A4-landscape pdf-lib document with document metadata.
  *
+ * `createdAt` is intentionally omitted from the PDF metadata so that
+ * SHA-addressed exports produce byte-identical output on every request,
+ * preserving ETag / immutable-cache semantics (same SHA → same bytes).
+ *
  * Returns a Uint8Array of the raw PDF bytes (starts with `%PDF`).
  */
 export async function renderToPDF(
@@ -84,10 +88,9 @@ export async function renderToPDF(
 
   const pdfDoc = await PDFDocument.create();
 
-  // Document metadata (no user-identifiable information)
+  // Document metadata – omit creation date to keep bytes deterministic.
   pdfDoc.setTitle('SketchGit Canvas Export');
   pdfDoc.setProducer('SketchGit');
-  pdfDoc.setCreationDate(new Date());
 
   // A4 landscape page
   const page = pdfDoc.addPage([A4_LANDSCAPE_WIDTH_PT, A4_LANDSCAPE_HEIGHT_PT]);

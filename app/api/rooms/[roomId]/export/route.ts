@@ -148,12 +148,6 @@ export async function GET(
   // Resolve target commit SHA
   let targetSha: string;
   if (reqSha) {
-    // P070 – If client already has this SHA cached, return 304 Not Modified.
-    const ifNoneMatch = req.headers.get("if-none-match");
-    if (ifNoneMatch === `"${reqSha}"`) {
-      return new NextResponse(null, { status: 304 });
-    }
-
     const exists = await prisma.commit.findUnique({
       where: { sha: reqSha },
       select: { sha: true, roomId: true },
@@ -162,6 +156,14 @@ export async function GET(
       return apiError(ApiErrorCode.NOT_FOUND, "Commit not found", 404);
     }
     targetSha = reqSha;
+
+    // P070 – return 304 Not Modified only after confirming the SHA exists and
+    // belongs to this room.  The 304 must include the same cache headers so
+    // the browser stores them alongside the cached body.
+    const ifNoneMatch = req.headers.get("if-none-match");
+    if (ifNoneMatch === `"${reqSha}"`) {
+      return new NextResponse(null, { status: 304, headers: immutableHeaders(reqSha) });
+    }
   } else {
     const state = await prisma.roomState.findUnique({
       where: { roomId },

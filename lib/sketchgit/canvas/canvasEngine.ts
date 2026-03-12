@@ -56,7 +56,7 @@ export class CanvasEngine {
   private boundKeydown: ((e: KeyboardEvent) => void) | null = null;
 
   // ── P067: Remote object locks (clientId → { objectIds, color, origStyles }) ─
-  private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number; strokeDashArray: number[] | undefined }> }>();
+  private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number | undefined; strokeDashArray: number[] | undefined }> }>();
 
   // ── Callbacks provided by the orchestrator ────────────────────────────────
   private readonly onBroadcastDraw: (immediate?: boolean) => void;
@@ -158,13 +158,15 @@ export class CanvasEngine {
     if (!this.canvas) return;
     this.clearRemoteLock(clientId);
     const lockedSet = new Set(objectIds);
-    const origStyles = new Map<string, { stroke: string | undefined; strokeWidth: number; strokeDashArray: number[] | undefined }>();
+    const origStyles = new Map<string, { stroke: string | undefined; strokeWidth: number | undefined; strokeDashArray: number[] | undefined }>();
     for (const obj of this.canvas.getObjects()) {
       const id = (obj as FabricObject & { _id?: string })._id ?? '';
       if (!lockedSet.has(id)) continue;
       origStyles.set(id, {
         stroke: obj.get('stroke') as string | undefined,
-        strokeWidth: (obj.get('strokeWidth') as number | undefined) ?? 1,
+        // Store without defaulting to 1: if strokeWidth was undefined, restoring
+        // to 1 would permanently add an explicit property that wasn't there before.
+        strokeWidth: obj.get('strokeWidth') as number | undefined,
         strokeDashArray: obj.get('strokeDashArray') as number[] | undefined,
       });
       obj.set({ stroke: color, strokeWidth: 2, strokeDashArray: [5, 3] });
@@ -183,10 +185,14 @@ export class CanvasEngine {
       if (!lock.objectIds.has(id)) continue;
       const orig = lock.origStyles.get(id);
       if (orig) {
+        // Restore stroke and dashArray unconditionally (undefined is valid – clears the property).
+        // Only restore strokeWidth when it was originally set; otherwise leave it at
+        // the lock value so Fabric.js doesn't permanently gain an explicit strokeWidth
+        // property that was not in the original serialization.
         obj.set({
           stroke: orig.stroke,
-          strokeWidth: orig.strokeWidth,
           strokeDashArray: orig.strokeDashArray,
+          ...(orig.strokeWidth !== undefined ? { strokeWidth: orig.strokeWidth } : {}),
         });
       }
     }

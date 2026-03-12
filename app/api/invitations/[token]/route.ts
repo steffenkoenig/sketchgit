@@ -77,11 +77,19 @@ export async function GET(
     });
   }
 
-  // 4. Increment useCount atomically
-  await prisma.roomInvitation.update({
-    where: { token },
+  // 4. Increment useCount atomically, enforcing maxUses at the DB level.
+  // Using updateMany with a conditional WHERE prevents a TOCTOU race where
+  // concurrent requests both pass the useCount < maxUses check above and
+  // both increment, exceeding the limit.
+  const updated = await prisma.roomInvitation.updateMany({
+    where: { token, useCount: { lt: invitation.maxUses } },
     data: { useCount: { increment: 1 } },
   });
+
+  if (updated.count === 0) {
+    // Another concurrent request already consumed the last use.
+    return apiError(ApiErrorCode.INVITATION_EXHAUSTED, "Invitation has reached its use limit", 410);
+  }
 
   // Redirect to the room
   const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
