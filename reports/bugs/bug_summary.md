@@ -1,7 +1,7 @@
 # Bug Summary
 
 This registry records all confirmed bugs found by systematic scanning of the SketchGit codebase.
-Last updated: 2026-03-12.
+Last updated: 2026-03-12 (second scan pass).
 
 ## Registry
 
@@ -18,6 +18,7 @@ Last updated: 2026-03-12.
 | [BUG-009](./BUG-009_ws-batch-return-drops-remaining-messages.md) | High | `server.ts` | `return` in WS batch loop silently drops all messages after an invalid one |
 | [BUG-010](./BUG-010_color-change-not-dirty-not-broadcast.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes to selected objects not marked dirty or broadcast to peers |
 | [BUG-011](./BUG-011_create-branch-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/branchCoordinator.ts` | `doCreateBranch()` doesn't send peer presence notifications |
+| [BUG-012](./BUG-012_undo-saves-post-transform-state.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Undo saves post-transform state; move/resize cannot be undone |
 
 ## Severity Criteria
 
@@ -131,3 +132,11 @@ The P073 batch message handler in `server.ts` iterates over a JSON array of `WsM
 **Severity**: Low
 
 `BranchCoordinator.doCreateBranch()` creates a new branch and checks it out locally but never sends a `branch-update` or `profile` WebSocket message to the server. Peers' presence panels and branch modals continue to show the creating user on their previous branch. The parallel `openBranchModal()` checkout path correctly sends both messages after every checkout; the branch-create path does not.
+
+---
+
+### BUG-012 – Undo saves post-transform state; move/resize cannot be undone
+
+**Severity**: Medium
+
+`CanvasEngine` calls `pushHistory()` from the Fabric.js `object:modified` event listener, which fires **after** the transformation (move/resize/rotate) has already been applied. The snapshot captured is therefore the post-modification state, which is identical to the current canvas state at the time undo is invoked. Pressing Ctrl+Z after a move or resize does not visibly restore the previous position — undo appears to be a no-op. A second Ctrl+Z then removes the entire drawn shape, skipping the pre-move state entirely. Operations that do save the correct pre-action state (new shape drawing, eraser, delete key) are unaffected.
