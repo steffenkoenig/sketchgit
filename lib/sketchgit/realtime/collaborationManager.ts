@@ -696,11 +696,8 @@ export class CollaborationManager {
       clearTimeout(timer);
     }
     this.lockExpireTimers.clear();
-    // BUG-008 – stop the presenter view-sync interval if it is still running.
-    if (this.viewSyncTimer !== null) {
-      clearInterval(this.viewSyncTimer);
-      this.viewSyncTimer = null;
-    }
+    // BUG-008 / P080 – stop presenter mode (clears view-sync interval and UI state).
+    this._stopPresenting();
     // Remove all remote cursor DOM elements.
     for (const elId of Object.values(this.remoteCursors)) {
       document.getElementById(elId)?.remove();

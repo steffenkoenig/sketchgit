@@ -435,7 +435,7 @@ export async function getRoomPublicFlag(
 export async function getRoomMembership(
   roomId: string,
   userId: string,
-): Promise<{ role: string } | null> {
+): Promise<{ role: MemberRole } | null> {
   return prisma.roomMembership.findUnique({
     where: { roomId_userId: { roomId, userId } },
     select: { role: true },

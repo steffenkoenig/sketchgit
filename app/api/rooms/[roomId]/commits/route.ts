@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
-import { resolveRoomId, getRoomPublicFlag, getRoomMembership, getCommitPage } from "@/lib/db/roomRepository";
+import { getRoomPublicFlag, getRoomMembership, getCommitPage } from "@/lib/db/roomRepository";
 
 export const CommitsQuerySchema = z.object({
   cursor: z.string().max(64).optional(),
