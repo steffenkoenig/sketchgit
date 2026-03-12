@@ -63,10 +63,11 @@ export class CollaborationCoordinator {
   setName(): void {
     const { ws } = this.ctx;
     const n = (document.getElementById('nameInput') as HTMLInputElement | null)?.value.trim();
-    if (!n) return;
-    this.myName = n;
-    if (ws.isConnected()) {
-      ws.send({ type: 'profile', name: this.myName, color: this.myColor });
+    if (n) {
+      this.myName = n;
+      if (ws.isConnected()) {
+        ws.send({ type: 'profile', name: this.myName, color: this.myColor });
+      }
     }
     closeModal('nameModal');
   }

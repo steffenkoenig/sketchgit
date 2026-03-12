@@ -28,7 +28,7 @@ export const LeftToolbar = React.memo(function LeftToolbar({ call }: LeftToolbar
       aria-label="Drawing tools"
       aria-orientation="vertical"
     >
-      <button className="tbtn on" id="tsel" onClick={() => call("setTool", "select")} aria-label="Select tool (S)" aria-pressed="false">
+      <button className="tbtn on" id="tselect" onClick={() => call("setTool", "select")} aria-label="Select tool (S)" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3l14 9-7 1-4 6z"/></svg>
         <span className="tt" aria-hidden="true">Select (S)</span>
       </button>
@@ -58,7 +58,7 @@ export const LeftToolbar = React.memo(function LeftToolbar({ call }: LeftToolbar
         <span className="tt" aria-hidden="true">Text (T)</span>
       </button>
       <div className="tsep" role="separator"></div>
-      <button className="tbtn" id="terase" onClick={() => call("setTool", "eraser")} aria-label="Eraser tool (X)" aria-pressed="false">
+      <button className="tbtn" id="teraser" onClick={() => call("setTool", "eraser")} aria-label="Eraser tool (X)" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 20H7L3 16l13-13 7 7-3 3"/><line x1="6" y1="20" x2="19" y2="20"/></svg>
         <span className="tt" aria-hidden="true">Eraser (X)</span>
       </button>

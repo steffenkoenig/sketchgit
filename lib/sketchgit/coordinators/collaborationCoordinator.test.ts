@@ -121,11 +121,12 @@ describe('CollaborationCoordinator', () => {
       expect(ctx.ws.send).not.toHaveBeenCalled();
     });
 
-    it('does nothing when the name input is empty', () => {
+    it('closes the modal and keeps the default name when the input is empty', () => {
       (document.getElementById('nameInput') as HTMLInputElement).value = '';
       coord.setName();
       expect(coord.myName).toBe('User'); // unchanged
       expect(ctx.ws.send).not.toHaveBeenCalled();
+      expect(closeModal).toHaveBeenCalledWith('nameModal');
     });
 
     it('closes the name modal', () => {

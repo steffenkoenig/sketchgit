@@ -225,13 +225,19 @@ export class CanvasEngine {
   // ── Serialisation ─────────────────────────────────────────────────────────
 
   getCanvasData(): string {
-    this.canvas?.getObjects().forEach((o: FabricObject) => ensureObjId(o));
-    // Fabric v7: toJSON() takes no arguments in the type definition;
-    // custom properties (_id, _isArrow) are passed via a type assertion to
-    // preserve backward-compatible serialization format.
-    const toJSONWithExtras = this.canvas?.toJSON as
-      ((extraProps: string[]) => object) | undefined;
-    return JSON.stringify(toJSONWithExtras?.(['_isArrow', '_id']));
+    if (!this.canvas) return JSON.stringify(undefined);
+    this.canvas.getObjects().forEach((o: FabricObject) => ensureObjId(o));
+    // Fabric v7: toJSON() must be called as a bound method on the canvas instance.
+    // Storing canvas?.toJSON in a variable drops the 'this' binding in strict mode,
+    // causing a TypeError when Fabric's toJSON tries to access this._objects etc.
+    // Calling it as (this.canvas.toJSON as X)([...]) keeps 'this' = this.canvas.
+    // The string array forwards custom property names (_id, _isArrow) so they are
+    // included in the serialised snapshot (Fabric v6/v7 compatible convention).
+    return JSON.stringify(
+      (this.canvas.toJSON as unknown as (propertiesToInclude: string[]) => object)(
+        ['_isArrow', '_id'],
+      ),
+    );
   }
 
   loadCanvasData(data: string): void {
@@ -464,7 +470,7 @@ export class CanvasEngine {
       this.currentPenPath = null;
       this.activeObj = null;
       this.markDirty();
-      if (this.canvas) this.canvas.selection = true;
+      if (this.canvas) this.canvas.selection = false; // pen tool stays in drawing mode
       this.onBroadcastDraw(true);
       return;
     }
@@ -487,7 +493,7 @@ export class CanvasEngine {
       this.activeObj = null;
     }
 
-    if (this.canvas) this.canvas.selection = true;
+    if (this.canvas) this.canvas.selection = this.currentTool === 'select';
     this.canvas?.requestRenderAll(); // P022: batch via rAF
     if (this.currentTool !== 'select') this.onBroadcastDraw(true);
   }
