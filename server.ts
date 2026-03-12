@@ -919,15 +919,15 @@ void app.prepare()
         // Drop ping/pong before any further processing – heartbeat only
         if (message.type === "ping" || message.type === "pong") return;
 
-        // P034 – Enforce write permissions: VIEWER and ANONYMOUS roles cannot
-        // modify shared canvas state. Silently drop such messages and respond
-        // with a structured error so the client can surface a helpful message.
+        // P034 – Enforce write permissions: only VIEWER role cannot modify
+        // shared canvas state. ANONYMOUS users are allowed to draw and commit
+        // in public rooms (the anonymous-first UX design).
         if (
           (message.type === "draw" ||
             message.type === "draw-delta" ||
             message.type === "commit" ||
             message.type === "branch-update") &&
-          (client.role === "VIEWER" || client.role === "ANONYMOUS")
+          client.role === "VIEWER"
         ) {
           sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
           return;

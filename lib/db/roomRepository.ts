@@ -321,17 +321,22 @@ export async function checkRoomAccess(
     select: { isPublic: true },
   });
 
-  // Room does not exist → creation-on-join, always allowed
-  if (!room) return { allowed: true, role: "ANONYMOUS" };
+  // Room does not exist → creation-on-join, always allowed.
+  // Give EDITOR so the creator can immediately draw/commit.
+  if (!room) return { allowed: true, role: "EDITOR" };
 
   if (room.isPublic) {
-    if (!userId) return { allowed: true, role: "ANONYMOUS" };
+    if (!userId) {
+      // Anonymous users get full editor access in public rooms (anonymous-first UX).
+      return { allowed: true, role: "EDITOR" };
+    }
     // Resolve the authenticated user's role (if they have a membership)
     const membership = await prisma.roomMembership.findUnique({
       where: { roomId_userId: { roomId, userId } },
       select: { role: true },
     });
-    return { allowed: true, role: membership?.role ?? "ANONYMOUS" };
+    // Non-members in public rooms get EDITOR role; explicit memberships are honoured.
+    return { allowed: true, role: membership?.role ?? "EDITOR" };
   }
 
   // Private room

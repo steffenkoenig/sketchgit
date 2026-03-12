@@ -18,8 +18,11 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     "default-src 'self'",
     // P056: nonce replaces 'unsafe-inline' for script-src
     `script-src 'self' 'nonce-${nonce}'`,
-    // P056: nonce replaces 'unsafe-inline' for style-src
+    // P056: nonce-based restriction for <style> elements
     `style-src 'self' 'nonce-${nonce}'`,
+    // Allow inline style="" attributes (React inline styles, fabric.js canvas)
+    // while keeping script-src nonce-only.
+    "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: https:",
     "font-src 'self'",
     // WebSocket connections

@@ -302,13 +302,13 @@ describe('checkRoomAccess (P034)', () => {
   it('allows anonymous access to a non-existent room (creation-on-join)', async () => {
     mock.roomFindUnique.mockResolvedValue(null);
     const result = await checkRoomAccess('new-room', null);
-    expect(result).toEqual({ allowed: true, role: 'ANONYMOUS' });
+    expect(result).toEqual({ allowed: true, role: 'EDITOR' });
   });
 
   it('allows anonymous access to a public room', async () => {
     mock.roomFindUnique.mockResolvedValue({ isPublic: true });
     const result = await checkRoomAccess('pub-room', null);
-    expect(result).toEqual({ allowed: true, role: 'ANONYMOUS' });
+    expect(result).toEqual({ allowed: true, role: 'EDITOR' });
   });
 
   it('resolves EDITOR role for authenticated user with membership on a public room', async () => {

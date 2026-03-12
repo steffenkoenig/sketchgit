@@ -42,8 +42,13 @@ export const WsCommitSchema = z.object({
 
 export const WsBranchUpdateSchema = z.object({
   type: z.literal("branch-update"),
-  branch,
+  /** Null when the client checks out a detached HEAD (commit, not a branch). */
+  branch: z.string().min(1).max(MAX_BRANCH_LEN).nullable(),
   headSha: sha,
+  /** True when the peer is in detached-HEAD state (commit checkout). */
+  detached: z.boolean().optional(),
+  /** True when a branch tip has been rolled back to an earlier commit. */
+  isRollback: z.boolean().optional(),
 });
 
 export const WsCursorSchema = z.object({

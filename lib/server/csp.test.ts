@@ -15,9 +15,12 @@ describe('buildCsp()', () => {
     expect(csp).toContain("style-src 'self' 'nonce-abc123nonce=='");
   });
 
-  it('does NOT include unsafe-inline', () => {
+  it('does NOT include unsafe-inline in script-src', () => {
     const csp = buildCsp('testnonce', false);
-    expect(csp).not.toContain("'unsafe-inline'");
+    // script-src must never use unsafe-inline; nonce covers <style> elements.
+    // style-src-attr allows inline style="" attributes intentionally.
+    expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).toContain("style-src-attr 'unsafe-inline'");
   });
 
   it('includes default-src self', () => {

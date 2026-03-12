@@ -2,7 +2,7 @@
  * Next.js proxy (replaces "middleware" in Next.js 16).
  *
  * - Rate-limits authentication endpoints to prevent brute-force attacks.
- *   P046: When REDIS_URL is set, uses a Redis INCR+EXPIRE sliding-window counter
+ *   P046: When REDIS_URL is set, uses a Redis INCR+EXPIRE fixed-window counter
  *   shared across all instances. Falls back to the in-process Map when Redis is
  *   absent or unavailable (fail-open).
  * - Protects /dashboard: unauthenticated users are redirected to /auth/signin.
@@ -21,7 +21,7 @@ import { getRedisClient } from "@/lib/redis";
 import { randomBytes } from "node:crypto";
 import { buildCsp } from "@/lib/server/csp";
 
-// ── In-process sliding-window rate limiter ────────────────────────────────────
+// ── In-process fixed-window rate limiter ─────────────────────────────────────
 
 interface WindowEntry {
   count: number;
@@ -45,10 +45,10 @@ function getRateLimit(): { max: number; windowMs: number } {
   };
 }
 
-// ── P046 – Redis sliding-window rate limit helper ─────────────────────────────
+// ── P046 – Redis fixed-window rate limit helper ───────────────────────────────
 
 /**
- * Atomic Redis sliding-window counter using a Lua script.
+ * Atomic Redis fixed-window counter using a Lua script.
  * INCR and EXPIRE are executed atomically so the key can never be left
  * without a TTL (which would cause permanent rate-limiting on crash).
  * Returns `{ limited: false }` on any Redis error (fail-open).
