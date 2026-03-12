@@ -110,6 +110,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P077 | Create Shared Vitest Test Fixtures and Factory Helpers | Maintainability | [P077](proposals/P077_test-fixtures-factories.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/P078_dark-light-theme-toggle.md) |
 | P079 | Show Peer Branch Positions in Presence Panel and Branch Modal, with One-Click Branch Follow | UX, Reliability | [P079](proposals/P079_cross-branch-peer-visibility.md) |
+| P080 | Add a Presenter Mode That Lets a User Ask Peers to Follow Their Canvas View in Real Time | UX, Reliability | [P080](proposals/P080_presenter-follow-view.md) |
 
 ---
 
@@ -192,6 +193,8 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P076 (PDF Export) | P039 ✅ (PNG/SVG export), P070 (cache headers) |
 | P077 (Test Factories) | P002 ✅ (test suite), P028 ✅ (expanded coverage), P003 ✅ (Prisma models) |
 | P078 (Theme Toggle) | P050 ✅ (locale switcher pattern), P039 ✅ (export uses themed background), P056 ✅ (CSP nonce) |
+| P079 (Peer Branch Visibility) | P001 ✅ (modules), P012 ✅ (Redis presence), P017 ✅ (BranchCoordinator), P035 ✅ (cross-instance presence), P053 ✅ (branch-update) |
+| P080 (Presenter Mode) | P001 ✅ (modules), P017 ✅ (coordinators + AppContext), P020 ✅ (cleanup), P031 ✅ (WS validation), P053 ✅ (branch-update); P079 (checkoutBranchByName) |
 
 ---
 
@@ -253,8 +256,8 @@ Some proposals build on or benefit from others. The table below shows key depend
 53. ~~**P056** – Nonce-based CSP (buildCsp in lib/server/csp.ts; randomBytes nonce in proxy.ts per request; x-nonce header forwarded to layout.tsx; 'unsafe-inline' removed from next.config.mjs; NextIntlClientProvider + SessionProvider receive nonce; next.config.mjs experimental.nonce=true)~~ ✅ **Done**
 54. ~~**P057** – Commit SHA/payload validation (validateCommitMessage in lib/server/commitValidation.ts; SHA regex /^[0-9a-f]{8,64}$/; canvas 2 MB limit + JSON.parse check; parents max 2, each valid SHA; applied before dbSaveCommit in server.ts; invalid messages logged + dropped)~~ ✅ **Done**
 
-### New proposals (P029–P078)
-These proposals address issues discovered in subsequent review cycles. Proposals P058–P078 are newly added and listed in recommended implementation order in the "Not Started" table above.
+### New proposals (P029–P080)
+These proposals address issues discovered in subsequent review cycles. Proposals P058–P080 are newly added and listed in recommended implementation order in the "Not Started" table above.
 
 **Recommended order for P058–P068:**
 1. **P063** – Copilot instructions (no code changes; high leverage for all future development)
@@ -269,7 +272,7 @@ These proposals address issues discovered in subsequent review cycles. Proposals
 10. **P066** – Invitation tokens (security/UX; requires schema migration)
 11. **P067** – Object locking (UX/reliability; requires canvas + WS changes)
 
-**Recommended order for P069–P078:**
+**Recommended order for P069–P080:**
 1. **P072** – security.txt + robots.txt (static files; zero risk; immediate security value)
 2. **P077** – Test factories (pure test infrastructure; improves all subsequent test work)
 3. **P069** – Room capacity limit (single env var + one server.ts check; high reliability impact)
@@ -278,8 +281,10 @@ These proposals address issues discovered in subsequent review cycles. Proposals
 6. **P073** – WebSocket message batching (additive to WsClient; improves P059 effectiveness)
 7. **P078** – Dark/Light theme toggle (CSS variables + cookie; low risk; improves UX)
 8. **P076** – PDF export (new export format; builds on P039 + P070)
-9. **P075** – Redis Sentinel/Cluster (infrastructure; needed before multi-region deployment)
-10. **P074** – Activity feed (new DB model + API endpoint; provides audit trail)
+9. **P079** – Peer branch visibility (extends presence payload; branch modal UI; one-click follow)
+10. **P080** – Presenter mode (view-sync message; viewport API; follow/unfollow UI; builds on P079)
+11. **P075** – Redis Sentinel/Cluster (infrastructure; needed before multi-region deployment)
+12. **P074** – Activity feed (new DB model + API endpoint; provides audit trail)
 
 ---
 
