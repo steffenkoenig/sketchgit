@@ -103,6 +103,15 @@ export function createSketchGitApp() {
   // Now that CommitCoordinator exists, wire the timeline commit-click handler.
   tl.onCommitClick = (sha, x, y) => commit.openCommitPopup(sha, x, y);
 
+  // Wire the canvas "first dirty" callback: when the user starts drawing while
+  // in detached HEAD state, automatically open the branch-create modal so that
+  // they can name a new branch before committing.
+  canvas.onFirstDirty = () => {
+    if (git.detached) {
+      branch.openBranchCreate(git.detached);
+    }
+  };
+
   const merge = new MergeCoordinator(ctx, refresh);
   const collaboration = new CollaborationCoordinator(ctx, refresh);
 

@@ -302,7 +302,17 @@ export class CanvasEngine {
 
   // ── Dirty state ───────────────────────────────────────────────────────────
 
+  /**
+   * Optional callback fired once when the canvas transitions from clean to
+   * dirty (i.e. on the very first drawing gesture after a checkout or commit).
+   * Used by app.ts to auto-trigger branch creation when in detached HEAD state.
+   */
+  onFirstDirty?: () => void;
+
   markDirty(): void {
+    if (!this.isDirty) {
+      this.onFirstDirty?.();
+    }
     this.isDirty = true;
     document.getElementById('dirty')?.classList.remove('hide');
   }

@@ -37,6 +37,7 @@ function makeCtx(overrides?: Partial<AppContext['git']>): AppContext {
         ts: new Date('2025-01-01').getTime(), canvas: '{}', parents: [],
       },
     } as Record<string, unknown>,
+    checkout: vi.fn().mockReturnValue('sha0'),
     checkoutCommit: vi.fn(),
     commit: vi.fn().mockReturnValue('sha1'),
     generateSha: vi.fn().mockReturnValue('sha2'),
@@ -130,7 +131,7 @@ describe('CommitCoordinator', () => {
       expect(mockShowToast).toHaveBeenCalledWith('Already at this commit');
     });
 
-    it('calls checkoutCommit and refresh for a different commit', () => {
+    it('calls checkoutCommit and refresh for a different commit (not a branch tip)', () => {
       (ctx.git.commits as Record<string, unknown>)['sha1'] = {
         sha: 'sha1', message: 'Second', branch: 'main', ts: Date.now(), canvas: '{}', parents: [],
       };
@@ -138,6 +139,36 @@ describe('CommitCoordinator', () => {
       coord.cpCheckout();
       expect(ctx.git.checkoutCommit).toHaveBeenCalledWith('sha1');
       expect(refresh).toHaveBeenCalledOnce();
+    });
+
+    it('switches to branch directly when the commit is a branch tip (no detached HEAD)', () => {
+      // sha0 is the tip of 'main' (set in makeCtx); checking out sha0 from a
+      // different current SHA should call git.checkout('main'), not checkoutCommit.
+      (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha1');
+      (ctx.git.checkout as ReturnType<typeof vi.fn>).mockReturnValue('sha0');
+      coord.openCommitPopup('sha0', 0, 0);
+      coord.cpCheckout();
+      expect(ctx.git.checkout).toHaveBeenCalledWith('main');
+      expect(ctx.git.checkoutCommit).not.toHaveBeenCalled();
+      expect(refresh).toHaveBeenCalledOnce();
+    });
+
+    it('shows branch-switch toast when checking out a branch tip', () => {
+      (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha1');
+      (ctx.git.checkout as ReturnType<typeof vi.fn>).mockReturnValue('sha0');
+      coord.openCommitPopup('sha0', 0, 0);
+      coord.cpCheckout();
+      expect(mockShowToast).toHaveBeenCalledWith("Switched to branch 'main'");
+    });
+
+    it('sends branch-update (not detached) when checking out a branch tip', () => {
+      (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha1');
+      (ctx.git.checkout as ReturnType<typeof vi.fn>).mockReturnValue('sha0');
+      coord.openCommitPopup('sha0', 0, 0);
+      coord.cpCheckout();
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'branch-update', branch: 'main', headSha: 'sha0', isRollback: false }),
+      );
     });
   });
 
@@ -209,12 +240,16 @@ describe('CommitCoordinator', () => {
   // ─── P053: cpCheckout sends branch-update ─────────────────────────────────
 
   describe('P053: cpCheckout()', () => {
-    it('sends branch-update with detached=true after checkout', () => {
-      (coord as unknown as { popupSHA: string }).popupSHA = 'sha0';
-      (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha1'); // different sha
+    it('sends branch-update with detached=true after checkout of a non-tip commit', () => {
+      // sha99 is NOT a branch tip, so detached HEAD path is taken.
+      (ctx.git.commits as Record<string, unknown>)['sha99'] = {
+        sha: 'sha99', message: 'Old commit', branch: 'main', ts: Date.now(), canvas: '{}', parents: [],
+      };
+      (coord as unknown as { popupSHA: string }).popupSHA = 'sha99';
+      (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha0'); // different sha
       coord.cpCheckout();
       expect(ctx.ws.send).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'branch-update', detached: true, headSha: 'sha0' }),
+        expect.objectContaining({ type: 'branch-update', detached: true, headSha: 'sha99' }),
       );
     });
 

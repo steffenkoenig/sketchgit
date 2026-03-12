@@ -215,6 +215,36 @@ describe('CanvasEngine – dirty state', () => {
     expect(engine.isDirty).toBe(false);
     expect(document.getElementById('dirty')!.classList.contains('hide')).toBe(true);
   });
+
+  it('onFirstDirty is called once when canvas first becomes dirty', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    const onFirstDirty = vi.fn();
+    engine.onFirstDirty = onFirstDirty;
+    engine.markDirty();
+    expect(onFirstDirty).toHaveBeenCalledOnce();
+    // Calling markDirty again should NOT fire the callback a second time
+    engine.markDirty();
+    expect(onFirstDirty).toHaveBeenCalledOnce();
+  });
+
+  it('onFirstDirty fires again after clearDirty() resets the dirty flag', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    const onFirstDirty = vi.fn();
+    engine.onFirstDirty = onFirstDirty;
+    engine.markDirty();
+    engine.clearDirty();
+    engine.markDirty();
+    expect(onFirstDirty).toHaveBeenCalledTimes(2);
+  });
+
+  it('onFirstDirty is not called when the callback is not set', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    // No onFirstDirty set – should not throw
+    expect(() => engine.markDirty()).not.toThrow();
+  });
 });
 
 describe('CanvasEngine – serialisation', () => {
