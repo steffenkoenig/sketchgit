@@ -99,6 +99,16 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/P066_room-invitation-tokens.md) |
 | P067 | Prevent Conflicting Concurrent Edits via Canvas Object Reservation (Soft Lock) | Reliability, UX | [P067](proposals/P067_canvas-object-locking.md) |
 | P068 | Introduce Machine-Readable Error Codes in All API Error Responses | Maintainability, UX | [P068](proposals/P068_structured-error-codes.md) |
+| P069 | Enforce a Configurable Maximum Number of WebSocket Clients per Room | Reliability, Security | [P069](proposals/P069_room-capacity-limit.md) |
+| P070 | Add `Cache-Control` Headers to SHA-Addressed API Responses | Performance | [P070](proposals/P070_http-cache-control-headers.md) |
+| P071 | Enable Prisma Slow-Query Logging and Duration Alerting | Reliability, Maintainability | [P071](proposals/P071_prisma-slow-query-logging.md) |
+| P072 | Add `security.txt`, `robots.txt`, and `/.well-known/` Routes | Security, Maintainability | [P072](proposals/P072_security-txt-robots-txt.md) |
+| P073 | Batch Multiple Small WebSocket Messages Within a Single Tick | Performance | [P073](proposals/P073_websocket-message-batching.md) |
+| P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/P074_room-activity-feed-audit-log.md) |
+| P075 | Support Redis Sentinel and Cluster Connection Modes | Reliability | [P075](proposals/P075_redis-sentinel-cluster.md) |
+| P076 | Add PDF Export for Canvas Drawings | UX | [P076](proposals/P076_canvas-pdf-export.md) |
+| P077 | Create Shared Vitest Test Fixtures and Factory Helpers | Maintainability | [P077](proposals/P077_test-fixtures-factories.md) |
+| P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/P078_dark-light-theme-toggle.md) |
 
 ---
 
@@ -171,6 +181,16 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P066 (Invitation Tokens) | P003 ✅ (Prisma), P007 ✅ (auth), P034 ✅ (access control), P054 ✅ (constant-time) |
 | P067 (Object Locking) | P001 ✅ (modules), P006 ✅ (real-time collab), P020 ✅ (resource cleanup) |
 | P068 (Error Codes) | P014 ✅ (Zod validation), P009 ✅ (i18n), P050 ✅ (next-intl wiring) |
+| P069 (Room Capacity) | P013 ✅ (server TypeScript), P015 ✅ (per-IP limit — same upgrade handler) |
+| P070 (Cache-Control) | P029 ✅ (paginated commits — SHA cursor enables immutable caching), P039 ✅ (export endpoint) |
+| P071 (Prisma Slow-Query) | P003 ✅ (Prisma), P011 ✅ (DB performance — slow queries indicate missing indices) |
+| P072 (security.txt) | P040 ✅ (password reset flow — /.well-known/change-password redirects there) |
+| P073 (WS Batching) | P004 ✅ (WsClient), P006 ✅ (draw-delta throttling), P031 ✅ (WS validation) |
+| P074 (Activity Feed) | P003 ✅ (Prisma), P032 ✅ (pruning), P041 ✅ (GDPR), P053 ✅ (branch-update) |
+| P075 (Redis Sentinel) | P012 ✅ (ioredis established), P046 ✅ (Redis rate limiter) |
+| P076 (PDF Export) | P039 ✅ (PNG/SVG export), P070 (cache headers) |
+| P077 (Test Factories) | P002 ✅ (test suite), P028 ✅ (expanded coverage), P003 ✅ (Prisma models) |
+| P078 (Theme Toggle) | P050 ✅ (locale switcher pattern), P039 ✅ (export uses themed background), P056 ✅ (CSP nonce) |
 
 ---
 
@@ -232,8 +252,8 @@ Some proposals build on or benefit from others. The table below shows key depend
 53. ~~**P056** – Nonce-based CSP (buildCsp in lib/server/csp.ts; randomBytes nonce in proxy.ts per request; x-nonce header forwarded to layout.tsx; 'unsafe-inline' removed from next.config.mjs; NextIntlClientProvider + SessionProvider receive nonce; next.config.mjs experimental.nonce=true)~~ ✅ **Done**
 54. ~~**P057** – Commit SHA/payload validation (validateCommitMessage in lib/server/commitValidation.ts; SHA regex /^[0-9a-f]{8,64}$/; canvas 2 MB limit + JSON.parse check; parents max 2, each valid SHA; applied before dbSaveCommit in server.ts; invalid messages logged + dropped)~~ ✅ **Done**
 
-### New proposals (P029–P068)
-These proposals address issues discovered in subsequent review cycles. Proposals P058–P068 are newly added and listed in recommended implementation order in the "Not Started" table above.
+### New proposals (P029–P078)
+These proposals address issues discovered in subsequent review cycles. Proposals P058–P078 are newly added and listed in recommended implementation order in the "Not Started" table above.
 
 **Recommended order for P058–P068:**
 1. **P063** – Copilot instructions (no code changes; high leverage for all future development)
@@ -247,6 +267,18 @@ These proposals address issues discovered in subsequent review cycles. Proposals
 9. **P061** – OpenTelemetry (observability; enables data-driven decisions for remaining work)
 10. **P066** – Invitation tokens (security/UX; requires schema migration)
 11. **P067** – Object locking (UX/reliability; requires canvas + WS changes)
+
+**Recommended order for P069–P078:**
+1. **P072** – security.txt + robots.txt (static files; zero risk; immediate security value)
+2. **P077** – Test factories (pure test infrastructure; improves all subsequent test work)
+3. **P069** – Room capacity limit (single env var + one server.ts check; high reliability impact)
+4. **P070** – Cache-Control headers (adds headers to existing routes; no behaviour change)
+5. **P071** – Prisma slow-query logging (one-line change to prisma.ts; immediate observability)
+6. **P073** – WebSocket message batching (additive to WsClient; improves P059 effectiveness)
+7. **P078** – Dark/Light theme toggle (CSS variables + cookie; low risk; improves UX)
+8. **P076** – PDF export (new export format; builds on P039 + P070)
+9. **P075** – Redis Sentinel/Cluster (infrastructure; needed before multi-region deployment)
+10. **P074** – Activity feed (new DB model + API endpoint; provides audit trail)
 
 ---
 
