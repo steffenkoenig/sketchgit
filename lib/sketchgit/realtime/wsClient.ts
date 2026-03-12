@@ -12,6 +12,8 @@
  *    The server sends a `ping` every 25 seconds; the client responds with
  *    `pong`.  Stale TCP connections (zombie sockets) are caught this way.
  *  - Connection status events drive the UI badge without coupling to React.
+ *  - P073: `sendBatched()` coalesces high-frequency messages into a single
+ *    WebSocket frame per microtask tick to reduce TCP overhead.
  */
 
 import { ConnectionStatus, WsMessage } from '../types';
@@ -49,6 +51,10 @@ export class WsClient {
 
   // ── Outgoing message queue ────────────────────────────────────────────────
   private messageQueue: string[] = [];
+
+  // ── P073: Outbound message batch ──────────────────────────────────────────
+  private pendingBatch: WsMessage[] = [];
+  private batchFlushScheduled = false;
 
   // ── Public callbacks ──────────────────────────────────────────────────────
   onMessage: ((data: WsMessage) => void) | null = null;
@@ -88,6 +94,44 @@ export class WsClient {
       try { this.socket.send(json); } catch { /* ignore */ }
     } else {
       this.messageQueue.push(json);
+    }
+  }
+
+  /**
+   * P073 – Enqueue a message in the outgoing batch.
+   *
+   * Messages enqueued within the same JavaScript microtask queue flush are
+   * coalesced and sent as a single WebSocket frame (JSON array `WsMessage[]`).
+   * This reduces TCP overhead for high-frequency message pairs such as a
+   * `cursor` update immediately followed by a `draw-delta`.
+   *
+   * Use this for high-frequency data messages.
+   * Use `send()` directly for control messages (pong, disconnect) that must
+   * not be deferred.
+   */
+  sendBatched(data: WsMessage): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) {
+      // Fall back to the individual queue if not connected.
+      this.send(data);
+      return;
+    }
+    this.pendingBatch.push(data);
+    if (!this.batchFlushScheduled) {
+      this.batchFlushScheduled = true;
+      queueMicrotask(() => this._flushBatch());
+    }
+  }
+
+  private _flushBatch(): void {
+    this.batchFlushScheduled = false;
+    if (this.pendingBatch.length === 0) return;
+    const messages = this.pendingBatch.splice(0);
+    if (messages.length === 1) {
+      // Single message: send unwrapped to avoid unnecessary array overhead.
+      try { this.socket?.send(JSON.stringify(messages[0])); } catch { /* ignore */ }
+    } else {
+      // Multiple messages: send as JSON array so the server can unwrap them.
+      try { this.socket?.send(JSON.stringify(messages)); } catch { /* ignore */ }
     }
   }
 
@@ -140,6 +184,13 @@ export class WsClient {
       // P043 – server is about to restart; surface a brief informational toast.
       if (data.type === 'shutdown-warning') {
         showToast('🔄 Server restarting, reconnecting shortly…');
+        return;
+      }
+
+      // P069 – room is at capacity; show error and suppress reconnect.
+      if (data.type === 'error' && (data as WsMessage & { code?: string }).code === 'ROOM_FULL') {
+        showToast('⚠ This room is full. Please try a different room.', true);
+        this.intentionalClose = true;
         return;
       }
 

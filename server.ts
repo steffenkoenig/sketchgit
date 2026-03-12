@@ -25,7 +25,7 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
-import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
+import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { validateCommitMessage } from "./lib/server/commitValidation.js";
 
@@ -82,19 +82,55 @@ let redisSub: RedisClient | null = null;
 let redisReady = false;
 
 async function initRedis(): Promise<void> {
-  if (!env.REDIS_URL) return; // optional feature – skip when not configured
+  const mode = env.REDIS_MODE;
+
+  // Standalone mode requires REDIS_URL; other modes have their own checks.
+  if (mode === "standalone" && !env.REDIS_URL) return;
+  if (mode === "sentinel" && !env.REDIS_SENTINEL_HOSTS) return;
+  if (mode === "cluster" && !env.REDIS_CLUSTER_NODES) return;
 
   const { default: Redis } = await import("ioredis");
 
-  const redisOpts = {
+  /** Parse comma-separated "host:port" into ioredis node objects. */
+  function parseNodes(csv: string): Array<{ host: string; port: number }> {
+    return csv.split(",").map((e) => {
+      const t = e.trim();
+      const c = t.lastIndexOf(":");
+      return c === -1
+        ? { host: t, port: 6379 }
+        : { host: t.slice(0, c), port: parseInt(t.slice(c + 1), 10) || 6379 };
+    });
+  }
+
+  const standaloneOpts = {
     lazyConnect: true,
     maxRetriesPerRequest: 3,
     enableReadyCheck: true,
     retryStrategy: (times: number) => Math.min(times * 200, 5_000),
   };
 
-  redisPub = new Redis(env.REDIS_URL, redisOpts);
-  redisSub = new Redis(env.REDIS_URL, redisOpts);
+  function makeClient(): RedisClient {
+    if (mode === "sentinel") {
+      return new Redis({
+        sentinels: parseNodes(env.REDIS_SENTINEL_HOSTS!),
+        name: env.REDIS_SENTINEL_NAME,
+        lazyConnect: true,
+        maxRetriesPerRequest: 3,
+      }) as unknown as RedisClient;
+    }
+    if (mode === "cluster") {
+      return new Redis.Cluster(parseNodes(env.REDIS_CLUSTER_NODES!), {
+        redisOptions: { maxRetriesPerRequest: 3 },
+        clusterRetryStrategy: (times: number) => Math.min(times * 200, 5_000),
+        lazyConnect: true,
+      }) as unknown as RedisClient;
+    }
+    // standalone
+    return new Redis(env.REDIS_URL!, standaloneOpts);
+  }
+
+  redisPub = makeClient();
+  redisSub = makeClient();
 
   redisPub.on("error", (err) => logger.error({ err }, "redis: pub connection error"));
   redisSub.on("error", (err) => logger.error({ err }, "redis: sub connection error"));
@@ -137,6 +173,10 @@ type ClientState = WebSocket & {
   role: ClientRole;
   displayName: string;
   displayColor: string;
+  /** P079 – current branch the client has checked out (default: 'main') */
+  currentBranch: string;
+  /** P079 – HEAD SHA for the client's current branch tip */
+  currentHeadSha: string | null;
   /** Internal: user id resolved during WebSocket upgrade */
   _userId?: string | null;
   /** Internal: remote IP captured during the HTTP upgrade */
@@ -357,8 +397,8 @@ const REDIS_PRESENCE_TTL_SECONDS = 30;
  */
 async function getGlobalPresence(
   roomId: string,
-  localClients: Array<{ clientId: string; name: string; color: string; userId: string | null }>,
-): Promise<Array<{ clientId: string; name: string; color: string; userId: string | null }>> {
+  localClients: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>,
+): Promise<Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>> {
   if (!redisPub || !redisReady) return localClients;
 
   try {
@@ -367,13 +407,13 @@ async function getGlobalPresence(
     if (!allFields) return localClients;
 
     const seen = new Set<string>();
-    const merged: Array<{ clientId: string; name: string; color: string; userId: string | null }> = [];
+    const merged: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }> = [];
     for (const value of Object.values(allFields)) {
-      const clients = JSON.parse(value) as Array<{ clientId: string; name: string; color: string; userId: string | null }>;
+      const clients = JSON.parse(value) as Array<{ clientId: string; name: string; color: string; userId: string | null; branch?: string; headSha?: string | null }>;
       for (const c of clients) {
         if (!seen.has(c.clientId)) {
           seen.add(c.clientId);
-          merged.push(c);
+          merged.push({ ...c, branch: c.branch ?? 'main', headSha: c.headSha ?? null });
         }
       }
     }
@@ -387,7 +427,7 @@ async function getGlobalPresence(
 function pushPresence(roomId: string): void {
   const room = rooms.get(roomId);
   // Compute local client list regardless of Redis availability
-  const localClients: Array<{ clientId: string; name: string; color: string; userId: string | null }> = [];
+  const localClients: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }> = [];
   if (room) {
     for (const [clientId, client] of room.entries()) {
       localClients.push({
@@ -395,6 +435,8 @@ function pushPresence(roomId: string): void {
         name: client.displayName,
         color: client.displayColor,
         userId: client.userId ?? null,
+        branch: client.currentBranch,
+        headSha: client.currentHeadSha,
       });
     }
   }
@@ -650,7 +692,7 @@ void initRedis().catch((err) =>
 );
 
 // P032 – periodic room pruning job
-function startPruningJob(intervalMs: number, retentionDays: number): ReturnType<typeof setInterval> {
+function startPruningJob(intervalMs: number, retentionDays: number, eventRetentionDays: number): ReturnType<typeof setInterval> {
   let running = false;
   const timer = setInterval(() => {
     if (running) {
@@ -659,7 +701,7 @@ function startPruningJob(intervalMs: number, retentionDays: number): ReturnType<
     }
     running = true;
     const activeRoomIds = [...rooms.keys()];
-    pruneInactiveRooms(retentionDays, activeRoomIds)
+    pruneInactiveRooms(retentionDays, activeRoomIds, eventRetentionDays)
       .then((count) => {
         if (count > 0) {
           logger.info({ count, retentionDays }, "pruning: removed inactive rooms");
@@ -680,6 +722,7 @@ let pruneJobTimer: ReturnType<typeof setInterval> | null = null;
 pruneJobTimer = startPruningJob(
   env.PRUNE_INTERVAL_HOURS * 60 * 60 * 1000,
   env.PRUNE_INACTIVE_ROOMS_DAYS,
+  env.ROOM_EVENT_RETENTION_DAYS,
 );
 
 /**
@@ -712,6 +755,8 @@ void app.prepare()
             uptime: process.uptime(),
             rooms: rooms.size,
             clients: wss.clients.size,
+            maxRoomSize: rooms.size > 0 ? Math.max(...[...rooms.values()].map((r) => r.size)) : 0,
+            capacityLimit: env.MAX_CLIENTS_PER_ROOM,
             database: dbOk ? "ok" : "unreachable",
             // P012: include Redis status for ops visibility
             redis: env.REDIS_URL ? (redisReady ? "ok" : "connecting") : "disabled",
@@ -741,7 +786,39 @@ void app.prepare()
         }
       });
     });
-    const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
+    const wss = new WebSocketServer({
+      noServer: true,
+      /**
+       * P059 – perMessageDeflate: enable RFC 7692 permessage-deflate extension.
+       *
+       * Configuration rationale:
+       *  - serverMaxWindowBits: 15 — maximum LZ77 sliding window (32 KB).
+       *    The browser negotiates downwards automatically; using 15 maximises
+       *    compression ratio for large canvas payloads (Fabric.js JSON is
+       *    highly repetitive: repeated property names, coordinates, hex colors).
+       *  - clientMaxWindowBits: 15 — request the same window from the client.
+       *  - threshold: skip zlib for messages below this size (bytes).
+       *    Tiny messages (heartbeat pong ~20 bytes, cursor ~100 bytes) incur
+       *    50–100 µs of zlib overhead with negligible saving; skipping them
+       *    reduces CPU pressure on busy servers.  Default: 1024 (1 KB).
+       *    Configurable via WS_COMPRESSION_THRESHOLD env var.
+       *
+       * Memory implications:
+       *  Each compressed connection requires ~128 KB for the zlib context.
+       *  At 1000 concurrent clients: ~128 MB.
+       *  At 5000+ clients: reduce zlibDeflateOptions.memLevel from 8 to 5–6
+       *  (halves per-connection memory at ~5% compression ratio cost).
+       *
+       * Browser support: all modern browsers (Chrome, Firefox, Safari, Edge)
+       * advertise permessage-deflate automatically; clients that do not support
+       * it connect uncompressed without error.
+       */
+      perMessageDeflate: {
+        serverMaxWindowBits: 15,
+        clientMaxWindowBits: 15,
+        threshold: env.WS_COMPRESSION_THRESHOLD,
+      },
+    });
 
     server.on("upgrade", (req: IncomingMessage, socket, head) => {
       void (async () => {
@@ -815,6 +892,115 @@ void app.prepare()
       });
     });
 
+    /**
+     * P073 – Process a single validated WsMessage for a connected client.
+     * Extracted so the P073 batch handler can call it for each message in a batch.
+     */
+    async function handleWsMessage(
+      client: ClientState,
+      message: WsMessage,
+      roomId: string,
+      clientId: string,
+    ): Promise<void> {
+      if (message.type === "profile") {
+        // Guard against non-string values from malicious clients; safeName/safeColor
+        // call .trim() internally and would throw on numbers/objects.
+        client.displayName = safeName(
+          typeof message.name === "string" ? message.name : null,
+        );
+        client.displayColor = safeColor(
+          typeof message.color === "string" ? message.color : null,
+        );
+        // P079 – update branch position if supplied (optional, backward-compatible)
+        if (typeof message.branch === "string" && message.branch.length > 0) {
+          client.currentBranch = safeBranchName(message.branch);
+        }
+        if (typeof message.headSha === "string") {
+          client.currentHeadSha = message.headSha.slice(0, 64) || null;
+        }
+        schedulePushPresence(roomId);
+        return;
+      }
+
+      // Drop ping/pong before any further processing – heartbeat only
+      if (message.type === "ping" || message.type === "pong") return;
+
+      // P034 – Enforce write permissions: only VIEWER role cannot modify
+      // shared canvas state. ANONYMOUS users are allowed to draw and commit
+      // in public rooms (the anonymous-first UX design).
+      if (
+        (message.type === "draw" ||
+          message.type === "draw-delta" ||
+          message.type === "commit" ||
+          message.type === "branch-update") &&
+        client.role === "VIEWER"
+      ) {
+        sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
+        return;
+      }
+
+      // Persist commit messages to the database
+      if (message.type === "commit" && message.sha && message.commit) {
+        // P057 – Validate SHA format and payload size before persisting or relaying
+        const isValid = validateCommitMessage(
+          message.sha,
+          message.commit,
+          (reason) => logger.warn({ clientId, roomId, reason }, "ws: commit rejected"),
+        );
+        if (!isValid) return;
+
+        logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
+        // P043 – Track in-flight DB writes so graceful shutdown can drain them.
+        beginWrite();
+        try {
+          await dbSaveCommit(
+            roomId,
+            message.sha as string,
+            message.commit as CommitData,
+            client.userId,
+          );
+        } finally {
+          endWrite();
+        }
+        // P074 – append COMMIT event to activity log (non-blocking)
+        const commitData = message.commit as CommitData;
+        void appendRoomEvent(roomId, "COMMIT", client.userId, {
+          sha: message.sha,
+          branch: commitData.branch,
+          message: commitData.message,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append COMMIT"));
+        // P030: invalidate cached snapshot so next connection loads fresh state
+        roomCache.invalidate(roomId);
+      }
+
+      // P074 – append BRANCH_CHECKOUT / ROLLBACK event for branch-update messages
+      // P079 – update the client's branch position on the server for presence
+      if (message.type === "branch-update") {
+        const buMsg = message as WsMessage & { branch?: string; headSha?: string; isRollback?: boolean };
+        // Store new branch position so presence reflects it
+        if (typeof buMsg.branch === "string" && buMsg.branch.length > 0) {
+          client.currentBranch = safeBranchName(buMsg.branch);
+          client.currentHeadSha = typeof buMsg.headSha === "string" ? buMsg.headSha.slice(0, 64) : null;
+          schedulePushPresence(roomId);
+        }
+        const evType = buMsg.isRollback ? "ROLLBACK" : "BRANCH_CHECKOUT";
+        void appendRoomEvent(roomId, evType, client.userId, {
+          branch: buMsg.branch,
+          headSha: buMsg.headSha,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append branch event"));
+      }
+
+      // Relay to peers
+      const relay: WsMessage = {
+        ...message,
+        senderId: client.clientId,
+        senderName: client.displayName,
+        senderColor: client.displayColor,
+        roomId,
+      };
+      broadcastRoom(roomId, relay, client.clientId);
+    }
+
     wss.on("connection", asyncHandler("ws:connection", async (ws: WebSocket, reqUrl: URL) => {
       const client = ws as ClientState;
       // P049 – resolve slug to canonical room ID before assigning.
@@ -822,15 +1008,51 @@ void app.prepare()
       const resolvedId = rawRoom ? await resolveRoomId(rawRoom) : null;
       const roomId = resolvedId ?? safeRoomId(rawRoom);
       const clientId = randomUUID().slice(0, 8);
+      const connectionStartMs = Date.now(); // P074 – for MEMBER_LEAVE durationMs
 
       client.clientId = clientId;
       client.roomId = roomId;
       client.userId = client._userId ?? null;
       client.displayName = safeName(reqUrl.searchParams.get("name"));
       client.displayColor = safeColor(reqUrl.searchParams.get("color"));
+      // P079 – initialise branch position to 'main'; updated via profile/branch-update
+      client.currentBranch = 'main';
+      client.currentHeadSha = null;
 
       // P034 – Enforce room access control before adding the client to the room.
-      const access = await checkRoomAccess(roomId, client.userId);
+      // P066 – If access is denied but the client presents a valid invitation
+      //         token, grant access as EDITOR for the duration of the session.
+      let access = await checkRoomAccess(roomId, client.userId);
+      if (!access.allowed) {
+        const inviteToken = reqUrl.searchParams.get("invite");
+        if (inviteToken) {
+          const invitation = await prisma.roomInvitation.findUnique({
+            where: { token: inviteToken },
+            select: { roomId: true, expiresAt: true, maxUses: true, useCount: true },
+          });
+          if (
+            invitation &&
+            invitation.roomId === roomId &&
+            invitation.expiresAt > new Date() &&
+            invitation.useCount < invitation.maxUses
+          ) {
+            // Grant EDITOR access via invite; increment use count
+            await prisma.roomInvitation.update({
+              where: { token: inviteToken },
+              data: { useCount: { increment: 1 } },
+            });
+            // Also add as a room member so future connections don't need the token
+            if (client.userId) {
+              await prisma.roomMembership.upsert({
+                where: { roomId_userId: { roomId, userId: client.userId } },
+                update: {},
+                create: { roomId, userId: client.userId, role: "EDITOR" },
+              });
+            }
+            access = { allowed: true, role: "EDITOR" };
+          }
+        }
+      }
       if (!access.allowed) {
         logger.warn({ roomId, userId: client.userId, reason: access.reason }, "ws: access denied");
         sendTo(client, { type: "error", code: "ACCESS_DENIED", reason: access.reason });
@@ -838,6 +1060,18 @@ void app.prepare()
         return;
       }
       client.role = access.role;
+
+      // P069 – enforce per-room client capacity limit.
+      const existingRoom = rooms.get(roomId);
+      if (existingRoom && existingRoom.size >= env.MAX_CLIENTS_PER_ROOM) {
+        logger.warn(
+          { roomId, currentSize: existingRoom.size, limit: env.MAX_CLIENTS_PER_ROOM },
+          "ws: room at capacity, rejecting new connection",
+        );
+        sendTo(client, { type: "error", code: "ROOM_FULL", message: "This room is at capacity." });
+        ws.close(1008, "Room at capacity");
+        return;
+      }
 
       // P015 – increment per-IP connection counter
       const ip = client._ip ?? "unknown";
@@ -856,6 +1090,11 @@ void app.prepare()
       await dbEnsureRoom(roomId, client.userId);
 
       logger.info({ clientId, roomId, userId: client.userId ?? null }, "ws: client connected");
+
+      // P074 – append MEMBER_JOIN event (non-blocking)
+      void appendRoomEvent(roomId, "MEMBER_JOIN", client.userId, {
+        displayName: client.displayName,
+      }).catch((err: unknown) => logger.warn({ err }, "events: failed to append MEMBER_JOIN"));
 
       sendTo(client, { type: "welcome", roomId, clientId });
       schedulePushPresence(roomId);
@@ -895,84 +1134,30 @@ void app.prepare()
           return;
         }
 
-        const validated = InboundWsMessageSchema.safeParse(parsed);
-        if (!validated.success) {
-          logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema");
-          sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
-          return;
-        }
-        const message = validated.data as unknown as WsMessage;
+        // P073 – Batch support: client may send a JSON array of WsMessages.
+        // Unwrap and process each message in order.  Single-message frames
+        // remain backward-compatible (not wrapped in an array).
+        const messages: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
 
-        if (message.type === "profile") {
-          // Guard against non-string values from malicious clients; safeName/safeColor
-          // call .trim() internally and would throw on numbers/objects.
-          client.displayName = safeName(
-            typeof message.name === "string" ? message.name : null,
-          );
-          client.displayColor = safeColor(
-            typeof message.color === "string" ? message.color : null,
-          );
-          schedulePushPresence(roomId);
-          return;
-        }
-
-        // Drop ping/pong before any further processing – heartbeat only
-        if (message.type === "ping" || message.type === "pong") return;
-
-        // P034 – Enforce write permissions: only VIEWER role cannot modify
-        // shared canvas state. ANONYMOUS users are allowed to draw and commit
-        // in public rooms (the anonymous-first UX design).
-        if (
-          (message.type === "draw" ||
-            message.type === "draw-delta" ||
-            message.type === "commit" ||
-            message.type === "branch-update") &&
-          client.role === "VIEWER"
-        ) {
-          sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
-          return;
-        }
-
-        // Persist commit messages to the database
-        if (message.type === "commit" && message.sha && message.commit) {
-          // P057 – Validate SHA format and payload size before persisting or relaying
-          const isValid = validateCommitMessage(
-            message.sha,
-            message.commit,
-            (reason) => logger.warn({ clientId, roomId, reason }, "ws: commit rejected"),
-          );
-          if (!isValid) return;
-
-          logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
-          // P043 – Track in-flight DB writes so graceful shutdown can drain them.
-          beginWrite();
-          try {
-            await dbSaveCommit(
-              roomId,
-              message.sha as string,
-              message.commit as CommitData,
-              client.userId,
-            );
-          } finally {
-            endWrite();
+        for (const msg of messages) {
+          const validated = InboundWsMessageSchema.safeParse(msg);
+          if (!validated.success) {
+            logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema");
+            sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
+            return;
           }
-          // P030: invalidate cached snapshot so next connection loads fresh state
-          roomCache.invalidate(roomId);
+          await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId);
         }
-
-        // Relay to peers
-        const relay: WsMessage = {
-          ...message,
-          senderId: client.clientId,
-          senderName: client.displayName,
-          senderColor: client.displayColor,
-          roomId,
-        };
-        broadcastRoom(roomId, relay, client.clientId);
       }));
 
       client.on("close", () => {
         logger.info({ clientId, roomId }, "ws: client disconnected");
+
+        // P074 – append MEMBER_LEAVE event (non-blocking)
+        void appendRoomEvent(roomId, "MEMBER_LEAVE", client.userId, {
+          displayName: client.displayName,
+          durationMs: Date.now() - connectionStartMs,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append MEMBER_LEAVE"));
 
         // P015 – decrement per-IP connection counter
         const remaining = (connectionsPerIp.get(ip) ?? 1) - 1;

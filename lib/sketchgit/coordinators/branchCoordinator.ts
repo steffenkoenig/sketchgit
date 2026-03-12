@@ -1,3 +1,4 @@
+
 /**
  * BranchCoordinator – owns the branch-list modal and branch-creation workflow.
  *
@@ -5,6 +6,10 @@
  *  - Render the branch-list modal with clickable items for checkout.
  *  - Open the branch-create form (optionally pre-seeded from a commit SHA).
  *  - Validate the branch name and delegate to GitModel.
+ *
+ * P079 – Shows peer avatar dots next to each branch in the modal, and sends
+ *        a `profile` message after checkout so the server's presence reflects
+ *        the new branch immediately.
  */
 
 import { AppContext } from './appContext';
@@ -34,17 +39,25 @@ export class BranchCoordinator {
     if (!list) return;
     list.replaceChildren();
 
+    // P079 – build branch → peers map for the presence avatars
+    const presencePeers = this.ctx.collab.getPresenceClients();
+    const myId = this.ctx.collab.getMyClientId();
+    const peersByBranch = new Map<string, typeof presencePeers>();
+    for (const peer of presencePeers) {
+      if (peer.clientId === myId) continue;
+      const b = peer.branch ?? 'main';
+      const existing = peersByBranch.get(b) ?? [];
+      existing.push(peer);
+      peersByBranch.set(b, existing);
+    }
+
     for (const [name, sha] of Object.entries(git.branches)) {
       const color = git.branchColor(name);
       const item = document.createElement('div');
       item.className = 'branch-item' + (name === git.HEAD ? ' active-branch' : '');
 
       const dot = document.createElement('div');
-      dot.style.width = '10px';
-      dot.style.height = '10px';
-      dot.style.borderRadius = '50%';
-      dot.style.background = color;
-      dot.style.flexShrink = '0';
+      dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0`;
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'bname';
@@ -58,6 +71,30 @@ export class BranchCoordinator {
       item.appendChild(nameSpan);
       item.appendChild(shaSpan);
 
+      // P079 – peer presence avatars for this branch
+      const peers = peersByBranch.get(name) ?? [];
+      if (peers.length > 0) {
+        const MAX_SHOWN = 3;
+        const group = document.createElement('div');
+        group.className = 'branch-peers';
+        group.style.cssText = 'display:flex;gap:2px;align-items:center;margin-left:auto;flex-shrink:0';
+        group.title = peers.map((p) => p.name || 'User').join(', ');
+        for (const peer of peers.slice(0, MAX_SHOWN)) {
+          const av = document.createElement('div');
+          av.style.cssText = `width:16px;height:16px;border-radius:50%;background:${peer.color || '#7c6eff'};display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:600;flex-shrink:0`;
+          av.textContent = (peer.name || 'U').slice(0, 1).toUpperCase();
+          av.title = peer.name || 'User';
+          group.appendChild(av);
+        }
+        if (peers.length > MAX_SHOWN) {
+          const extra = document.createElement('span');
+          extra.style.cssText = 'font-size:9px;color:var(--a1,#7c6eff);font-weight:600;flex-shrink:0';
+          extra.textContent = `+${peers.length - MAX_SHOWN}`;
+          group.appendChild(extra);
+        }
+        item.appendChild(group);
+      }
+
       item.addEventListener('click', () => {
         const branchTip = git.branches[name];
         git.checkout(name);
@@ -69,6 +106,14 @@ export class BranchCoordinator {
         showToast(`Switched to branch '${name}'`);
         // P053 – notify peers of HEAD change (no new commit; updates presence display)
         this.ctx.ws.send({ type: 'branch-update', branch: name, headSha: branchTip, isRollback: false });
+        // P079 – update server's record of our branch for presence
+        this.ctx.ws.send({
+          type: 'profile',
+          name: this.ctx.ws.name,
+          color: this.ctx.ws.color,
+          branch: name,
+          headSha: branchTip ?? null,
+        });
       });
       list.appendChild(item);
     }

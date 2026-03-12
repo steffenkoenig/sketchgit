@@ -21,8 +21,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { validate } from "@/lib/api/validate";
 import { getAuthSession } from "@/lib/authTypes";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
-const PatchRoomSchema = z.object({
+export const PatchRoomSchema = z.object({
   slug: z
     .string()
     .min(3, "Slug must be at least 3 characters.")
@@ -41,7 +42,7 @@ export async function PATCH(
   const session = await auth();
   const authSession = getAuthSession(session);
   if (!authSession) {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    return apiError(ApiErrorCode.UNAUTHENTICATED, "Unauthenticated", 401);
   }
 
   const userId = authSession.user.id;
@@ -59,17 +60,17 @@ export async function PATCH(
   });
 
   if (!room) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
 
   const isOwner = room.ownerId === userId || room.memberships.length > 0;
   if (!isOwner) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return apiError(ApiErrorCode.FORBIDDEN, "Forbidden", 403);
   }
 
   const body: unknown = await req.json().catch(() => null);
   if (body === null) {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return apiError(ApiErrorCode.INVALID_JSON, "Invalid JSON", 400);
   }
 
   const v = validate(PatchRoomSchema, body);
@@ -85,8 +86,8 @@ export async function PATCH(
   } catch (err: unknown) {
     // Prisma unique-constraint violation (P2002) → slug already in use.
     if ((err as { code?: string }).code === "P2002") {
-      return NextResponse.json({ error: "Slug is already taken." }, { status: 409 });
+      return apiError(ApiErrorCode.SLUG_ALREADY_TAKEN, "Slug is already taken.", 409);
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return apiError(ApiErrorCode.INTERNAL_ERROR, "Internal server error", 500);
   }
 }

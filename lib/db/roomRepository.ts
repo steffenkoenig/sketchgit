@@ -3,8 +3,10 @@
  * All functions are async and interact with PostgreSQL via the Prisma client.
  */
 import { prisma } from "@/lib/db/prisma";
-import { CommitStorageType, MemberRole } from "@prisma/client";
+import { CommitStorageType, MemberRole, RoomEventType } from "@prisma/client";
 import { replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
+
+export type { RoomEventType };
 
 // ─── Types (mirror the client-side git model) ─────────────────────────────────
 
@@ -278,12 +280,19 @@ export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
  * Cascades to commits, branches, memberships, and room state.
  *
  * Rooms with IDs in `excludeRoomIds` are skipped (e.g. currently active rooms).
+ * Also prunes RoomEvent rows older than `eventRetentionDays` (P074).
  */
 export async function pruneInactiveRooms(
   days = 30,
   excludeRoomIds: string[] = [],
+  eventRetentionDays = 90,
 ): Promise<number> {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const eventCutoff = new Date(Date.now() - eventRetentionDays * 24 * 60 * 60 * 1000);
+
+  // P074 – delete stale activity-log rows first (no cascade needed; just old events)
+  await prisma.roomEvent.deleteMany({ where: { createdAt: { lt: eventCutoff } } });
+
   const result = await prisma.room.deleteMany({
     where: {
       updatedAt: { lt: cutoff },
@@ -291,6 +300,48 @@ export async function pruneInactiveRooms(
     },
   });
   return result.count;
+}
+
+// ─── Activity feed (P074) ─────────────────────────────────────────────────────
+
+/**
+ * Append a single event to the room activity log.
+ * Non-blocking: callers should `void` this where latency matters.
+ */
+export async function appendRoomEvent(
+  roomId: string,
+  eventType: RoomEventType,
+  actorId: string | null,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await prisma.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as any } });
+}
+
+/**
+ * Return the most recent `take` events for a room, ordered newest-first.
+ * Supports cursor-based pagination via `cursor` (a `createdAt` ISO string).
+ */
+export async function getRoomEvents(
+  roomId: string,
+  take = 100,
+  cursor?: string,
+): Promise<Array<{
+  id: string;
+  eventType: RoomEventType;
+  actorId: string | null;
+  payload: unknown;
+  createdAt: Date;
+}>> {
+  return prisma.roomEvent.findMany({
+    where: {
+      roomId,
+      ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(take, 100),
+    select: { id: true, eventType: true, actorId: true, payload: true, createdAt: true },
+  });
 }
 
 // ─── Access control ───────────────────────────────────────────────────────────

@@ -4,8 +4,10 @@ import { prisma } from "@/lib/db/prisma";
 import { validate } from "@/lib/api/validate";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
+import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
 
-const QuerySchema = z.object({
+export const CommitsQuerySchema = z.object({
   cursor: z.string().max(64).optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -18,13 +20,13 @@ export async function GET(
   const url = new URL(req.url);
   const rawQuery = Object.fromEntries(url.searchParams);
 
-  const v = validate(QuerySchema, rawQuery);
+  const v = validate(CommitsQuerySchema, rawQuery);
   if (!v.success) return v.response;
   const { cursor, take } = v.data;
 
   const room = await prisma.room.findUnique({ where: { id: roomId } });
   if (!room) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
 
   // Private rooms require authentication and at least VIEWER membership.
@@ -32,14 +34,14 @@ export async function GET(
     const session = await auth();
     const authSession = getAuthSession(session);
     if (!authSession) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return apiError(ApiErrorCode.UNAUTHENTICATED, "Authentication required", 401);
     }
     const membership = await prisma.roomMembership.findUnique({
       where: { roomId_userId: { roomId, userId: authSession.user.id } },
       select: { role: true },
     });
     if (!membership) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return apiError(ApiErrorCode.FORBIDDEN, "Forbidden", 403);
     }
   }
 
@@ -62,15 +64,23 @@ export async function GET(
   const page = hasMore ? commits.slice(0, take) : commits;
   const nextCursor = hasMore ? page[page.length - 1].sha : null;
 
-  return NextResponse.json({
-    commits: page.map((c) => ({
-      sha: c.sha,
-      parent: c.parentSha,
-      branch: c.branch,
-      message: c.message,
-      ts: c.createdAt.getTime(),
-      isMerge: c.isMerge,
-    })),
-    nextCursor,
-  });
+  // P070 – When a cursor (SHA) is provided, the page of commits at that cursor
+  // is immutable — the same cursor always returns the same data.
+  // The first page (no cursor) may gain new commits, so it must not be cached.
+  const cacheHdrs = cursor ? immutableHeaders(cursor) : mutableHeaders();
+
+  return NextResponse.json(
+    {
+      commits: page.map((c) => ({
+        sha: c.sha,
+        parent: c.parentSha,
+        branch: c.branch,
+        message: c.message,
+        ts: c.createdAt.getTime(),
+        isMerge: c.isMerge,
+      })),
+      nextCursor,
+    },
+    { headers: cacheHdrs },
+  );
 }

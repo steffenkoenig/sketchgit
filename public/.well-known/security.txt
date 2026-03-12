@@ -1,0 +1,7 @@
+# Replace example.com and the email below with your deployment's actual contact info before going live.
+Contact: mailto:security@example.com
+Expires: 2027-03-12T00:00:00.000Z
+Preferred-Languages: en, de
+Policy: https://example.com/security-policy
+Acknowledgments: https://example.com/security-acknowledgments
+Canonical: https://example.com/.well-known/security.txt

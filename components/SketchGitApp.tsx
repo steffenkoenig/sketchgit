@@ -23,7 +23,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useTranslations } from "next-intl";
-import { createSketchGitApp } from "../lib/sketchgit/createSketchGitApp";
 import { AppTopbar } from "./sketchgit/AppTopbar";
 import { LeftToolbar } from "./sketchgit/LeftToolbar";
 import type { SketchGitAppApi } from "./sketchgit/types";
@@ -40,10 +39,20 @@ export default function SketchGitApp() {
   //       in React Strict Mode and during component re-mounts.
   useEffect(() => {
     if (appRef.current) return;
-    const app = createSketchGitApp();
-    appRef.current = app;
+    let cancelled = false;
+    let app: SketchGitAppApi | null = null;
+
+    // P058 – Dynamic import: the Fabric.js canvas engine (~350 KB gzip) is only
+    // downloaded when the canvas component mounts, not on every page.
+    void import("../lib/sketchgit/createSketchGitApp").then(({ createSketchGitApp }) => {
+      if (cancelled) return;
+      app = createSketchGitApp();
+      appRef.current = app;
+    });
+
     return () => {
-      app.destroy();
+      cancelled = true;
+      app?.destroy();
       appRef.current = null;
     };
   }, []);
@@ -159,6 +168,14 @@ export default function SketchGitApp() {
         >{t("collab.joinRoom")}</button>
         <div id="peerStatus" className="peer-status" role="status" aria-live="polite"></div>
         <div id="connectedList" className="connected-list" role="list" aria-label="Connected peers"></div>
+        {/* P080 – Presenter mode button */}
+        <button
+          id="presentBtn"
+          className="mbtn"
+          style={{ width: "100%", marginTop: "8px" }}
+          onClick={() => call("togglePresenting")}
+          aria-label="Toggle presenter mode — broadcast your canvas view to all peers"
+        >{t("collab.present")}</button>
       </aside>
 
       {/* P025: Commit popup – floating popover panel (not a modal; no focus trap) */}

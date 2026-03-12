@@ -252,3 +252,70 @@ describe('WsClient', () => {
     expect(MockWebSocket.lastInstance).not.toBe(firstWs);
   });
 });
+
+// ─── P073: sendBatched ───────────────────────────────────────────────────────
+
+describe('WsClient.sendBatched (P073)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    MockWebSocket.lastInstance = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sends a single batched message directly (no array wrapping)', async () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    openSocket();
+    const ws = MockWebSocket.lastInstance!;
+
+    client.sendBatched({ type: 'cursor', x: 10, y: 20 } as Parameters<typeof client.sendBatched>[0]);
+
+    // Flush the microtask queue so queueMicrotask fires
+    await Promise.resolve();
+
+    expect(ws.send).toHaveBeenCalledOnce();
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string) as unknown;
+    // Single message → NOT wrapped in array
+    expect(sent).toMatchObject({ type: 'cursor', x: 10, y: 20 });
+    expect(Array.isArray(sent)).toBe(false);
+  });
+
+  it('coalesces two messages sent in the same microtask into a JSON array', async () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    openSocket();
+    const ws = MockWebSocket.lastInstance!;
+
+    client.sendBatched({ type: 'cursor', x: 1, y: 2 } as Parameters<typeof client.sendBatched>[0]);
+    client.sendBatched({ type: 'draw-delta', added: [], modified: [], removed: [] } as Parameters<typeof client.sendBatched>[0]);
+
+    // Flush the microtask queue
+    await Promise.resolve();
+
+    // Both messages should be combined into one send() call
+    expect(ws.send).toHaveBeenCalledOnce();
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string) as unknown[];
+    expect(Array.isArray(sent)).toBe(true);
+    expect(sent).toHaveLength(2);
+    expect((sent[0] as Record<string, unknown>).type).toBe('cursor');
+    expect((sent[1] as Record<string, unknown>).type).toBe('draw-delta');
+  });
+
+  it('falls back to send() queue when socket is not open', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    // Do NOT open the socket – stays in CONNECTING state
+
+    const ws = MockWebSocket.lastInstance!;
+    ws.readyState = MockWebSocket.CLOSING; // simulate not-open
+
+    client.sendBatched({ type: 'cursor', x: 1, y: 2 } as Parameters<typeof client.sendBatched>[0]);
+
+    // Falls back to send() → queued as string
+    expect(ws.send).not.toHaveBeenCalled();
+  });
+});

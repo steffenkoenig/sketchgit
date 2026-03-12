@@ -27,8 +27,16 @@ const EnvSchema = z.object({
   GITHUB_ID: z.string().optional(),
   GITHUB_SECRET: z.string().optional(),
 
-  // ── Optional – Redis (P012) ────────────────────────────────────────────────
+  // ── Optional – Redis (P012, P075) ─────────────────────────────────────────
   REDIS_URL: z.string().url().optional(),
+  // P075 – Redis connection mode (sentinel / cluster for HA deployments)
+  REDIS_MODE: z.enum(["standalone", "sentinel", "cluster"]).default("standalone"),
+  // Sentinel: comma-separated "host:port" pairs (e.g. "sentinel1:26379,sentinel2:26379")
+  REDIS_SENTINEL_HOSTS: z.string().optional(),
+  // Sentinel master name (default: "mymaster")
+  REDIS_SENTINEL_NAME: z.string().default("mymaster"),
+  // Cluster: comma-separated "host:port" node addresses
+  REDIS_CLUSTER_NODES: z.string().optional(),
 
   // ── Optional – rate limiting (P015) ───────────────────────────────────────
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
@@ -49,6 +57,35 @@ const EnvSchema = z.object({
   // ── Optional – room pruning (P032) ────────────────────────────────────────
   PRUNE_INACTIVE_ROOMS_DAYS: z.coerce.number().int().min(1).default(30),
   PRUNE_INTERVAL_HOURS: z.coerce.number().int().min(1).default(24),
+
+  // ── Optional – room capacity limit (P069) ─────────────────────────────────
+  // Maximum number of simultaneous WebSocket clients allowed in a single room.
+  // Connections beyond this limit receive a ROOM_FULL error and are closed.
+  MAX_CLIENTS_PER_ROOM: z.coerce.number().int().min(1).default(50),
+
+  // ── Database slow-query logging (P071) ────────────────────────────────────
+  // Queries slower than this threshold (ms) are logged at WARN level.
+  SLOW_QUERY_MS: z.coerce.number().int().min(0).default(500),
+  // Set to "true" to log every Prisma query at DEBUG level (development only).
+  LOG_QUERIES: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+
+  // ── WebSocket compression (P059) ──────────────────────────────────────────
+  // Minimum uncompressed message size (bytes) below which zlib compression is
+  // skipped. Compression adds ~50–100 µs overhead; it is not worth compressing
+  // tiny messages like heartbeat pongs or cursor updates under 1 KB.
+  WS_COMPRESSION_THRESHOLD: z.coerce.number().int().min(0).default(1024),
+
+  // ── Room activity feed event retention (P074) ─────────────────────────────
+  // RoomEvent rows older than this many days are deleted by the pruning job.
+  ROOM_EVENT_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+
+  // ── Room invitation token secret (P066) ───────────────────────────────────
+  // HMAC secret used to sign invitation tokens. Falls back to AUTH_SECRET when
+  // not explicitly set. Must be at least 32 characters.
+  INVITATION_SECRET: z.string().min(32).optional(),
 
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z

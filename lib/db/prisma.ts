@@ -13,13 +13,41 @@ function createPrismaClient(): PrismaClient {
   const connectionString =
     process.env.DATABASE_URL ?? "postgresql://placeholder@placeholder/placeholder";
   const adapter = new PrismaPg({ connectionString });
-  return new PrismaClient({
+
+  // P071 – Always include `query` event emission so we can attach a runtime
+  // slow-query listener.  The `query` stdout level is NOT enabled (too verbose).
+  // The event emitter approach has ~50–100 μs overhead per query.
+  const client = new PrismaClient({
     adapter,
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["warn", "error"]
-        : ["error"],
+    log: [
+      { level: "warn", emit: "stdout" },
+      { level: "error", emit: "stdout" },
+      { level: "query", emit: "event" },
+    ],
   });
+
+  const slowQueryMs = parseInt(process.env.SLOW_QUERY_MS ?? "500", 10);
+  const logAllQueries = process.env.LOG_QUERIES === "true";
+
+  // P071 – Slow-query and all-query logging listener.
+  // `event.query` contains the raw SQL (parameterised); `event.duration` is in ms.
+  // Params are intentionally excluded from the log output to avoid logging PII.
+  client.$on("query", (event) => {
+    const { duration, query } = event;
+    const sql = query.slice(0, 200);
+
+    if (logAllQueries) {
+      // Development: log every query for N+1 pattern detection.
+      // ESLint allowlist only permits console.warn/error (not console.debug),
+      // so WARN is used here. This is intentional for dev-mode verbosity.
+      console.warn(`[prisma:query] ${sql} (${duration}ms)`);
+    } else if (duration > slowQueryMs) {
+      // Production: log only queries exceeding the slow-query threshold.
+      console.warn(`[prisma:slow-query] ${duration}ms — ${sql}`);
+    }
+  });
+
+  return client;
 }
 
 export const prisma: PrismaClient =

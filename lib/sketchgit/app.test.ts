@@ -38,6 +38,9 @@ const mocks = vi.hoisted(() => {
     roomInviteLink: vi.fn().mockReturnValue('http://localhost/?room=default'),
     toggleCollabPanel: vi.fn(), broadcastDraw: vi.fn(), broadcastCursor: vi.fn(),
     destroy: vi.fn(), connectToPeerUI: vi.fn(), copyPeerId: vi.fn(), updateCollabUI: vi.fn(),
+    getPresenceClients: vi.fn().mockReturnValue([]),
+    getMyClientId: vi.fn().mockReturnValue(''),
+    togglePresenting: vi.fn(),
     wsClientId: null, currentRoomId: 'default',
   };
   return { mockGit, mockCanvas, mockWs, mockCollab, tlCallbacks };

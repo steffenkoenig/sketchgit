@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* P078 – Dark theme (default) */
 :root{
   --bg:#0a0a0f;--s1:#111118;--s2:#18181f;--s3:#22222e;--s4:#2a2a3a;
   --bdr:#2e2e42;--bdr2:#3a3a52;
@@ -7,6 +8,16 @@
   --a1:#7c6eff;--a1h:#9585ff;
   --a2:#ff5f7e;--a3:#3dd68c;--a4:#f5a623;--a5:#38bdf8;--a6:#e879f9;
   --tlh:200px;--tbw:54px;
+  --canvas-bg:#0a0a0f;
+}
+/* P078 – Light theme overrides */
+.theme-light{
+  --bg:#f8fafc;--s1:#f1f5f9;--s2:#e9eef5;--s3:#dde4ee;--s4:#cdd5e0;
+  --bdr:#c0cad8;--bdr2:#a8b4c4;
+  --tx:#0f172a;--tx2:#475569;--tx3:#94a3b8;
+  --a1:#6d28d9;--a1h:#7c3aed;
+  --a2:#e11d48;--a3:#16a34a;--a4:#d97706;--a5:#0284c7;--a6:#9333ea;
+  --canvas-bg:#ffffff;
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-family:'Fira Code',monospace}
 

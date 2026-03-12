@@ -34,6 +34,14 @@ export interface CollabCallbacks {
    * Only called when `isRollback` is true in the branch-update message.
    */
   applyBranchUpdate: (branch: string, headSha: string) => void;
+  /** P067 – Apply a remote object lock (visual indicator). */
+  applyRemoteLock?: (clientId: string, objectIds: string[], color: string) => void;
+  /** P067 – Clear a remote object lock. */
+  clearRemoteLock?: (clientId: string) => void;
+  /** P080 – Apply a remote viewport transform (presenter follow mode). */
+  applyViewport?: (vpt: [number, number, number, number, number, number]) => void;
+  /** P080 – Return the current local canvas viewport for broadcasting. */
+  getViewport?: () => [number, number, number, number, number, number];
 }
 
 export class CollaborationManager {
@@ -46,6 +54,16 @@ export class CollaborationManager {
 
   private readonly ws: WsClient;
   private readonly cb: CollabCallbacks;
+
+  // ── P067: Auto-expire timers for remote object locks ─────────────────────
+  private lockExpireTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  // ── P080: Presenter / follower state ─────────────────────────────────────
+  private _isPresenting = false;
+  private followingClientId: string | null = null;
+  private viewSyncTimer: ReturnType<typeof setInterval> | null = null;
+  /** clientId of the active presenter in this room (null = no active presenter) */
+  private presenterClientId: string | null = null;
 
   // ─── P006: draw-delta state ───────────────────────────────────────────────
   /**
@@ -93,6 +111,13 @@ export class CollaborationManager {
 
         this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color });
         this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
+        // P079 – announce current branch to the server so presence is accurate
+        const gitState = this.cb.getGitState();
+        const initBranch = gitState.detached ? undefined : gitState.HEAD;
+        const initHeadSha = initBranch ? (gitState.branches[initBranch] ?? null) : null;
+        if (initBranch) {
+          this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color, branch: initBranch, headSha: initHeadSha });
+        }
         break;
       }
 
@@ -118,6 +143,15 @@ export class CollaborationManager {
           document.getElementById(this.remoteCursors[leftId])?.remove();
           delete this.remoteCursors[leftId];
         }
+        // P067 – clear lock for the departed peer
+        if (leftId) {
+          clearTimeout(this.lockExpireTimers.get(leftId));
+          this.lockExpireTimers.delete(leftId);
+          this.cb.clearRemoteLock?.(leftId);
+        }
+        // P080 – if the presenter left, exit follow mode
+        if (this.followingClientId === leftId) this.followingClientId = null;
+        if (this.presenterClientId === leftId) this.presenterClientId = null;
         break;
       }
 
@@ -193,6 +227,60 @@ export class CollaborationManager {
       }
 
       default:
+        // P067 – object lock/unlock messages
+        if (data.type === 'object-lock') {
+          const senderId = data.senderId as string;
+          if (senderId && senderId !== this.wsClientId) {
+            const objectIds = (data.objectIds as string[]) ?? [];
+            const color = (data.senderColor as string) || (data.color as string) || '#fbbf24';
+            this.cb.applyRemoteLock?.(senderId, objectIds, color);
+            clearTimeout(this.lockExpireTimers.get(senderId));
+            const timer = setTimeout(() => {
+              this.cb.clearRemoteLock?.(senderId);
+              this.lockExpireTimers.delete(senderId);
+            }, 5_000);
+            this.lockExpireTimers.set(senderId, timer);
+          }
+          break;
+        }
+        if (data.type === 'object-unlock') {
+          const senderId = data.senderId as string;
+          if (senderId) {
+            clearTimeout(this.lockExpireTimers.get(senderId));
+            this.lockExpireTimers.delete(senderId);
+            this.cb.clearRemoteLock?.(senderId);
+          }
+          break;
+        }
+
+        // P080 – presenter / follow mode messages
+        if (data.type === 'follow-request') {
+          const presenterName = (data.senderName as string) || 'A peer';
+          const senderId = data.senderId as string;
+          this.presenterClientId = senderId;
+          // Auto-follow: immediately start following the presenter.
+          // A future enhancement can show a dismiss button instead.
+          this.followingClientId = senderId;
+          this.ws.send({ type: 'follow-accept' });
+          showToast(`${presenterName} is presenting — following their view`);
+          break;
+        }
+        if (data.type === 'follow-stop') {
+          if (this.followingClientId === data.senderId) {
+            this.followingClientId = null;
+            this.presenterClientId = null;
+          }
+          break;
+        }
+        if (data.type === 'view-sync') {
+          if (this.followingClientId === data.senderId) {
+            const vpt = data.vpt as [number, number, number, number, number, number];
+            if (Array.isArray(vpt) && vpt.length === 6) {
+              this.cb.applyViewport?.(vpt);
+            }
+          }
+          break;
+        }
         break;
     }
   }
@@ -206,6 +294,16 @@ export class CollaborationManager {
     if (status === 'offline' || status === 'connecting') {
       this.presenceClients = [];
       this.updateCollabUI();
+      // P067 – clear all remote locks when disconnected
+      for (const [id, timer] of this.lockExpireTimers) {
+        clearTimeout(timer);
+        this.cb.clearRemoteLock?.(id);
+      }
+      this.lockExpireTimers.clear();
+      // P080 – stop presenting / following when disconnected
+      this._stopPresenting();
+      this.followingClientId = null;
+      this.presenterClientId = null;
     }
   }
 
@@ -294,7 +392,6 @@ export class CollaborationManager {
       this.lastBroadcastSnapshot = currentSnapshot;
       return;
     }
-
     const added: Record<string, unknown>[] = [];
     // `modified` carries only the _id plus changed properties (minimal patch).
     const modified: Record<string, unknown>[] = [];
@@ -326,7 +423,9 @@ export class CollaborationManager {
 
     if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
 
-    this.ws.send({ type: 'draw-delta', added, modified, removed });
+    // P073 – use sendBatched so a concurrent cursor update is coalesced into
+    // a single WebSocket frame (same microtask tick).
+    this.ws.sendBatched({ type: 'draw-delta', added, modified, removed });
     this.lastBroadcastSnapshot = currentSnapshot;
   }
 
@@ -382,11 +481,26 @@ export class CollaborationManager {
 
     const rect = document.getElementById('canvas-wrap')?.getBoundingClientRect();
     if (!rect) return;
-    this.ws.send({
+    // P073 – use sendBatched to coalesce with a concurrent draw-delta.
+    this.ws.sendBatched({
       type: 'cursor',
       x: e.e.clientX - rect.left,
       y: e.e.clientY - rect.top,
     });
+    // P080 – any canvas interaction while following exits follow mode
+    if (this.followingClientId) this.exitFollowMode();
+  }
+
+  // P067 – broadcast that the local user selected objects (object-lock)
+  broadcastLock(objectIds: string[]): void {
+    if (!this.ws.isConnected() || objectIds.length === 0) return;
+    this.ws.sendBatched({ type: 'object-lock', objectIds });
+  }
+
+  // P067 – broadcast that the local user deselected objects (object-unlock)
+  broadcastUnlock(): void {
+    if (!this.ws.isConnected()) return;
+    this.ws.sendBatched({ type: 'object-unlock' });
   }
 
   // ─── Presence UI ──────────────────────────────────────────────────────────
@@ -400,13 +514,30 @@ export class CollaborationManager {
       for (const c of others) {
         const peer = document.createElement('div');
         peer.className = 'connected-peer';
+
+        // Colour dot
         const dot = document.createElement('div');
-        dot.style.width = '6px';
-        dot.style.height = '6px';
-        dot.style.background = c.color || 'var(--a3)';
-        dot.style.borderRadius = '50%';
+        dot.style.cssText = `width:6px;height:6px;background:${c.color || 'var(--a3)'};border-radius:50%;flex-shrink:0`;
         peer.appendChild(dot);
-        peer.appendChild(document.createTextNode((c.name || 'User').slice(0, 20)));
+
+        // Name + branch column
+        const info = document.createElement('div');
+        info.style.cssText = 'display:flex;flex-direction:column;overflow:hidden';
+
+        const nameEl = document.createElement('span');
+        nameEl.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.8rem';
+        nameEl.textContent = (c.name || 'User').slice(0, 20);
+        info.appendChild(nameEl);
+
+        // P079 – branch label
+        if (c.branch) {
+          const branchEl = document.createElement('span');
+          branchEl.style.cssText = 'font-size:0.65rem;color:var(--a1,#7c6eff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0.8';
+          branchEl.textContent = '\u23b7 ' + c.branch.slice(0, 24);
+          info.appendChild(branchEl);
+        }
+
+        peer.appendChild(info);
         list.appendChild(peer);
       }
     }
@@ -422,6 +553,15 @@ export class CollaborationManager {
         row.appendChild(av);
       }
     }
+  }
+
+  // P079 – Presence accessors used by BranchCoordinator
+  getPresenceClients(): PresenceClient[] {
+    return [...this.presenceClients];
+  }
+
+  getMyClientId(): string {
+    return this.wsClientId ?? '';
   }
 
   // ─── Room management ──────────────────────────────────────────────────────
@@ -451,6 +591,68 @@ export class CollaborationManager {
   toggleCollabPanel(): void {
     this.collabOpen = !this.collabOpen;
     document.getElementById('collab-panel')?.classList.toggle('open', this.collabOpen);
+  }
+
+  // ── P080: Presenter mode ──────────────────────────────────────────────────
+
+  get isPresenting(): boolean { return this._isPresenting; }
+
+  /** Broadcast a follow-request to all room peers and start sending view-sync at 8 Hz. */
+  startPresenting(): void {
+    if (this._isPresenting) return;
+    this._isPresenting = true;
+    this.ws.send({ type: 'follow-request' });
+    // Update the "Present" button visual
+    document.getElementById('presentBtn')?.classList.add('presenting');
+    // Broadcast viewport at 8 Hz while presenting
+    this.viewSyncTimer = setInterval(() => {
+      const vpt = this.cb.getViewport?.();
+      if (vpt) {
+        const gitState = this.cb.getGitState();
+        this.ws.sendBatched({
+          type: 'view-sync',
+          vpt,
+          branch: gitState.detached ? undefined : gitState.HEAD,
+          // detached is the commit SHA string when in detached HEAD; null for a normal branch.
+          headSha: gitState.detached !== null
+            ? gitState.detached
+            : (gitState.branches[gitState.HEAD] ?? null),
+        });
+      }
+    }, 125); // 1000ms / 8 = 125ms
+  }
+
+  /** Stop presenting and notify all followers. */
+  private _stopPresenting(): void {
+    if (!this._isPresenting) return;
+    this._isPresenting = false;
+    if (this.viewSyncTimer !== null) {
+      clearInterval(this.viewSyncTimer);
+      this.viewSyncTimer = null;
+    }
+    document.getElementById('presentBtn')?.classList.remove('presenting');
+  }
+
+  stopPresenting(): void {
+    this._stopPresenting();
+    this.ws.send({ type: 'follow-stop' });
+  }
+
+  /** Toggle presenter mode from the UI button. */
+  togglePresenting(): void {
+    if (this._isPresenting) {
+      this.stopPresenting();
+    } else {
+      this.startPresenting();
+    }
+  }
+
+  /** Exit follow mode (triggered by local interaction while following). */
+  exitFollowMode(): void {
+    if (!this.followingClientId) return;
+    this.followingClientId = null;
+    this.presenterClientId = null;
+    showToast('Exited follow mode');
   }
 
   connectToPeerUI(myName: string, myColor: string): void {

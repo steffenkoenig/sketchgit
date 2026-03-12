@@ -70,11 +70,20 @@ export function createSketchGitApp() {
       // P053 – apply a rolled-back branch pointer from a peer
       git.branches[branch] = headSha;
     },
+    // P067 – delegate lock rendering to the canvas engine
+    applyRemoteLock: (clientId, objectIds, color) => canvas.applyRemoteLock(clientId, objectIds, color),
+    clearRemoteLock: (clientId) => canvas.clearRemoteLock(clientId),
+    // P080 – delegate viewport to the canvas engine
+    applyViewport: (vpt) => canvas.applyViewport(vpt),
+    getViewport: () => canvas.getViewport(),
   });
 
   const canvas = new CanvasEngine(
     (immediate) => collab.broadcastDraw(immediate),
     (e) => collab.broadcastCursor(e),
+    // P067 – broadcast lock/unlock when user selects/deselects objects
+    (objectIds) => collab.broadcastLock(objectIds),
+    () => collab.broadcastUnlock(),
   );
 
   const ctx: AppContext = { git, canvas, collab, ws };
@@ -152,6 +161,8 @@ export function createSketchGitApp() {
     toggleCollabPanel: () => collaboration.toggleCollabPanel(),
     copyPeerId: () => collaboration.copyPeerId(),
     connectToPeer: () => collaboration.connectToPeer(),
+    // P080 – Presenter mode toggle
+    togglePresenting: () => collaboration.togglePresenting(),
 
     // Commit popup
     closeCommitPopup: () => commit.closeCommitPopup(),

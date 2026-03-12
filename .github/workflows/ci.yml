@@ -36,6 +36,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # fetch-depth: 0 is required so that commitlint can reach the PR base
+          # SHA when running `--from github.event.pull_request.base.sha`.
+          # A shallow clone (depth=1) only contains HEAD and cannot resolve the
+          # base ref, causing "fatal: Invalid revision range".
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -48,6 +54,10 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Lint commit messages
+        if: github.event_name == 'pull_request'
+        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
       - name: Type check
         run: npx tsc --noEmit

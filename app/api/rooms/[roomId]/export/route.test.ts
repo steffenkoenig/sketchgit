@@ -145,4 +145,32 @@ describe('GET /api/rooms/[roomId]/export', () => {
     const res = await GET(req, { params });
     expect(res.status).toBe(401);
   });
+
+  // ── P070: Cache-Control headers ─────────────────────────────────────────────
+
+  it('returns immutable Cache-Control header when sha is provided', async () => {
+    mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
+    const res = await GET(req, { params });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('immutable');
+    expect(res.headers.get('etag')).toBe(`"${COMMIT_SHA}"`);
+  });
+
+  it('returns no-store Cache-Control header when sha is omitted (HEAD)', async () => {
+    mock.roomStateFindUnique.mockResolvedValue({ headSha: COMMIT_SHA });
+    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    const req = makeRequest(ROOM_ID);
+    const res = await GET(req, { params });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('no-store');
+  });
+
+  it('returns 304 Not Modified when If-None-Match matches the sha', async () => {
+    const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
+    req.headers.set('if-none-match', `"${COMMIT_SHA}"`);
+    const res = await GET(req, { params });
+    expect(res.status).toBe(304);
+  });
 });

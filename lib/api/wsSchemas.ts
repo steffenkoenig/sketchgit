@@ -61,10 +61,35 @@ export const WsProfileSchema = z.object({
   type: z.literal("profile"),
   name: z.string().max(100).optional(),
   color: z.string().max(20).optional(),
+  // P079 – branch position (optional, backward-compatible)
+  branch: z.string().max(MAX_BRANCH_LEN).optional(),
+  headSha: z.string().max(MAX_SHA_LEN).optional(),
 });
 
 export const WsPingSchema = z.object({ type: z.literal("ping") });
 export const WsPongSchema = z.object({ type: z.literal("pong") });
+
+// P067 – object reservation (soft lock)
+export const WsObjectLockSchema = z.object({
+  type: z.literal("object-lock"),
+  objectIds: z.array(z.string().max(64)).max(500),
+  color: z.string().max(20).optional(),
+});
+export const WsObjectUnlockSchema = z.object({
+  type: z.literal("object-unlock"),
+});
+
+// P080 – presenter follow mode
+const vptNumber = z.number().finite();
+export const WsViewSyncSchema = z.object({
+  type: z.literal("view-sync"),
+  vpt: z.tuple([vptNumber, vptNumber, vptNumber, vptNumber, vptNumber, vptNumber]),
+  branch: z.string().max(MAX_BRANCH_LEN).optional(),
+  headSha: z.string().max(MAX_SHA_LEN).nullish(),
+});
+export const WsFollowRequestSchema = z.object({ type: z.literal("follow-request") });
+export const WsFollowAcceptSchema  = z.object({ type: z.literal("follow-accept") });
+export const WsFollowStopSchema    = z.object({ type: z.literal("follow-stop") });
 
 export const InboundWsMessageSchema = z.discriminatedUnion("type", [
   WsDrawSchema,
@@ -75,6 +100,12 @@ export const InboundWsMessageSchema = z.discriminatedUnion("type", [
   WsProfileSchema,
   WsPingSchema,
   WsPongSchema,
+  WsObjectLockSchema,
+  WsObjectUnlockSchema,
+  WsViewSyncSchema,
+  WsFollowRequestSchema,
+  WsFollowAcceptSchema,
+  WsFollowStopSchema,
 ]);
 
 export type InboundWsMessage = z.infer<typeof InboundWsMessageSchema>;

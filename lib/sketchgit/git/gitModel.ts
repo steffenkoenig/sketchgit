@@ -5,7 +5,7 @@
  * independently testable.
  */
 
-import { Commit, MergeResult, BRANCH_COLORS } from '../types';
+import { Commit, BRANCH_COLORS } from '../types';
 import { findLCA, threeWayMerge } from './mergeEngine';
 
 // Result shapes returned by merge()

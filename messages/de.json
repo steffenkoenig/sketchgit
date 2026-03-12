@@ -15,7 +15,8 @@
     "uncommittedChanges": "Nicht committete Änderungen",
     "skipToCanvas": "Zur Zeichenfläche springen",
     "exportPng": "Als PNG exportieren",
-    "exportSvg": "Als SVG exportieren"
+    "exportSvg": "Als SVG exportieren",
+    "exportPdf": "Als PDF exportieren"
   },
   "topbar": {
     "collab": "⟳ Zusammenarbeit",
@@ -24,7 +25,9 @@
     "commit": "● Commit",
     "signIn": "👤 Anmelden",
     "signOut": "⤴ Abmelden",
-    "myDrawings": "Meine Zeichnungen"
+    "myDrawings": "Meine Zeichnungen",
+    "switchToLight": "Zum hellen Design wechseln",
+    "switchToDark": "Zum dunklen Design wechseln"
   },
   "modal": {
     "commit": {
@@ -74,7 +77,8 @@
     "notConnected": "Nicht verbunden",
     "roomIdLabel": "Raum-ID",
     "roomPlaceholder": "z.B. sketch-session",
-    "joinRoom": "Raum beitreten"
+    "joinRoom": "Raum beitreten",
+    "present": "Bildschirm präsentieren"
   },
   "timeline": {
     "title": "⌥ Versions-Timeline"
@@ -146,6 +150,20 @@
     "detachedHeadMerge": "⚠ Mergen im Detached HEAD nicht möglich",
     "branchExists": "Branch existiert bereits",
     "sourceBranchNotFound": "Quell-Branch nicht gefunden",
-    "cannotMergeModal": "⚠ Mergen im Detached HEAD nicht möglich"
+    "cannotMergeModal": "⚠ Mergen im Detached HEAD nicht möglich",
+    "UNAUTHENTICATED": "Sie müssen angemeldet sein, um diese Aktion durchzuführen.",
+    "FORBIDDEN": "Sie haben keine Berechtigung, diese Aktion durchzuführen.",
+    "EMAIL_IN_USE": "Diese E-Mail-Adresse ist bereits registriert.",
+    "INVALID_CREDENTIALS": "Ungültige E-Mail-Adresse oder Passwort.",
+    "INVALID_RESET_TOKEN": "Ungültiger oder abgelaufener Passwort-Reset-Link.",
+    "PASSWORD_REQUIRED": "Bitte geben Sie Ihr aktuelles Passwort zur Bestätigung ein.",
+    "NOT_FOUND": "Die angeforderte Ressource wurde nicht gefunden.",
+    "ROOM_NOT_FOUND": "Dieser Raum existiert nicht.",
+    "SLUG_ALREADY_TAKEN": "Diese URL-Kennung ist bereits vergeben.",
+    "VALIDATION_ERROR": "Die Anfrage enthielt ungültige Daten.",
+    "INVALID_JSON": "Der Anfrage-Body konnte nicht geparst werden.",
+    "EXPORT_FAILED": "Canvas-Export fehlgeschlagen. Bitte erneut versuchen.",
+    "CANVAS_NOT_FOUND": "Keine Canvas-Daten für diesen Commit gefunden.",
+    "INTERNAL_ERROR": "Ein unerwarteter Fehler ist aufgetreten. Bitte erneut versuchen."
   }
 }

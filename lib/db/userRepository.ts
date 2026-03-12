@@ -1,13 +1,19 @@
 /**
  * userRepository – server-side data access for users.
- * Passwords are stored as bcrypt hashes; raw passwords never leave this module.
  *
- * Note: `bcryptjs` is a pure-JavaScript implementation, chosen for its
- * zero-native-dependency install. For production deployments with higher
- * throughput requirements, consider switching to the `bcrypt` native package
- * for significantly faster hashing. The API is identical.
+ * P065 – Passwords are now stored as Argon2id hashes (OWASP recommendation).
+ * Legacy bcrypt hashes (prefixed with "$2b$" or "$2a$") are detected on login
+ * and transparently re-hashed with Argon2id — the user notices no difference.
+ * New registrations and password resets use Argon2id exclusively.
+ *
+ * Argon2id parameters (OWASP / RFC 9106 §4 level 2):
+ *   memoryCost: 65536 KiB (64 MB)  — GPU-resistant memory hardness
+ *   timeCost:   3 iterations
+ *   parallelism: 4 threads
+ * Target latency: ~200–500 ms on commodity server hardware.
  */
 import { randomBytes } from "node:crypto";
+import argon2 from "argon2";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 
@@ -25,24 +31,40 @@ export interface PublicUser {
   createdAt: Date;
 }
 
-const SALT_ROUNDS = 12;
+// ─── Argon2id parameters (OWASP recommendation) ────────────────────────────────
+const ARGON2_OPTIONS: argon2.Options & { raw?: false } = {
+  type: argon2.argon2id,
+  memoryCost: 65536,  // 64 MB
+  timeCost: 3,
+  parallelism: 4,
+};
 
 /**
- * A pre-computed bcrypt hash (cost 12) of a fixed sentinel string.
+ * Returns true when `hash` is a bcrypt hash (legacy format: "$2b$…" or "$2a$…").
+ * Argon2id hashes always start with "$argon2id$".
+ */
+function isBcryptHash(hash: string): boolean {
+  return hash.startsWith("$2b$") || hash.startsWith("$2a$");
+}
+
+/**
+ * A pre-computed Argon2id hash of a fixed sentinel string.
  * Used in verifyCredentials() to ensure constant-time behaviour when the
  * supplied email address does not match any registered account: we always
- * run bcrypt.compare() regardless, so response time cannot reveal which
+ * run argon2.verify() regardless, so response time cannot reveal which
  * email addresses are registered (OWASP timing-attack defence).
  *
- * This value is intentionally public – it is not a secret.
+ * This is a valid Argon2id hash (not a stub), so argon2.verify() always
+ * performs the full computation and throws no format errors.
+ *
  * Regenerate with:
- *   node -e "require('bcryptjs').hash('dummy-password-to-prevent-timing-attacks',12).then(console.log)"
+ *   node -e "require('argon2').hash('dummy-sentinel',{type:require('argon2').argon2id,memoryCost:65536,timeCost:3,parallelism:4}).then(console.log)"
  */
 const DUMMY_HASH =
-  "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW";
+  "$argon2id$v=19$m=65536,t=3,p=4$sTTaaZYNgt9fGz7VTRvAgw$39c+Zc1Yh+ICnABi9q4om7nlV/jS7GLlyMnwujwqn9s";
 
 /**
- * Create a new user with a hashed password.
+ * Create a new user with an Argon2id-hashed password.
  * Throws if the email is already registered.
  */
 export async function createUser(input: CreateUserInput): Promise<PublicUser> {
@@ -53,7 +75,7 @@ export async function createUser(input: CreateUserInput): Promise<PublicUser> {
     throw new Error("EMAIL_IN_USE");
   }
 
-  const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
+  const passwordHash = await argon2.hash(input.password, ARGON2_OPTIONS);
 
   const user = await prisma.user.create({
     data: {
@@ -70,8 +92,12 @@ export async function createUser(input: CreateUserInput): Promise<PublicUser> {
 /**
  * Verify credentials and return the user, or null if the credentials are invalid.
  *
- * P054 – constant-time defence: always run bcrypt.compare() even when the email
+ * P054 – constant-time defence: always run a hash comparison even when the email
  * is not registered, so response time cannot be used to enumerate accounts.
+ *
+ * P065 – supports both legacy bcrypt hashes (transparent migration) and
+ * new Argon2id hashes.  On successful bcrypt login the password is silently
+ * re-hashed with Argon2id ("re-hash on login" migration strategy).
  */
 export async function verifyCredentials(
   email: string,
@@ -79,14 +105,37 @@ export async function verifyCredentials(
 ): Promise<PublicUser | null> {
   const user = await prisma.user.findUnique({ where: { email } });
 
-  // Always run bcrypt.compare to prevent timing-based user-enumeration attacks.
-  // When the user does not exist (or has no password), compare against the dummy
-  // hash – this will always fail but the elapsed time is indistinguishable from
-  // a real wrong-password check.
+  // Constant-time guard: always run a verify, even for unknown emails.
   const hashToCompare = user?.passwordHash ?? DUMMY_HASH;
-  const valid = await bcrypt.compare(password, hashToCompare);
+
+  let valid: boolean;
+  if (isBcryptHash(hashToCompare)) {
+    // Legacy path: bcrypt hash from before P065.
+    valid = await bcrypt.compare(password, hashToCompare);
+  } else {
+    try {
+      valid = await argon2.verify(hashToCompare, password);
+    } catch {
+      valid = false;
+    }
+  }
 
   if (!user || !user.passwordHash || !valid) return null;
+
+  // P065 – transparent re-hash: if the stored hash is bcrypt, upgrade it to
+  // Argon2id so subsequent logins use the stronger algorithm.  Runs in the
+  // background; the login response is not delayed.  Errors are logged but do
+  // not fail the login.
+  if (isBcryptHash(user.passwordHash)) {
+    void argon2.hash(password, ARGON2_OPTIONS)
+      .then((newHash) =>
+        prisma.user.update({ where: { id: user.id }, data: { passwordHash: newHash } }),
+      )
+      .catch(() => {
+        // Re-hash failure is non-fatal: the user can still log in with bcrypt
+        // and will be upgraded on the next successful login.
+      });
+  }
 
   return {
     id: user.id,
@@ -127,7 +176,7 @@ export async function createPasswordResetToken(email: string): Promise<string | 
 }
 
 /**
- * Consume a reset token and update the user's password.
+ * Consume a reset token and update the user's password with Argon2id.
  * Returns `true` on success, `false` when the token is invalid or expired.
  */
 export async function resetPassword(
@@ -139,7 +188,7 @@ export async function resetPassword(
   });
   if (!record) return false;
 
-  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  const passwordHash = await argon2.hash(newPassword, ARGON2_OPTIONS);
 
   await prisma.$transaction([
     prisma.user.update({

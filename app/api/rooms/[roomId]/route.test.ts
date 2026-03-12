@@ -14,15 +14,16 @@ import { PATCH } from './route';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
 import { NextRequest } from 'next/server';
+import { makeRoom, makeMembership } from '@/lib/test/factories';
 
 const mockAuth = auth as ReturnType<typeof vi.fn>;
 const mockRoomFindUnique = prisma.room.findUnique as ReturnType<typeof vi.fn>;
 const mockRoomUpdate = prisma.room.update as ReturnType<typeof vi.fn>;
 
 const SESSION = { user: { id: 'usr_1' } };
-const OWNER_ROOM = { ownerId: 'usr_1', memberships: [] };
-const NON_OWNER_ROOM = { ownerId: 'usr_other', memberships: [] };
-const MEMBERSHIP_OWNER = { ownerId: 'usr_other', memberships: [{ role: 'OWNER' }] };
+const OWNER_ROOM = { ...makeRoom({ id: 'room_1', ownerId: 'usr_1' }), memberships: [] };
+const NON_OWNER_ROOM = { ...makeRoom({ id: 'room_1', ownerId: 'usr_other' }), memberships: [] };
+const MEMBERSHIP_OWNER = { ...makeRoom({ id: 'room_1', ownerId: 'usr_other' }), memberships: [makeMembership('room_1', 'usr_1', 'OWNER')] };
 
 function makeRequest(roomId: string, body: object) {
   return new NextRequest(`http://localhost/api/rooms/${roomId}`, {
@@ -41,6 +42,8 @@ describe('PATCH /api/rooms/[roomId] (P049)', () => {
     mockAuth.mockResolvedValue(null);
     const res = await PATCH(makeRequest('room_1', { slug: 'my-room' }), { params });
     expect(res.status).toBe(401);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('UNAUTHENTICATED');
   });
 
   it('returns 404 when room does not exist', async () => {
@@ -48,6 +51,8 @@ describe('PATCH /api/rooms/[roomId] (P049)', () => {
     mockRoomFindUnique.mockResolvedValue(null);
     const res = await PATCH(makeRequest('room_1', { slug: 'my-room' }), { params });
     expect(res.status).toBe(404);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('ROOM_NOT_FOUND');
   });
 
   it('returns 403 when caller is not the owner', async () => {
@@ -55,6 +60,8 @@ describe('PATCH /api/rooms/[roomId] (P049)', () => {
     mockRoomFindUnique.mockResolvedValue(NON_OWNER_ROOM);
     const res = await PATCH(makeRequest('room_1', { slug: 'my-room' }), { params });
     expect(res.status).toBe(403);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('FORBIDDEN');
   });
 
   it('allows membership OWNER to update slug', async () => {
@@ -70,6 +77,8 @@ describe('PATCH /api/rooms/[roomId] (P049)', () => {
     mockRoomFindUnique.mockResolvedValue(OWNER_ROOM);
     const res = await PATCH(makeRequest('room_1', { slug: 'My-Room' }), { params });
     expect(res.status).toBe(422);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns 422 for slug that is too short', async () => {
@@ -110,5 +119,7 @@ describe('PATCH /api/rooms/[roomId] (P049)', () => {
     mockRoomUpdate.mockRejectedValue({ code: 'P2002' });
     const res = await PATCH(makeRequest('room_1', { slug: 'taken-slug' }), { params });
     expect(res.status).toBe(409);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('SLUG_ALREADY_TAKEN');
   });
 });

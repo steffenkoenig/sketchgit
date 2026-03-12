@@ -95,6 +95,10 @@ export interface PresenceClient {
   name: string;
   color: string;
   userId?: string | null;
+  /** P079 – The branch this client currently has checked out. */
+  branch?: string;
+  /** P079 – The HEAD SHA for this client's current branch tip. */
+  headSha?: string | null;
 }
 
 // ─── WebSocket messages ───────────────────────────────────────────────────────
@@ -114,9 +118,23 @@ export type WsMessageType =
   | "user-left"
   | "error"
   | "shutdown-warning"
-  | "branch-update";
+  | "branch-update"
+  // P067 – object reservation (soft lock)
+  | "object-lock"
+  | "object-unlock"
+  // P080 – presenter follow mode
+  | "follow-request"
+  | "follow-accept"
+  | "follow-stop"
+  | "view-sync";
 
 export interface WsMessage {
   type: WsMessageType;
   [key: string]: unknown;
 }
+
+/**
+ * P080 – Fabric.js canvas viewport affine transform:
+ * [scaleX, skewY, skewX, scaleY, translateX, translateY]
+ */
+export type ViewportTransform = [number, number, number, number, number, number];
