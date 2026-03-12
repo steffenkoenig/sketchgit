@@ -28,10 +28,10 @@ export function DeleteAccountButton({ hasPassword }: DeleteAccountButtonProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json() as { error?: string };
+    const data = await res.json() as { message?: string };
     setLoading(false);
     if (!res.ok) {
-      setError(data.error ?? "Failed to delete account.");
+      setError(data.message ?? "Failed to delete account.");
       return;
     }
     await signOut({ callbackUrl: "/" });

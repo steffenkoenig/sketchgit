@@ -7,7 +7,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserRooms } from "@/lib/db/roomRepository";
-import { prisma } from "@/lib/db/prisma";
+import { userHasPassword } from "@/lib/db/userRepository";
 import { getAuthSession } from "@/lib/authTypes";
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
@@ -28,11 +28,7 @@ export default async function DashboardPage() {
 
   // P041: Check if the user has a credentials password to conditionally require
   // password re-entry in the delete confirmation dialog.
-  const userRecord = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { passwordHash: true },
-  });
-  const hasPassword = !!userRecord?.passwordHash;
+  const hasPassword = await userHasPassword(userId);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">

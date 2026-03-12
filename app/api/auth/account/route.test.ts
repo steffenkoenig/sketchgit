@@ -4,29 +4,21 @@ vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),
 }));
 
-vi.mock('@/lib/db/prisma', () => ({
-  prisma: {
-    user: {
-      findUnique: vi.fn(),
-      delete: vi.fn(),
-    },
-  },
-}));
-
 vi.mock('@/lib/db/userRepository', () => ({
   verifyCredentials: vi.fn(),
+  getUserForAccountDeletion: vi.fn(),
+  deleteUser: vi.fn(),
 }));
 
 import { DELETE } from './route';
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/db/prisma';
-import { verifyCredentials } from '@/lib/db/userRepository';
+import { verifyCredentials, getUserForAccountDeletion, deleteUser } from '@/lib/db/userRepository';
 import { NextRequest } from 'next/server';
 import { makeUser, makeOAuthUser } from '@/lib/test/factories';
 
 const mockAuth = auth as ReturnType<typeof vi.fn>;
-const mockUserFindUnique = prisma.user.findUnique as ReturnType<typeof vi.fn>;
-const mockUserDelete = prisma.user.delete as ReturnType<typeof vi.fn>;
+const mockGetUser = getUserForAccountDeletion as ReturnType<typeof vi.fn>;
+const mockDeleteUser = deleteUser as ReturnType<typeof vi.fn>;
 const mockVerify = verifyCredentials as ReturnType<typeof vi.fn>;
 
 function makeRequest(body?: object) {
@@ -55,48 +47,48 @@ describe('DELETE /api/auth/account (P041)', () => {
 
   it('allows OAuth-only user to delete without password', async () => {
     mockAuth.mockResolvedValue(SESSION);
-    mockUserFindUnique.mockResolvedValue(OAUTH_USER);
-    mockUserDelete.mockResolvedValue({});
+    mockGetUser.mockResolvedValue(OAUTH_USER);
+    mockDeleteUser.mockResolvedValue(undefined);
     const res = await DELETE(makeRequest());
     expect(res.status).toBe(200);
-    expect(mockUserDelete).toHaveBeenCalledWith({ where: { id: 'usr_1' } });
+    expect(mockDeleteUser).toHaveBeenCalledWith('usr_1');
   });
 
   it('returns 400 when credentials user omits password', async () => {
     mockAuth.mockResolvedValue(SESSION);
-    mockUserFindUnique.mockResolvedValue(CREDENTIALS_USER);
+    mockGetUser.mockResolvedValue(CREDENTIALS_USER);
     const res = await DELETE(makeRequest());
     expect(res.status).toBe(400);
-    expect(mockUserDelete).not.toHaveBeenCalled();
+    expect(mockDeleteUser).not.toHaveBeenCalled();
     const json = await res.json() as { code: string };
     expect(json.code).toBe('PASSWORD_REQUIRED');
   });
 
   it('returns 403 when credentials user provides wrong password', async () => {
     mockAuth.mockResolvedValue(SESSION);
-    mockUserFindUnique.mockResolvedValue(CREDENTIALS_USER);
+    mockGetUser.mockResolvedValue(CREDENTIALS_USER);
     mockVerify.mockResolvedValue(null);
     const res = await DELETE(makeRequest({ password: 'WrongPassword123!' }));
     expect(res.status).toBe(403);
-    expect(mockUserDelete).not.toHaveBeenCalled();
+    expect(mockDeleteUser).not.toHaveBeenCalled();
     const json = await res.json() as { code: string };
     expect(json.code).toBe('INVALID_CREDENTIALS');
   });
 
   it('deletes credentials user with correct password', async () => {
     mockAuth.mockResolvedValue(SESSION);
-    mockUserFindUnique.mockResolvedValue(CREDENTIALS_USER);
+    mockGetUser.mockResolvedValue(CREDENTIALS_USER);
     mockVerify.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com', name: null, image: null, createdAt: new Date() });
-    mockUserDelete.mockResolvedValue({});
+    mockDeleteUser.mockResolvedValue(undefined);
     const res = await DELETE(makeRequest({ password: 'CorrectPassword123!' }));
     expect(res.status).toBe(200);
-    expect(mockUserDelete).toHaveBeenCalledWith({ where: { id: 'usr_1' } });
+    expect(mockDeleteUser).toHaveBeenCalledWith('usr_1');
   });
 
   it('clears session cookies in the response', async () => {
     mockAuth.mockResolvedValue(SESSION);
-    mockUserFindUnique.mockResolvedValue(OAUTH_USER);
-    mockUserDelete.mockResolvedValue({});
+    mockGetUser.mockResolvedValue(OAUTH_USER);
+    mockDeleteUser.mockResolvedValue(undefined);
     const res = await DELETE(makeRequest());
     // Headers.getSetCookie returns the Set-Cookie header values
     const setCookieHeader = res.headers.get('set-cookie') ?? '';

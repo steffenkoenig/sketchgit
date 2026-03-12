@@ -16,8 +16,7 @@ import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
-import { prisma } from "@/lib/db/prisma";
-import { resolveRoomId, checkRoomAccess } from "@/lib/db/roomRepository";
+import { resolveRoomId, checkRoomAccess, createRoomInvitation, revokeRoomInvitations } from "@/lib/db/roomRepository";
 import { generateInvitationToken, signInvitationToken } from "@/lib/server/invitationTokens";
 
 export const CreateInvitationSchema = z.object({
@@ -63,14 +62,12 @@ export async function POST(
   const token = generateInvitationToken();
   const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
 
-  await prisma.roomInvitation.create({
-    data: {
-      token,
-      roomId,
-      createdBy: authSession.user.id,
-      expiresAt,
-      maxUses,
-    },
+  await createRoomInvitation({
+    token,
+    roomId,
+    createdBy: authSession.user.id,
+    expiresAt,
+    maxUses,
   });
 
   // Build signed URL: /api/invitations/<token>?roomId=<>&exp=<>&sig=<>
@@ -111,6 +108,6 @@ export async function DELETE(
     return apiError(ApiErrorCode.FORBIDDEN, "Only the room owner can revoke invitations", 403);
   }
 
-  const { count } = await prisma.roomInvitation.deleteMany({ where: { roomId } });
+  const count = await revokeRoomInvitations(roomId);
   return NextResponse.json({ revoked: count });
 }

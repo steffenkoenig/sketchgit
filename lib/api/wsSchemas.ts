@@ -91,6 +91,13 @@ export const WsFollowRequestSchema = z.object({ type: z.literal("follow-request"
 export const WsFollowAcceptSchema  = z.object({ type: z.literal("follow-accept") });
 export const WsFollowStopSchema    = z.object({ type: z.literal("follow-stop") });
 
+// BUG-005 – fullsync-request was missing, causing the server to reject every
+// peer-to-peer canvas state sync request with INVALID_PAYLOAD.
+export const WsFullsyncRequestSchema = z.object({
+  type: z.literal("fullsync-request"),
+  senderId: z.string().max(64).optional(),
+});
+
 export const InboundWsMessageSchema = z.discriminatedUnion("type", [
   WsDrawSchema,
   WsDrawDeltaSchema,
@@ -106,6 +113,7 @@ export const InboundWsMessageSchema = z.discriminatedUnion("type", [
   WsFollowRequestSchema,
   WsFollowAcceptSchema,
   WsFollowStopSchema,
+  WsFullsyncRequestSchema,
 ]);
 
 export type InboundWsMessage = z.infer<typeof InboundWsMessageSchema>;

@@ -690,6 +690,14 @@ export class CollaborationManager {
       clearTimeout(this.drawFlushTimer);
       this.drawFlushTimer = null;
     }
+    // BUG-008 – cancel all per-peer lock-expire timers so they don't fire
+    // after the manager has been destroyed.
+    for (const timer of this.lockExpireTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.lockExpireTimers.clear();
+    // BUG-008 / P080 – stop presenter mode (clears view-sync interval and UI state).
+    this._stopPresenting();
     // Remove all remote cursor DOM elements.
     for (const elId of Object.values(this.remoteCursors)) {
       document.getElementById(elId)?.remove();

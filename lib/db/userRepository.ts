@@ -164,13 +164,15 @@ export async function createPasswordResetToken(email: string): Promise<string | 
   const token = randomBytes(32).toString("hex"); // 64-char hex, 256 bits of entropy
   const expires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
-  // Delete all existing reset tokens for this email to ensure only one is active.
-  await prisma.verificationToken.deleteMany({ where: { identifier: email } });
-
-  // Store the actual secret token keyed by the token value.
-  await prisma.verificationToken.create({
-    data: { identifier: email, token, expires },
-  });
+  // BUG-007 – wrap delete+create in a single batch transaction so a crash
+  // between the two operations cannot leave the user with no valid reset token.
+  // This mirrors the pattern already used by resetPassword() in this file.
+  await prisma.$transaction([
+    prisma.verificationToken.deleteMany({ where: { identifier: email } }),
+    prisma.verificationToken.create({
+      data: { identifier: email, token, expires },
+    }),
+  ]);
 
   return token;
 }
@@ -201,4 +203,39 @@ export async function resetPassword(
   ]);
 
   return true;
+}
+
+/**
+ * Returns true when the user identified by `userId` has a credentials password set.
+ * Used to conditionally require password re-confirmation before destructive actions.
+ * Returns false when the user is not found (fail-safe).
+ */
+export async function userHasPassword(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+  return !!user?.passwordHash;
+}
+
+/**
+ * Return the minimal user fields needed by the account-deletion flow.
+ * Returns null when the user does not exist.
+ */
+export async function getUserForAccountDeletion(
+  userId: string,
+): Promise<{ id: string; email: string | null; passwordHash: string | null } | null> {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, passwordHash: true },
+  });
+}
+
+/**
+ * Permanently delete a user by ID.
+ * Cascade rules (defined in the Prisma schema) handle Account and
+ * RoomMembership rows; Room.ownerId and Commit.authorId are set to null.
+ */
+export async function deleteUser(userId: string): Promise<void> {
+  await prisma.user.delete({ where: { id: userId } });
 }

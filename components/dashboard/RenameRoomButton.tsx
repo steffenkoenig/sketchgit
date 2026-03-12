@@ -31,10 +31,10 @@ export function RenameRoomButton({ roomId, currentSlug, isOwner }: RenameRoomBut
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ slug: slug.trim() || null }),
     });
-    const data = await res.json() as { error?: string };
+    const data = await res.json() as { message?: string };
     setSaving(false);
     if (!res.ok) {
-      setError(data.error ?? "Failed to save slug.");
+      setError(data.message ?? "Failed to save slug.");
       return;
     }
     setEditing(false);
