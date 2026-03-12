@@ -15,6 +15,9 @@ Last updated: 2026-03-12.
 | [BUG-006](./BUG-006_direct-prisma-import-in-dashboard-page.md) | Medium | `app/dashboard/page.tsx` | Direct Prisma import in Server Component page |
 | [BUG-007](./BUG-007_non-atomic-password-reset-token-creation.md) | Low | `lib/db/userRepository.ts` | Non-atomic token delete+create can lose reset token on crash |
 | [BUG-008](./BUG-008_collaborationmanager-destroy-leaks-timers.md) | Low | `collaborationManager.ts` | `destroy()` doesn't cancel lock timers or presenter interval |
+| [BUG-009](./BUG-009_ws-batch-return-drops-remaining-messages.md) | High | `server.ts` | `return` in WS batch loop silently drops all messages after an invalid one |
+| [BUG-010](./BUG-010_color-change-not-dirty-not-broadcast.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes to selected objects not marked dirty or broadcast to peers |
+| [BUG-011](./BUG-011_create-branch-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/branchCoordinator.ts` | `doCreateBranch()` doesn't send peer presence notifications |
 
 ## Severity Criteria
 
@@ -104,3 +107,27 @@ The WebSocket connection handler in `server.ts` uses a non-atomic check-then-inc
 **Severity**: Low
 
 `CollaborationManager.destroy()` does not cancel the per-peer lock-expire timers (`lockExpireTimers`) or stop the presenter-mode view-sync interval (`viewSyncTimer`). Both continue to fire after the manager is destroyed. The bug is currently latent because `app.ts` always calls `ws.disconnect()` before `collab.destroy()`, and `handleStatusChange('offline')` cleans up these timers as a side effect. However, `destroy()` relies on this undocumented implicit ordering; any future code that calls `destroy()` without a prior `disconnect()` will create real timer leaks.
+
+---
+
+### BUG-009 – `return` in WS batch loop silently drops remaining messages
+
+**Severity**: High
+
+The P073 batch message handler in `server.ts` iterates over a JSON array of `WsMessage` objects, validating each against `InboundWsMessageSchema`. When validation fails, the handler calls `return` — which exits the entire handler callback rather than just skipping the invalid message. In a batch of N messages, any invalid message at position k causes messages k+1 through N to be silently dropped without processing or error notification. The correct fix is to replace `return` with `continue` so that only the invalid message is skipped.
+
+---
+
+### BUG-010 – Color/fill changes to selected objects not marked dirty or broadcast to peers
+
+**Severity**: Medium
+
+`CanvasEngine.updateStrokeColor()` and `updateFillColor()` update the appearance of the currently-selected Fabric.js object via `obj.set(...)` but never call `markDirty()` or `onBroadcastDraw()`. Since Fabric.js does not fire `object:modified` for programmatic `set()` calls, no other path marks the canvas dirty. The result: a user who changes only the stroke or fill color of a selected object (1) cannot commit — `openCommitModal()` sees `isDirty = false` and shows "Nothing new to commit"; (2) peers do not see the change in real time; (3) the change is lost on refresh unless some other dirty-making action happens first.
+
+---
+
+### BUG-011 – `doCreateBranch()` does not notify peers of the new branch checkout
+
+**Severity**: Low
+
+`BranchCoordinator.doCreateBranch()` creates a new branch and checks it out locally but never sends a `branch-update` or `profile` WebSocket message to the server. Peers' presence panels and branch modals continue to show the creating user on their previous branch. The parallel `openBranchModal()` checkout path correctly sends both messages after every checkout; the branch-create path does not.
