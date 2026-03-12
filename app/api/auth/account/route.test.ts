@@ -49,6 +49,8 @@ describe('DELETE /api/auth/account (P041)', () => {
     mockAuth.mockResolvedValue(null);
     const res = await DELETE(makeRequest());
     expect(res.status).toBe(401);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('UNAUTHENTICATED');
   });
 
   it('allows OAuth-only user to delete without password', async () => {
@@ -66,6 +68,8 @@ describe('DELETE /api/auth/account (P041)', () => {
     const res = await DELETE(makeRequest());
     expect(res.status).toBe(400);
     expect(mockUserDelete).not.toHaveBeenCalled();
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('PASSWORD_REQUIRED');
   });
 
   it('returns 403 when credentials user provides wrong password', async () => {
@@ -75,6 +79,8 @@ describe('DELETE /api/auth/account (P041)', () => {
     const res = await DELETE(makeRequest({ password: 'WrongPassword123!' }));
     expect(res.status).toBe(403);
     expect(mockUserDelete).not.toHaveBeenCalled();
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('INVALID_CREDENTIALS');
   });
 
   it('deletes credentials user with correct password', async () => {

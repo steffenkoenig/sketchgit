@@ -146,6 +146,20 @@
     "detachedHeadMerge": "⚠ Cannot merge in detached HEAD",
     "branchExists": "Branch already exists",
     "sourceBranchNotFound": "Source branch not found",
-    "cannotMergeModal": "⚠ Cannot merge in detached HEAD"
+    "cannotMergeModal": "⚠ Cannot merge in detached HEAD",
+    "UNAUTHENTICATED": "You must be signed in to perform this action.",
+    "FORBIDDEN": "You do not have permission to perform this action.",
+    "EMAIL_IN_USE": "This email address is already registered.",
+    "INVALID_CREDENTIALS": "Invalid email or password.",
+    "INVALID_RESET_TOKEN": "Invalid or expired password reset link.",
+    "PASSWORD_REQUIRED": "Please enter your current password to confirm.",
+    "NOT_FOUND": "The requested resource was not found.",
+    "ROOM_NOT_FOUND": "This room does not exist.",
+    "SLUG_ALREADY_TAKEN": "This URL slug is already taken.",
+    "VALIDATION_ERROR": "The request contained invalid data.",
+    "INVALID_JSON": "The request body could not be parsed.",
+    "EXPORT_FAILED": "Canvas export failed. Please try again.",
+    "CANVAS_NOT_FOUND": "No canvas data found for this commit.",
+    "INTERNAL_ERROR": "An unexpected error occurred. Please try again."
   }
 }

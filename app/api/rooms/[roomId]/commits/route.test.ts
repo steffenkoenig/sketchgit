@@ -49,8 +49,8 @@ describe('GET /api/rooms/[roomId]/commits', () => {
     mockRoomFindUnique.mockResolvedValue(null);
     const res = await GET(makeRequest('no-room'), { params: Promise.resolve({ roomId: 'no-room' }) });
     expect(res.status).toBe(404);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe('Room not found');
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROOM_NOT_FOUND');
   });
 
   it('returns commits page with nextCursor when more results exist', async () => {
@@ -119,5 +119,26 @@ describe('GET /api/rooms/[roomId]/commits', () => {
     mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-priv', isPublic: false }));
     const res = await GET(makeRequest('room-priv'), { params: Promise.resolve({ roomId: 'room-priv' }) });
     expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('UNAUTHENTICATED');
+  });
+
+  // ── P070: Cache-Control headers ──────────────────────────────────────────────
+
+  it('returns immutable Cache-Control when cursor (SHA) is provided', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-1', isPublic: true }));
+    mockCommitFindMany.mockResolvedValue([]);
+    const res = await GET(makeRequest('room-1', { cursor: 'abc123' }), { params: Promise.resolve({ roomId: 'room-1' }) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('immutable');
+    expect(res.headers.get('etag')).toBe('"abc123"');
+  });
+
+  it('returns no-store Cache-Control when no cursor is provided (first page)', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-1', isPublic: true }));
+    mockCommitFindMany.mockResolvedValue([]);
+    const res = await GET(makeRequest('room-1'), { params: Promise.resolve({ roomId: 'room-1' }) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('no-store');
   });
 });

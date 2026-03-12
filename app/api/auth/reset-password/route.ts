@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { validate } from "@/lib/api/validate";
 import { resetPassword } from "@/lib/db/userRepository";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
 const Schema = z.object({
   token: z.string().max(128),
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
   const success = await resetPassword(token, password);
 
   if (!success) {
-    return NextResponse.json({ error: "Invalid or expired token." }, { status: 400 });
+    return apiError(ApiErrorCode.INVALID_RESET_TOKEN, "Invalid or expired token.", 400);
   }
 
   return NextResponse.json({ message: "Password updated successfully." });

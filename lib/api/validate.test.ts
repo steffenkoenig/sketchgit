@@ -24,13 +24,14 @@ describe('validate', () => {
     }
   });
 
-  it('returns failure response for invalid input', () => {
+  it('returns failure response with VALIDATION_ERROR code for invalid input', () => {
     const result = validate(TestSchema, { name: '', age: -1 });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const response = result.response as unknown as { body: { errors: { field: string; message: string }[] }; init: ResponseInit };
-      expect(response.body.errors).toBeInstanceOf(Array);
-      expect(response.body.errors.length).toBeGreaterThan(0);
+      const response = result.response as unknown as { body: { code: string; details: { field: string; message: string }[] }; init: ResponseInit };
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.details).toBeInstanceOf(Array);
+      expect(response.body.details.length).toBeGreaterThan(0);
       expect(response.init.status).toBe(422);
     }
   });
@@ -40,12 +41,13 @@ describe('validate', () => {
     expect(result.success).toBe(false);
   });
 
-  it('includes field paths in errors', () => {
+  it('includes field paths in details', () => {
     const result = validate(TestSchema, { name: 'Alice', age: 'not-a-number' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const response = result.response as unknown as { body: { errors: { field: string }[] } };
-      const fields = response.body.errors.map((e) => e.field);
+      const response = result.response as unknown as { body: { code: string; details: { field: string }[] } };
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      const fields = response.body.details.map((e) => e.field);
       expect(fields).toContain('age');
     }
   });

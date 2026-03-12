@@ -14,6 +14,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { verifyCredentials } from "@/lib/db/userRepository";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
 const DeleteAccountSchema = z.object({
   password: z.string().min(1).max(128).optional(),
@@ -22,7 +23,7 @@ const DeleteAccountSchema = z.object({
 export async function DELETE(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    return apiError(ApiErrorCode.UNAUTHENTICATED, "Unauthenticated", 401);
   }
 
   const userId = session.user.id;
@@ -34,7 +35,7 @@ export async function DELETE(req: NextRequest) {
   });
 
   if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    return apiError(ApiErrorCode.NOT_FOUND, "User not found", 404);
   }
 
   // Credentials users must re-confirm their password before deletion
@@ -43,16 +44,13 @@ export async function DELETE(req: NextRequest) {
     try { body = await req.json(); } catch { /* empty body */ }
     const v = DeleteAccountSchema.safeParse(body);
     if (!v.success || !v.data.password) {
-      return NextResponse.json(
-        { error: "Password confirmation is required for credentials accounts." },
-        { status: 400 },
-      );
+      return apiError(ApiErrorCode.PASSWORD_REQUIRED, "Password confirmation is required for credentials accounts.", 400);
     }
     const verified = user.email
       ? await verifyCredentials(user.email, v.data.password)
       : null;
     if (!verified) {
-      return NextResponse.json({ error: "Incorrect password." }, { status: 403 });
+      return apiError(ApiErrorCode.INVALID_CREDENTIALS, "Incorrect password.", 403);
     }
   }
 

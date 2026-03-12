@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createUser } from "@/lib/db/userRepository";
 import { validate } from "@/lib/api/validate";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
 const RegisterSchema = z.object({
   email: z.string().email("A valid email address is required.").max(254),
@@ -27,7 +28,7 @@ export type RegisterInput = z.infer<typeof RegisterSchema>;
 export async function POST(req: NextRequest) {
   const body: unknown = await req.json().catch(() => null);
   if (body === null) {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return apiError(ApiErrorCode.INVALID_JSON, "Invalid JSON", 400);
   }
 
   const v = validate(RegisterSchema, body);
@@ -49,12 +50,9 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: unknown) {
     if (err instanceof Error && err.message === "EMAIL_IN_USE") {
-      return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
-      );
+      return apiError(ApiErrorCode.EMAIL_IN_USE, "An account with this email already exists.", 409);
     }
     console.error("[register] Unexpected error:", err);
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+    return apiError(ApiErrorCode.INTERNAL_ERROR, "Internal server error.", 500);
   }
 }

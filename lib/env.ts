@@ -55,6 +55,15 @@ const EnvSchema = z.object({
   // Connections beyond this limit receive a ROOM_FULL error and are closed.
   MAX_CLIENTS_PER_ROOM: z.coerce.number().int().min(1).default(50),
 
+  // ── Database slow-query logging (P071) ────────────────────────────────────
+  // Queries slower than this threshold (ms) are logged at WARN level.
+  SLOW_QUERY_MS: z.coerce.number().int().min(0).default(500),
+  // Set to "true" to log every Prisma query at DEBUG level (development only).
+  LOG_QUERIES: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

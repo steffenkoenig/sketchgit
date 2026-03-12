@@ -78,6 +78,11 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P069 | Enforce a Configurable Maximum Number of WebSocket Clients per Room | Reliability, Security | [P069](proposals/done/P069_room-capacity-limit.md) |
 | P072 | Add `security.txt`, `robots.txt`, and `/.well-known/` Routes | Security, Maintainability | [P072](proposals/done/P072_security-txt-robots-txt.md) |
 | P077 | Create Shared Vitest Test Fixtures and Factory Helpers | Maintainability | [P077](proposals/done/P077_test-fixtures-factories.md) |
+| P063 | Add GitHub Copilot Workspace Configuration and Custom Instructions | Maintainability | [P063](proposals/done/P063_copilot-workspace-configuration.md) |
+| P064 | Enforce Conventional Commits and Automate CHANGELOG Generation | Maintainability | [P064](proposals/done/P064_conventional-commits-changelog.md) |
+| P068 | Introduce Machine-Readable Error Codes in All API Error Responses | Maintainability, UX | [P068](proposals/done/P068_structured-error-codes.md) |
+| P070 | Add `Cache-Control` Headers to SHA-Addressed API Responses | Performance | [P070](proposals/done/P070_http-cache-control-headers.md) |
+| P071 | Enable Prisma Slow-Query Logging and Duration Alerting | Reliability, Maintainability | [P071](proposals/done/P071_prisma-slow-query-logging.md) |
 
 ---
 
@@ -96,14 +101,9 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P060 | Add PgBouncer Transaction-Mode Connection Pooling | Performance, Reliability | [P060](proposals/P060_pgbouncer-connection-pooling.md) |
 | P061 | Instrument with OpenTelemetry Distributed Tracing and Metrics | Reliability, Maintainability | [P061](proposals/P061_opentelemetry-tracing-metrics.md) |
 | P062 | Auto-generate OpenAPI 3.1 Specification from Zod Schemas | Maintainability | [P062](proposals/P062_openapi-documentation.md) |
-| P063 | Add GitHub Copilot Workspace Configuration and Custom Instructions | Maintainability | [P063](proposals/P063_copilot-workspace-configuration.md) |
-| P064 | Enforce Conventional Commits and Automate CHANGELOG Generation | Maintainability | [P064](proposals/P064_conventional-commits-changelog.md) |
 | P065 | Migrate Password Hashing from bcryptjs to Argon2id | Security | [P065](proposals/P065_argon2id-password-hashing.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/P066_room-invitation-tokens.md) |
 | P067 | Prevent Conflicting Concurrent Edits via Canvas Object Reservation (Soft Lock) | Reliability, UX | [P067](proposals/P067_canvas-object-locking.md) |
-| P068 | Introduce Machine-Readable Error Codes in All API Error Responses | Maintainability, UX | [P068](proposals/P068_structured-error-codes.md) |
-| P070 | Add `Cache-Control` Headers to SHA-Addressed API Responses | Performance | [P070](proposals/P070_http-cache-control-headers.md) |
-| P071 | Enable Prisma Slow-Query Logging and Duration Alerting | Reliability, Maintainability | [P071](proposals/P071_prisma-slow-query-logging.md) |
 | P073 | Batch Multiple Small WebSocket Messages Within a Single Tick | Performance | [P073](proposals/P073_websocket-message-batching.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/P074_room-activity-feed-audit-log.md) |
 | P075 | Support Redis Sentinel and Cluster Connection Modes | Reliability | [P075](proposals/P075_redis-sentinel-cluster.md) |
@@ -258,6 +258,11 @@ Some proposals build on or benefit from others. The table below shows key depend
 55. ~~**P069** – Room capacity limit (MAX_CLIENTS_PER_ROOM env var, capacity check in WS connection handler after access control, ROOM_FULL error message + ws.close(1008), intentionalClose suppresses reconnect in wsClient.ts, maxRoomSize in /api/health)~~ ✅ **Done**
 56. ~~**P072** – security.txt + robots.txt (public/robots.txt disallows /auth/ /api/ /dashboard/ and AI crawlers; public/.well-known/security.txt RFC 9116 contact; app/.well-known/change-password/route.ts 302→/auth/forgot-password; SECURITY.md responsible disclosure policy)~~ ✅ **Done**
 57. ~~**P077** – Test factories (lib/test/factories.ts makeUser/makeOAuthUser/makeRoom/makeMembership/makeCommit; lib/test/wsFactories.ts makeDrawDelta/makeWsCommit/makeBranchUpdate/makeCursorMessage/makeErrorMessage; lib/test/setup.ts global beforeEach/afterEach; vitest.config.ts setupFiles; 3 test files migrated)~~ ✅ **Done**
+58. ~~**P063** – Copilot workspace configuration (.github/copilot-instructions.md covering module structure, logging, validation pattern, DB access, WS types, caching, React conventions, testing, env vars, commit format; .github/release-please-config.json; key files reference table)~~ ✅ **Done**
+59. ~~**P064** – Conventional Commits + CHANGELOG (commitlint + @commitlint/config-conventional + husky; commitlint.config.ts; .husky/commit-msg hook; CI commit lint step on PRs; release-please-action@v4 workflow; .github/release-please-config.json + manifest.json; CHANGELOG.md initial release)~~ ✅ **Done**
+60. ~~**P068** – Structured API error codes (lib/api/errors.ts with ApiErrorCode const + ApiErrorCodeValue type + ApiErrorBody interface + apiError() helper; lib/api/validate.ts returns VALIDATION_ERROR code; all API routes migrated; messages/en.json + messages/de.json errors.* keys; all route tests assert on code not string)~~ ✅ **Done**
+61. ~~**P070** – Cache-Control headers (lib/api/cacheHeaders.ts with immutableHeaders/mutableHeaders/shortLivedHeaders; export route SHA→immutable + ETag + 304 If-None-Match; commits route cursor→immutable / no cursor→mutable; Vary:Accept-Encoding implicit)~~ ✅ **Done**
+62. ~~**P071** – Prisma slow-query logging (SLOW_QUERY_MS + LOG_QUERIES env vars in lib/env.ts; prisma.$on('query') listener in lib/db/prisma.ts; console.warn on slow + all-query mode; .env.example documented; lib/db/prisma.test.ts 6 unit tests)~~ ✅ **Done**
 
 ### New proposals (P029–P080)
 These proposals address issues discovered in subsequent review cycles. Proposals P058–P080 are newly added and listed in recommended implementation order in the "Not Started" table above.

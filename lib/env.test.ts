@@ -116,4 +116,51 @@ describe('validateEnv', () => {
     expect(env.MAX_CLIENTS_PER_ROOM).toBe(25);
     delete process.env.MAX_CLIENTS_PER_ROOM;
   });
+
+  it('applies default of 500 for SLOW_QUERY_MS', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    delete process.env.SLOW_QUERY_MS;
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.SLOW_QUERY_MS).toBe(500);
+  });
+
+  it('accepts a custom SLOW_QUERY_MS value', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.SLOW_QUERY_MS = '1000';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.SLOW_QUERY_MS).toBe(1000);
+    delete process.env.SLOW_QUERY_MS;
+  });
+
+  it('parses LOG_QUERIES=true as boolean true', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.LOG_QUERIES = 'true';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.LOG_QUERIES).toBe(true);
+    delete process.env.LOG_QUERIES;
+  });
+
+  it('parses LOG_QUERIES=false as boolean false', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.LOG_QUERIES = 'false';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.LOG_QUERIES).toBe(false);
+    delete process.env.LOG_QUERIES;
+  });
 });

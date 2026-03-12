@@ -2,6 +2,8 @@
  * GET /api/rooms/[roomId]/export?format=png|svg&sha=<commitSha>
  *
  * P039 – Export a room's canvas as a PNG or SVG file.
+ * P068 – Uses apiError() for structured error responses.
+ * P070 – Adds Cache-Control + ETag headers for SHA-addressed exports.
  *
  * When `sha` is omitted the room's current HEAD commit is used.
  * For public rooms no authentication is required.
@@ -11,6 +13,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { validate } from "@/lib/api/validate";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
+import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
 import { CommitStorageType, type Prisma } from "@prisma/client";
 import { replayCanvasDelta, type CanvasDelta } from "@/lib/sketchgit/git/canvasDelta";
 import { renderToSVG, renderToPNG } from "@/lib/export/canvasRenderer";
@@ -114,7 +118,7 @@ export async function GET(
   // Resolve slug or canonical room ID → canonical ID.
   const roomId = await resolveRoomId(roomIdOrSlug);
   if (!roomId) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
 
   // Access control: private rooms require authenticated membership.
@@ -123,32 +127,38 @@ export async function GET(
     select: { isPublic: true },
   });
   if (!room) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
   if (!room.isPublic) {
     const session = await auth();
     const authSession = getAuthSession(session);
     if (!authSession) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return apiError(ApiErrorCode.UNAUTHENTICATED, "Authentication required", 401);
     }
     const membership = await prisma.roomMembership.findUnique({
       where: { roomId_userId: { roomId, userId: authSession.user.id } },
       select: { role: true },
     });
     if (!membership) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return apiError(ApiErrorCode.FORBIDDEN, "Forbidden", 403);
     }
   }
 
   // Resolve target commit SHA
   let targetSha: string;
   if (reqSha) {
+    // P070 – If client already has this SHA cached, return 304 Not Modified.
+    const ifNoneMatch = req.headers.get("if-none-match");
+    if (ifNoneMatch === `"${reqSha}"`) {
+      return new NextResponse(null, { status: 304 });
+    }
+
     const exists = await prisma.commit.findUnique({
       where: { sha: reqSha },
       select: { sha: true, roomId: true },
     });
     if (!exists || exists.roomId !== roomId) {
-      return NextResponse.json({ error: "Commit not found" }, { status: 404 });
+      return apiError(ApiErrorCode.NOT_FOUND, "Commit not found", 404);
     }
     targetSha = reqSha;
   } else {
@@ -157,17 +167,20 @@ export async function GET(
       select: { headSha: true },
     });
     if (!state?.headSha) {
-      return NextResponse.json({ error: "Room not found or has no commits" }, { status: 404 });
+      return apiError(ApiErrorCode.CANVAS_NOT_FOUND, "Room not found or has no commits", 404);
     }
     targetSha = state.headSha;
   }
 
   const canvasJson = await resolveCanvasJson(targetSha, roomId);
   if (!canvasJson) {
-    return NextResponse.json({ error: "Failed to resolve canvas state" }, { status: 404 });
+    return apiError(ApiErrorCode.CANVAS_NOT_FOUND, "Failed to resolve canvas state", 404);
   }
 
   const filename = `canvas-${roomId}`;
+  // P070 – SHA-addressed exports are immutable; use long-lived cache headers.
+  // HEAD exports (no sha) must not be cached as the canvas can change at any time.
+  const cacheHdrs = reqSha ? immutableHeaders(reqSha) : mutableHeaders();
 
   if (format === "svg") {
     const svg = await renderToSVG(canvasJson);
@@ -175,6 +188,7 @@ export async function GET(
       headers: {
         "Content-Type": "image/svg+xml",
         "Content-Disposition": `attachment; filename="${filename}.svg"`,
+        ...cacheHdrs,
       },
     });
   }
@@ -184,6 +198,7 @@ export async function GET(
     headers: {
       "Content-Type": "image/png",
       "Content-Disposition": `attachment; filename="${filename}.png"`,
+      ...cacheHdrs,
     },
   });
 }

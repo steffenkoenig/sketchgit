@@ -49,6 +49,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Lint commit messages
+        if: github.event_name == 'pull_request'
+        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+
       - name: Type check
         run: npx tsc --noEmit
 

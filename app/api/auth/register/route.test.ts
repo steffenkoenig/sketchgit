@@ -97,7 +97,7 @@ describe('POST /api/auth/register', () => {
 
     expect(res.status).toBe(409);
     const json = await res.json() as Record<string, unknown>;
-    expect(json).toHaveProperty('error');
+    expect(json.code).toBe('EMAIL_IN_USE');
   });
 
   // ── Validation failures (422) ───────────────────────────────────────────────
@@ -110,8 +110,9 @@ describe('POST /api/auth/register', () => {
     }) as Parameters<typeof POST>[0]);
 
     expect(res.status).toBe(422);
-    const json = await res.json() as { errors: { field: string; message: string }[] };
-    expect(json.errors.some((e) => e.field === 'email')).toBe(true);
+    const json = await res.json() as { code: string; details: { field: string; message: string }[] };
+    expect(json.code).toBe('VALIDATION_ERROR');
+    expect(json.details.some((e) => e.field === 'email')).toBe(true);
   });
 
   it('returns 422 when password is shorter than 12 characters', async () => {
@@ -122,8 +123,9 @@ describe('POST /api/auth/register', () => {
     }) as Parameters<typeof POST>[0]);
 
     expect(res.status).toBe(422);
-    const json = await res.json() as { errors: { field: string; message: string }[] };
-    expect(json.errors.some((e) => e.field === 'password')).toBe(true);
+    const json = await res.json() as { code: string; details: { field: string; message: string }[] };
+    expect(json.code).toBe('VALIDATION_ERROR');
+    expect(json.details.some((e) => e.field === 'password')).toBe(true);
   });
 
   it('returns 422 when name is empty', async () => {
@@ -134,6 +136,8 @@ describe('POST /api/auth/register', () => {
     }) as Parameters<typeof POST>[0]);
 
     expect(res.status).toBe(422);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns 422 when required fields are missing', async () => {
@@ -142,6 +146,8 @@ describe('POST /api/auth/register', () => {
     }) as Parameters<typeof POST>[0]);
 
     expect(res.status).toBe(422);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('VALIDATION_ERROR');
   });
 
   // ── Malformed request ───────────────────────────────────────────────────────
@@ -155,6 +161,8 @@ describe('POST /api/auth/register', () => {
 
     const res = await POST(req as Parameters<typeof POST>[0]);
     expect(res.status).toBe(400);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('INVALID_JSON');
   });
 
   // ── Server errors ───────────────────────────────────────────────────────────
@@ -169,5 +177,7 @@ describe('POST /api/auth/register', () => {
     }) as Parameters<typeof POST>[0]);
 
     expect(res.status).toBe(500);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('INTERNAL_ERROR');
   });
 });
