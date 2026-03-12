@@ -1,7 +1,7 @@
 # Bug Summary
 
 This registry records all confirmed bugs found by systematic scanning of the SketchGit codebase.
-Last updated: 2026-03-12 (third scan pass).
+Last updated: 2026-03-12 (fourth scan pass).
 
 ---
 
@@ -32,6 +32,8 @@ Resolved reports are archived in [`done/`](./done/).
 | [BUG-012](./BUG-012_undo-saves-post-transform-state.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Undo saves post-transform state; move/resize cannot be undone |
 | [BUG-013](./BUG-013_wsclient-connect-orphaned-socket-spurious-reconnect.md) | High | `lib/sketchgit/realtime/wsClient.ts` | `connect()` doesn't close old socket; stale close handler triggers spurious reconnects |
 | [BUG-014](./BUG-014_timeline-branch-label-click-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/timelineCoordinator.ts` | Clicking branch label in timeline SVG doesn't send peer branch-update/profile |
+| [BUG-015](./BUG-015_color-fill-change-not-undoable.md) | Low | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes skip `pushHistory()`; cannot be undone |
+| [BUG-016](./BUG-016_reset-password-routes-not-rate-limited.md) | Medium | `proxy.ts` | `forgot-password` and `reset-password` routes absent from rate-limiter matcher |
 
 ---
 
@@ -85,6 +87,20 @@ Files scanned (excluding test files, migrations, generated code):
 **Severity**: Low
 
 The timeline SVG renders a clickable label for each branch. When clicked, `TimelineCoordinator.render()`'s `onBranchClick` callback checks out the branch and updates the local canvas, but never sends a `branch-update` or `profile` WebSocket message. Peers' presence panels and branch modals therefore display a stale branch for the switching user. The equivalent action via the branch modal (`BranchCoordinator.openBranchModal()`) correctly sends both messages; the timeline label path was not updated to match.
+
+### BUG-015 – Color/fill changes to selected objects are not undoable
+
+**Severity**: Low
+
+`CanvasEngine.updateStrokeColor()` and `updateFillColor()` both modify the active canvas object and call `markDirty()` + `onBroadcastDraw()`, but neither calls `pushHistory()` before the change. Pressing Ctrl+Z after a color/fill change does not revert the color — it instead undoes the last *drawing* action (or does nothing if the stack is empty). The pattern is inconsistent with the Delete-key handler and the drawing-gesture handler, which both call `pushHistory()` before their mutations.
+
+---
+
+### BUG-016 – `/api/auth/forgot-password` and `/api/auth/reset-password` bypass the rate limiter
+
+**Severity**: Medium
+
+`proxy.ts` is the only rate-limiting layer for authentication endpoints. Its `config.matcher` activates the middleware only for `/dashboard/:path*`, `/api/auth/register`, and `/api/auth/signin`. The password-reset endpoints are absent from both the matcher and the `RATE_LIMITED_PATHS` set, so an unauthenticated attacker can call `/api/auth/forgot-password` in a tight loop, triggering unlimited password-reset emails to any target address. The fix is to add both routes to `RATE_LIMITED_PATHS` and to `config.matcher`; the existing rate-limiting infrastructure requires no further changes.
 
 ---
 
