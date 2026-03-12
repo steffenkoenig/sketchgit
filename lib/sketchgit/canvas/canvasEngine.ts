@@ -470,7 +470,7 @@ export class CanvasEngine {
       this.currentPenPath = null;
       this.activeObj = null;
       this.markDirty();
-      if (this.canvas) this.canvas.selection = this.currentTool === 'select';
+      if (this.canvas) this.canvas.selection = false; // pen tool stays in drawing mode
       this.onBroadcastDraw(true);
       return;
     }
