@@ -12,9 +12,12 @@ import type { UserConfig } from "@commitlint/types";
  */
 const config: UserConfig = {
   extends: ["@commitlint/config-conventional"],
+  // Ignore bootstrap / planning commits that predate conventional-commit
+  // enforcement in this repository.
+  ignores: [(msg: string) => /^Initial\s/i.test(msg.trim())],
   rules: {
-    // Allow longer subject lines to accommodate descriptive messages.
-    "header-max-length": [2, "always", 100],
+    // Allow up to 120 characters to accommodate descriptive feature messages.
+    "header-max-length": [2, "always", 120],
   },
 };
 
