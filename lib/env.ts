@@ -50,6 +50,11 @@ const EnvSchema = z.object({
   PRUNE_INACTIVE_ROOMS_DAYS: z.coerce.number().int().min(1).default(30),
   PRUNE_INTERVAL_HOURS: z.coerce.number().int().min(1).default(24),
 
+  // ── Optional – room capacity limit (P069) ─────────────────────────────────
+  // Maximum number of simultaneous WebSocket clients allowed in a single room.
+  // Connections beyond this limit receive a ROOM_FULL error and are closed.
+  MAX_CLIENTS_PER_ROOM: z.coerce.number().int().min(1).default(50),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

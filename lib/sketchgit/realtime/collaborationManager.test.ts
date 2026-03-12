@@ -72,7 +72,7 @@ describe('CollaborationManager – construction', () => {
   it('registers onMessage and onStatusChange on the WsClient', () => {
     setupDom();
     const ws = makeMockWs();
-    const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
+    new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
     expect(ws.onMessage).toBeTypeOf('function');
     expect(ws.onStatusChange).toBeTypeOf('function');
   });

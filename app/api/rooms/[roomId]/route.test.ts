@@ -14,15 +14,16 @@ import { PATCH } from './route';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
 import { NextRequest } from 'next/server';
+import { makeRoom, makeMembership } from '@/lib/test/factories';
 
 const mockAuth = auth as ReturnType<typeof vi.fn>;
 const mockRoomFindUnique = prisma.room.findUnique as ReturnType<typeof vi.fn>;
 const mockRoomUpdate = prisma.room.update as ReturnType<typeof vi.fn>;
 
 const SESSION = { user: { id: 'usr_1' } };
-const OWNER_ROOM = { ownerId: 'usr_1', memberships: [] };
-const NON_OWNER_ROOM = { ownerId: 'usr_other', memberships: [] };
-const MEMBERSHIP_OWNER = { ownerId: 'usr_other', memberships: [{ role: 'OWNER' }] };
+const OWNER_ROOM = { ...makeRoom({ id: 'room_1', ownerId: 'usr_1' }), memberships: [] };
+const NON_OWNER_ROOM = { ...makeRoom({ id: 'room_1', ownerId: 'usr_other' }), memberships: [] };
+const MEMBERSHIP_OWNER = { ...makeRoom({ id: 'room_1', ownerId: 'usr_other' }), memberships: [makeMembership('room_1', 'usr_1', 'OWNER')] };
 
 function makeRequest(roomId: string, body: object) {
   return new NextRequest(`http://localhost/api/rooms/${roomId}`, {

@@ -143,6 +143,13 @@ export class WsClient {
         return;
       }
 
+      // P069 – room is at capacity; show error and suppress reconnect.
+      if (data.type === 'error' && (data as WsMessage & { code?: string }).code === 'ROOM_FULL') {
+        showToast('⚠ This room is full. Please try a different room.', true);
+        this.intentionalClose = true;
+        return;
+      }
+
       this.onMessage?.(data);
     });
 

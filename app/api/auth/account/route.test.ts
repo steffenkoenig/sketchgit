@@ -22,6 +22,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
 import { verifyCredentials } from '@/lib/db/userRepository';
 import { NextRequest } from 'next/server';
+import { makeUser, makeOAuthUser } from '@/lib/test/factories';
 
 const mockAuth = auth as ReturnType<typeof vi.fn>;
 const mockUserFindUnique = prisma.user.findUnique as ReturnType<typeof vi.fn>;
@@ -38,8 +39,8 @@ function makeRequest(body?: object) {
 }
 
 const SESSION = { user: { id: 'usr_1' } };
-const OAUTH_USER = { id: 'usr_1', email: 'alice@example.com', passwordHash: null };
-const CREDENTIALS_USER = { id: 'usr_1', email: 'alice@example.com', passwordHash: '$2b$12$hash' };
+const OAUTH_USER = makeOAuthUser({ id: 'usr_1', email: 'alice@example.com' });
+const CREDENTIALS_USER = makeUser({ id: 'usr_1', email: 'alice@example.com', passwordHash: '$2b$12$hash' });
 
 describe('DELETE /api/auth/account (P041)', () => {
   beforeEach(() => vi.clearAllMocks());

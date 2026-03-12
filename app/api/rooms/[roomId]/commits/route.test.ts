@@ -21,6 +21,7 @@ vi.mock('@/lib/authTypes', () => ({
 
 import { GET } from './route';
 import { prisma } from '@/lib/db/prisma';
+import { makeRoom } from '@/lib/test/factories';
 
 const mockRoomFindUnique = prisma.room.findUnique as ReturnType<typeof vi.fn>;
 const mockCommitFindMany = prisma.commit.findMany as ReturnType<typeof vi.fn>;
@@ -31,7 +32,8 @@ function makeRequest(roomId: string, query: Record<string, string> = {}): NextRe
   return new NextRequest(url.toString());
 }
 
-const fakeCommit = (sha: string) => ({
+/** Returns only the fields the commits API endpoint reads from DB. */
+const fakeApiCommit = (sha: string) => ({
   sha,
   parentSha: null,
   branch: 'main',
@@ -52,9 +54,9 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('returns commits page with nextCursor when more results exist', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-1', isPublic: true }));
     // Request take=2, return 3 (take+1) to signal hasMore
-    const commits = [fakeCommit('c3'), fakeCommit('c2'), fakeCommit('c1')];
+    const commits = [fakeApiCommit('c3'), fakeApiCommit('c2'), fakeApiCommit('c1')];
     mockCommitFindMany.mockResolvedValue(commits);
 
     const res = await GET(makeRequest('room-1', { take: '2' }), { params: Promise.resolve({ roomId: 'room-1' }) });
@@ -65,8 +67,8 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('returns null nextCursor on last page', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
-    mockCommitFindMany.mockResolvedValue([fakeCommit('c1')]);
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-1', isPublic: true }));
+    mockCommitFindMany.mockResolvedValue([fakeApiCommit('c1')]);
 
     const res = await GET(makeRequest('room-1', { take: '50' }), { params: Promise.resolve({ roomId: 'room-1' }) });
     const body = await res.json() as { nextCursor: null };
@@ -74,13 +76,13 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('returns 422 for invalid take parameter', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-1', isPublic: true }));
     const res = await GET(makeRequest('room-1', { take: '999' }), { params: Promise.resolve({ roomId: 'room-1' }) });
     expect(res.status).toBe(422);
   });
 
   it('passes cursor to prisma when provided', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-1', isPublic: true }));
     mockCommitFindMany.mockResolvedValue([]);
 
     await GET(makeRequest('room-1', { cursor: 'abc123' }), { params: Promise.resolve({ roomId: 'room-1' }) });
@@ -90,7 +92,7 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('maps commit fields correctly', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-1', isPublic: true });
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-1', isPublic: true }));
     const commit = {
       sha: 'abc123',
       parentSha: 'parent1',
@@ -114,7 +116,7 @@ describe('GET /api/rooms/[roomId]/commits', () => {
   });
 
   it('returns 401 for private room when unauthenticated', async () => {
-    mockRoomFindUnique.mockResolvedValue({ id: 'room-priv', isPublic: false });
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-priv', isPublic: false }));
     const res = await GET(makeRequest('room-priv'), { params: Promise.resolve({ roomId: 'room-priv' }) });
     expect(res.status).toBe(401);
   });

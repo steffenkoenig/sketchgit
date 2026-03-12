@@ -712,6 +712,8 @@ void app.prepare()
             uptime: process.uptime(),
             rooms: rooms.size,
             clients: wss.clients.size,
+            maxRoomSize: rooms.size > 0 ? Math.max(...[...rooms.values()].map((r) => r.size)) : 0,
+            capacityLimit: env.MAX_CLIENTS_PER_ROOM,
             database: dbOk ? "ok" : "unreachable",
             // P012: include Redis status for ops visibility
             redis: env.REDIS_URL ? (redisReady ? "ok" : "connecting") : "disabled",
@@ -838,6 +840,18 @@ void app.prepare()
         return;
       }
       client.role = access.role;
+
+      // P069 – enforce per-room client capacity limit.
+      const existingRoom = rooms.get(roomId);
+      if (existingRoom && existingRoom.size >= env.MAX_CLIENTS_PER_ROOM) {
+        logger.warn(
+          { roomId, currentSize: existingRoom.size, limit: env.MAX_CLIENTS_PER_ROOM },
+          "ws: room at capacity, rejecting new connection",
+        );
+        sendTo(client, { type: "error", code: "ROOM_FULL", message: "This room is at capacity." });
+        ws.close(1008, "Room at capacity");
+        return;
+      }
 
       // P015 – increment per-IP connection counter
       const ip = client._ip ?? "unknown";

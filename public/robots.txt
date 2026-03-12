@@ -1,0 +1,20 @@
+User-agent: *
+# Don't index auth or dashboard pages
+Disallow: /auth/
+Disallow: /dashboard/
+
+# Don't index API endpoints (they return JSON, not HTML)
+Disallow: /api/
+
+# Disallow AI training crawlers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+# Allow the canvas page (intentionally public)
+# Sitemap: https://yourdomain.com/sitemap.xml

@@ -93,4 +93,27 @@ describe('validateEnv', () => {
     // Should not throw or call process.exit
     expect(() => validateEnv()).not.toThrow();
   });
+
+  it('applies default of 50 for MAX_CLIENTS_PER_ROOM', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    delete process.env.MAX_CLIENTS_PER_ROOM;
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.MAX_CLIENTS_PER_ROOM).toBe(50);
+  });
+
+  it('accepts a custom MAX_CLIENTS_PER_ROOM value', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.MAX_CLIENTS_PER_ROOM = '25';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.MAX_CLIENTS_PER_ROOM).toBe(25);
+    delete process.env.MAX_CLIENTS_PER_ROOM;
+  });
 });

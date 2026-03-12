@@ -75,6 +75,9 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P055 | Replace `window.confirm()` in `cpRollback` with an Accessible In-app Confirmation Modal | UX, Accessibility | [P055](proposals/done/P055_replace-window-confirm.md) |
 | P056 | Implement Nonce-based CSP to Replace `'unsafe-inline'` in `script-src` and `style-src` | Security | [P056](proposals/done/P056_nonce-based-csp.md) |
 | P057 | Validate Commit SHA Format and Canvas Payload Size Before WebSocket DB Persistence | Security, Reliability | [P057](proposals/done/P057_commit-sha-payload-validation.md) |
+| P069 | Enforce a Configurable Maximum Number of WebSocket Clients per Room | Reliability, Security | [P069](proposals/done/P069_room-capacity-limit.md) |
+| P072 | Add `security.txt`, `robots.txt`, and `/.well-known/` Routes | Security, Maintainability | [P072](proposals/done/P072_security-txt-robots-txt.md) |
+| P077 | Create Shared Vitest Test Fixtures and Factory Helpers | Maintainability | [P077](proposals/done/P077_test-fixtures-factories.md) |
 
 ---
 
@@ -99,15 +102,12 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/P066_room-invitation-tokens.md) |
 | P067 | Prevent Conflicting Concurrent Edits via Canvas Object Reservation (Soft Lock) | Reliability, UX | [P067](proposals/P067_canvas-object-locking.md) |
 | P068 | Introduce Machine-Readable Error Codes in All API Error Responses | Maintainability, UX | [P068](proposals/P068_structured-error-codes.md) |
-| P069 | Enforce a Configurable Maximum Number of WebSocket Clients per Room | Reliability, Security | [P069](proposals/P069_room-capacity-limit.md) |
 | P070 | Add `Cache-Control` Headers to SHA-Addressed API Responses | Performance | [P070](proposals/P070_http-cache-control-headers.md) |
 | P071 | Enable Prisma Slow-Query Logging and Duration Alerting | Reliability, Maintainability | [P071](proposals/P071_prisma-slow-query-logging.md) |
-| P072 | Add `security.txt`, `robots.txt`, and `/.well-known/` Routes | Security, Maintainability | [P072](proposals/P072_security-txt-robots-txt.md) |
 | P073 | Batch Multiple Small WebSocket Messages Within a Single Tick | Performance | [P073](proposals/P073_websocket-message-batching.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/P074_room-activity-feed-audit-log.md) |
 | P075 | Support Redis Sentinel and Cluster Connection Modes | Reliability | [P075](proposals/P075_redis-sentinel-cluster.md) |
 | P076 | Add PDF Export for Canvas Drawings | UX | [P076](proposals/P076_canvas-pdf-export.md) |
-| P077 | Create Shared Vitest Test Fixtures and Factory Helpers | Maintainability | [P077](proposals/P077_test-fixtures-factories.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/P078_dark-light-theme-toggle.md) |
 | P079 | Show Peer Branch Positions in Presence Panel and Branch Modal, with One-Click Branch Follow | UX, Reliability | [P079](proposals/P079_cross-branch-peer-visibility.md) |
 | P080 | Add a Presenter Mode That Lets a User Ask Peers to Follow Their Canvas View in Real Time | UX, Reliability | [P080](proposals/P080_presenter-follow-view.md) |
@@ -255,6 +255,9 @@ Some proposals build on or benefit from others. The table below shows key depend
 52. ~~**P055** – Replace window.confirm() with accessible modal (confirmModal overlay in SketchGitApp.tsx; showConfirm/acceptConfirm/cancelConfirm in CommitCoordinator; cpRollback uses showConfirm with callback; exposed in app API)~~ ✅ **Done**
 53. ~~**P056** – Nonce-based CSP (buildCsp in lib/server/csp.ts; randomBytes nonce in proxy.ts per request; x-nonce header forwarded to layout.tsx; 'unsafe-inline' removed from next.config.mjs; NextIntlClientProvider + SessionProvider receive nonce; next.config.mjs experimental.nonce=true)~~ ✅ **Done**
 54. ~~**P057** – Commit SHA/payload validation (validateCommitMessage in lib/server/commitValidation.ts; SHA regex /^[0-9a-f]{8,64}$/; canvas 2 MB limit + JSON.parse check; parents max 2, each valid SHA; applied before dbSaveCommit in server.ts; invalid messages logged + dropped)~~ ✅ **Done**
+55. ~~**P069** – Room capacity limit (MAX_CLIENTS_PER_ROOM env var, capacity check in WS connection handler after access control, ROOM_FULL error message + ws.close(1008), intentionalClose suppresses reconnect in wsClient.ts, maxRoomSize in /api/health)~~ ✅ **Done**
+56. ~~**P072** – security.txt + robots.txt (public/robots.txt disallows /auth/ /api/ /dashboard/ and AI crawlers; public/.well-known/security.txt RFC 9116 contact; app/.well-known/change-password/route.ts 302→/auth/forgot-password; SECURITY.md responsible disclosure policy)~~ ✅ **Done**
+57. ~~**P077** – Test factories (lib/test/factories.ts makeUser/makeOAuthUser/makeRoom/makeMembership/makeCommit; lib/test/wsFactories.ts makeDrawDelta/makeWsCommit/makeBranchUpdate/makeCursorMessage/makeErrorMessage; lib/test/setup.ts global beforeEach/afterEach; vitest.config.ts setupFiles; 3 test files migrated)~~ ✅ **Done**
 
 ### New proposals (P029–P080)
 These proposals address issues discovered in subsequent review cycles. Proposals P058–P080 are newly added and listed in recommended implementation order in the "Not Started" table above.
