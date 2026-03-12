@@ -1,7 +1,7 @@
 # Bug Summary
 
 This registry records all confirmed bugs found by systematic scanning of the SketchGit codebase.
-Last updated: 2026-03-12 (second scan pass).
+Last updated: 2026-03-12 (third scan pass).
 
 ## Registry
 
@@ -19,6 +19,8 @@ Last updated: 2026-03-12 (second scan pass).
 | [BUG-010](./BUG-010_color-change-not-dirty-not-broadcast.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes to selected objects not marked dirty or broadcast to peers |
 | [BUG-011](./BUG-011_create-branch-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/branchCoordinator.ts` | `doCreateBranch()` doesn't send peer presence notifications |
 | [BUG-012](./BUG-012_undo-saves-post-transform-state.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Undo saves post-transform state; move/resize cannot be undone |
+| [BUG-013](./BUG-013_wsclient-connect-orphaned-socket-spurious-reconnect.md) | High | `lib/sketchgit/realtime/wsClient.ts` | `connect()` doesn't close old socket; stale close handler triggers spurious reconnects |
+| [BUG-014](./BUG-014_timeline-branch-label-click-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/timelineCoordinator.ts` | Clicking branch label in timeline SVG doesn't send peer branch-update/profile |
 
 ## Severity Criteria
 
@@ -140,3 +142,19 @@ The P073 batch message handler in `server.ts` iterates over a JSON array of `WsM
 **Severity**: Medium
 
 `CanvasEngine` calls `pushHistory()` from the Fabric.js `object:modified` event listener, which fires **after** the transformation (move/resize/rotate) has already been applied. The snapshot captured is therefore the post-modification state, which is identical to the current canvas state at the time undo is invoked. Pressing Ctrl+Z after a move or resize does not visibly restore the previous position — undo appears to be a no-op. A second Ctrl+Z then removes the entire drawn shape, skipping the pre-move state entirely. Operations that do save the correct pre-action state (new shape drawing, eraser, delete key) are unaffected.
+
+---
+
+### BUG-013 – `WsClient.connect()` orphans the old socket; stale close handler triggers spurious reconnects
+
+**Severity**: High
+
+`WsClient.connect()` creates a new WebSocket without first closing the existing one. The old socket remains open and its `onclose` event listener (which uses `this` — the shared WsClient instance) fires later when the old connection terminates server-side. Because `connect()` resets `this.intentionalClose = false`, the guard in the close handler is bypassed, and `_scheduleReconnect()` is called. This creates a third socket (overwriting the current live connection), corrupts `retryCount`, and cancels the new socket's heartbeat monitor via `this._clearHeartbeat()`. Each room switch compounds the issue, creating a growing chain of orphaned socket close handlers.
+
+---
+
+### BUG-014 – Clicking a branch label in the timeline SVG doesn't notify peers of the branch switch
+
+**Severity**: Low
+
+The timeline SVG renders a clickable label for each branch. When clicked, `TimelineCoordinator.render()`'s `onBranchClick` callback checks out the branch and updates the local canvas, but never sends a `branch-update` or `profile` WebSocket message. Peers' presence panels and branch modals therefore display a stale branch for the switching user. The equivalent action via the branch modal (`BranchCoordinator.openBranchModal()`) correctly sends both messages; the timeline label path was not updated to match.
