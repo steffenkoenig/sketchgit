@@ -589,7 +589,14 @@ export class CanvasEngine {
     const dot = document.getElementById('strokeDot');
     if (dot) dot.style.background = v;
     const o = this.canvas?.getActiveObject();
-    if (o) { o.set('stroke', v); this.canvas?.requestRenderAll(); }
+    if (o) {
+      o.set('stroke', v);
+      this.canvas?.requestRenderAll();
+      // BUG-010 – programmatic obj.set() doesn't fire object:modified, so we
+      // must explicitly mark the canvas dirty and broadcast the change to peers.
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
   }
 
   updateFillColor(v: string): void {
@@ -597,7 +604,13 @@ export class CanvasEngine {
     const dot = document.getElementById('fillDot');
     if (dot) dot.style.background = v;
     const o = this.canvas?.getActiveObject();
-    if (o) { o.set('fill', v); this.canvas?.requestRenderAll(); }
+    if (o) {
+      o.set('fill', v);
+      this.canvas?.requestRenderAll();
+      // BUG-010 – same fix: mark dirty and broadcast so peers see the change.
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
   }
 
   toggleFill(): void {

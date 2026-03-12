@@ -18,10 +18,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/prisma";
 import { validate } from "@/lib/api/validate";
 import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
+import { getRoomOwnership, updateRoomSlug } from "@/lib/db/roomRepository";
 
 export const PatchRoomSchema = z.object({
   slug: z
@@ -48,22 +48,13 @@ export async function PATCH(
   const userId = authSession.user.id;
   const { roomId } = await params;
 
-  const room = await prisma.room.findUnique({
-    where: { id: roomId },
-    select: {
-      ownerId: true,
-      memberships: {
-        where: { userId, role: "OWNER" },
-        select: { role: true },
-      },
-    },
-  });
+  const ownership = await getRoomOwnership(roomId, userId);
 
-  if (!room) {
+  if (!ownership) {
     return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
 
-  const isOwner = room.ownerId === userId || room.memberships.length > 0;
+  const isOwner = ownership.isOwner;
   if (!isOwner) {
     return apiError(ApiErrorCode.FORBIDDEN, "Forbidden", 403);
   }
@@ -77,11 +68,7 @@ export async function PATCH(
   if (!v.success) return v.response;
 
   try {
-    const updated = await prisma.room.update({
-      where: { id: roomId },
-      data: { slug: v.data.slug },
-      select: { id: true, slug: true },
-    });
+    const updated = await updateRoomSlug(roomId, v.data.slug);
     return NextResponse.json(updated);
   } catch (err: unknown) {
     // Prisma unique-constraint violation (P2002) → slug already in use.

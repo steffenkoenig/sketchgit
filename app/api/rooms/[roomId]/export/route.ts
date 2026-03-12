@@ -11,99 +11,26 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db/prisma";
 import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
-import { CommitStorageType, type Prisma } from "@prisma/client";
-import { replayCanvasDelta, type CanvasDelta } from "@/lib/sketchgit/git/canvasDelta";
 import { renderToSVG, renderToPNG, renderToPDF } from "@/lib/export/canvasRenderer";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
-import { resolveRoomId } from "@/lib/db/roomRepository";
+import {
+  resolveRoomId,
+  getRoomPublicFlag,
+  getRoomMembership,
+  getCommitShaInRoom,
+  getRoomHeadSha,
+  resolveCommitCanvas,
+} from "@/lib/db/roomRepository";
 
 export const ExportQuerySchema = z.object({
   format: z.enum(["png", "svg", "pdf"]).default("png"),
   sha: z.string().max(64).optional(),
   theme: z.enum(["dark", "light"]).default("dark"),
 });
-
-const MAX_CHAIN_DEPTH = 10_000;
-
-/**
- * Walk the parentSha chain backwards from `commitSha`, replaying DELTA commits
- * against their parents, until we reach a SNAPSHOT or root commit.
- * This avoids loading all room commits at once.
- */
-async function resolveCanvasJson(
-  commitSha: string,
-  roomId: string,
-): Promise<object | null> {
-  const visited = new Set<string>();
-  const chain: {
-    sha: string;
-    parentSha: string | null;
-    canvasJson: Prisma.JsonValue;
-    storageType: CommitStorageType;
-  }[] = [];
-
-  let currentSha: string | null = commitSha;
-  let depth = 0;
-
-  while (currentSha && depth < MAX_CHAIN_DEPTH) {
-    if (visited.has(currentSha)) break; // cycle guard
-
-    const row: {
-      sha: string;
-      parentSha: string | null;
-      canvasJson: Prisma.JsonValue;
-      storageType: CommitStorageType;
-    } | null = await prisma.commit.findFirst({
-      where: { roomId, sha: currentSha },
-      select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
-    });
-
-    if (!row) return null; // missing ancestor
-
-    chain.push(row);
-    visited.add(currentSha);
-    depth++;
-
-    if (row.storageType === CommitStorageType.SNAPSHOT || !row.parentSha) break;
-    currentSha = row.parentSha;
-  }
-
-  if (chain.length === 0) return null;
-
-  // Built target → base; replay requires oldest-first.
-  chain.reverse();
-
-  const canvasCache = new Map<string, string>();
-  for (const c of chain) {
-    let canvasStr: string;
-    if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
-      try { canvasStr = JSON.stringify(c.canvasJson); }
-      catch { canvasStr = '{"objects":[]}'; }
-    } else {
-      const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
-      try {
-        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
-      } catch {
-        try { canvasStr = JSON.stringify(c.canvasJson); }
-        catch { canvasStr = '{"objects":[]}'; }
-      }
-    }
-    canvasCache.set(c.sha, canvasStr);
-  }
-
-  const resolved = canvasCache.get(commitSha);
-  if (!resolved) return null;
-  try {
-    return JSON.parse(resolved) as object;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET(
   req: NextRequest,
@@ -123,10 +50,7 @@ export async function GET(
   }
 
   // Access control: private rooms require authenticated membership.
-  const room = await prisma.room.findUnique({
-    where: { id: roomId },
-    select: { isPublic: true },
-  });
+  const room = await getRoomPublicFlag(roomId);
   if (!room) {
     return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
@@ -136,10 +60,7 @@ export async function GET(
     if (!authSession) {
       return apiError(ApiErrorCode.UNAUTHENTICATED, "Authentication required", 401);
     }
-    const membership = await prisma.roomMembership.findUnique({
-      where: { roomId_userId: { roomId, userId: authSession.user.id } },
-      select: { role: true },
-    });
+    const membership = await getRoomMembership(roomId, authSession.user.id);
     if (!membership) {
       return apiError(ApiErrorCode.FORBIDDEN, "Forbidden", 403);
     }
@@ -148,14 +69,11 @@ export async function GET(
   // Resolve target commit SHA
   let targetSha: string;
   if (reqSha) {
-    const exists = await prisma.commit.findUnique({
-      where: { sha: reqSha },
-      select: { sha: true, roomId: true },
-    });
-    if (!exists || exists.roomId !== roomId) {
+    const sha = await getCommitShaInRoom(reqSha, roomId);
+    if (!sha) {
       return apiError(ApiErrorCode.NOT_FOUND, "Commit not found", 404);
     }
-    targetSha = reqSha;
+    targetSha = sha;
 
     // P070 – return 304 Not Modified only after confirming the SHA exists and
     // belongs to this room.  The 304 must include the same cache headers so
@@ -165,17 +83,14 @@ export async function GET(
       return new NextResponse(null, { status: 304, headers: immutableHeaders(reqSha) });
     }
   } else {
-    const state = await prisma.roomState.findUnique({
-      where: { roomId },
-      select: { headSha: true },
-    });
-    if (!state?.headSha) {
+    const headSha = await getRoomHeadSha(roomId);
+    if (!headSha) {
       return apiError(ApiErrorCode.CANVAS_NOT_FOUND, "Room not found or has no commits", 404);
     }
-    targetSha = state.headSha;
+    targetSha = headSha;
   }
 
-  const canvasJson = await resolveCanvasJson(targetSha, roomId);
+  const canvasJson = await resolveCommitCanvas(targetSha, roomId);
   if (!canvasJson) {
     return apiError(ApiErrorCode.CANVAS_NOT_FOUND, "Failed to resolve canvas state", 404);
   }

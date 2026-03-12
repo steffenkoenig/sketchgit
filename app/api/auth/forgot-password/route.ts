@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { validate } from "@/lib/api/validate";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { createPasswordResetToken } from "@/lib/db/userRepository";
 
 const Schema = z.object({
@@ -19,6 +20,9 @@ const SAFE_MESSAGE = "If that email is registered, you'll receive a reset link s
 
 export async function POST(req: NextRequest) {
   const body: unknown = await req.json().catch(() => null);
+  if (body === null) {
+    return apiError(ApiErrorCode.INVALID_JSON, "Invalid JSON", 400);
+  }
   const v = validate(Schema, body);
   if (!v.success) return v.response;
 

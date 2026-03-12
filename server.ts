@@ -1026,30 +1026,31 @@ void app.prepare()
       if (!access.allowed) {
         const inviteToken = reqUrl.searchParams.get("invite");
         if (inviteToken) {
+          // First fetch the invitation to validate it (expiry, roomId).
           const invitation = await prisma.roomInvitation.findUnique({
             where: { token: inviteToken },
-            select: { roomId: true, expiresAt: true, maxUses: true, useCount: true },
+            select: { roomId: true, expiresAt: true, maxUses: true },
           });
-          if (
-            invitation &&
-            invitation.roomId === roomId &&
-            invitation.expiresAt > new Date() &&
-            invitation.useCount < invitation.maxUses
-          ) {
-            // Grant EDITOR access via invite; increment use count
-            await prisma.roomInvitation.update({
-              where: { token: inviteToken },
+          if (invitation && invitation.roomId === roomId && invitation.expiresAt > new Date()) {
+            // BUG-004 – use updateMany with a conditional WHERE to atomically
+            // increment useCount only when still below maxUses, preventing a
+            // TOCTOU race where concurrent connections could both pass the
+            // useCount < maxUses guard and each increment, exceeding the limit.
+            const updated = await prisma.roomInvitation.updateMany({
+              where: { token: inviteToken, useCount: { lt: invitation.maxUses } },
               data: { useCount: { increment: 1 } },
             });
-            // Also add as a room member so future connections don't need the token
-            if (client.userId) {
-              await prisma.roomMembership.upsert({
-                where: { roomId_userId: { roomId, userId: client.userId } },
-                update: {},
-                create: { roomId, userId: client.userId, role: "EDITOR" },
-              });
+            if (updated.count > 0) {
+              // Also add as a room member so future connections don't need the token
+              if (client.userId) {
+                await prisma.roomMembership.upsert({
+                  where: { roomId_userId: { roomId, userId: client.userId } },
+                  update: {},
+                  create: { roomId, userId: client.userId, role: "EDITOR" },
+                });
+              }
+              access = { allowed: true, role: "EDITOR" };
             }
-            access = { allowed: true, role: "EDITOR" };
           }
         }
       }
@@ -1144,7 +1145,8 @@ void app.prepare()
           if (!validated.success) {
             logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema");
             sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
-            return;
+            // BUG-009 – use `continue` so the rest of the batch is still processed.
+            continue;
           }
           await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId);
         }

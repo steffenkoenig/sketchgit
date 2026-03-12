@@ -12,8 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/prisma";
-import { verifyCredentials } from "@/lib/db/userRepository";
+import { verifyCredentials, getUserForAccountDeletion, deleteUser } from "@/lib/db/userRepository";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 
 const DeleteAccountSchema = z.object({
@@ -29,10 +28,7 @@ export async function DELETE(req: NextRequest) {
   const userId = session.user.id;
 
   // Check whether the user has a credentials password set
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, passwordHash: true },
-  });
+  const user = await getUserForAccountDeletion(userId);
 
   if (!user) {
     return apiError(ApiErrorCode.NOT_FOUND, "User not found", 404);
@@ -56,7 +52,7 @@ export async function DELETE(req: NextRequest) {
 
   // Delete the user — cascade handles Account and RoomMembership rows;
   // Room.ownerId and Commit.authorId are set to null (data is preserved).
-  await prisma.user.delete({ where: { id: userId } });
+  await deleteUser(userId);
 
   // Clear session cookies so the client is signed out immediately
   const response = NextResponse.json({ message: "Account deleted." }, { status: 200 });

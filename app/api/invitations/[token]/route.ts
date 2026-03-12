@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
-import { prisma } from "@/lib/db/prisma";
+import { getInvitationByToken, consumeInvitationToken, addRoomMember } from "@/lib/db/roomRepository";
 import { verifyInvitationSignature } from "@/lib/server/invitationTokens";
 
 export async function GET(
@@ -42,10 +42,7 @@ export async function GET(
   }
 
   // 2. Look up the token in the database
-  const invitation = await prisma.roomInvitation.findUnique({
-    where: { token },
-    include: { room: { select: { isPublic: true } } },
-  });
+  const invitation = await getInvitationByToken(token);
 
   if (!invitation || invitation.roomId !== roomId) {
     return apiError(ApiErrorCode.INVITATION_INVALID, "Invitation not found", 404);
@@ -70,23 +67,16 @@ export async function GET(
     }
 
     // Add user as a room member (upsert: no-op if already a member)
-    await prisma.roomMembership.upsert({
-      where: { roomId_userId: { roomId, userId: authSession.user.id } },
-      update: {},
-      create: { roomId, userId: authSession.user.id, role: "EDITOR" },
-    });
+    await addRoomMember(roomId, authSession.user.id, "EDITOR");
   }
 
   // 4. Increment useCount atomically, enforcing maxUses at the DB level.
   // Using updateMany with a conditional WHERE prevents a TOCTOU race where
   // concurrent requests both pass the useCount < maxUses check above and
   // both increment, exceeding the limit.
-  const updated = await prisma.roomInvitation.updateMany({
-    where: { token, useCount: { lt: invitation.maxUses } },
-    data: { useCount: { increment: 1 } },
-  });
+  const consumed = await consumeInvitationToken(token, invitation.maxUses);
 
-  if (updated.count === 0) {
+  if (!consumed) {
     // Another concurrent request already consumed the last use.
     return apiError(ApiErrorCode.INVITATION_EXHAUSTED, "Invitation has reached its use limit", 410);
   }
