@@ -109,6 +109,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P076 | Add PDF Export for Canvas Drawings | UX | [P076](proposals/P076_canvas-pdf-export.md) |
 | P077 | Create Shared Vitest Test Fixtures and Factory Helpers | Maintainability | [P077](proposals/P077_test-fixtures-factories.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/P078_dark-light-theme-toggle.md) |
+| P079 | Show Peer Branch Positions in Presence Panel and Branch Modal, with One-Click Branch Follow | UX, Reliability | [P079](proposals/P079_cross-branch-peer-visibility.md) |
 
 ---
 
