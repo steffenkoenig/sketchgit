@@ -581,6 +581,29 @@ describe('CanvasEngine – mouse events', () => {
     expect(mockCanvasInstance.remove).toHaveBeenCalled();
   });
 
+  it('mouse:up keeps canvas.selection=false for non-select drawing tools', () => {
+    // After completing a drawing gesture canvas.selection must stay false so that
+    // subsequent strokes with the same drawing tool do not trigger Fabric's
+    // rubber-band selection, which would conflict with shape creation.
+    const { engine } = makeEngine();
+    engine.init();
+    fireMouseDown('rect', engine, { x: 10, y: 20 });
+    canvasEventHandlers['mouse:up']?.({ e: makeMouseEvent('mouseup'), scenePoint: { x: 100, y: 120 } });
+    expect(mockCanvasInstance.selection).toBe(false);
+  });
+
+  it('mouse:up restores canvas.selection=true when tool is "select"', () => {
+    // If somehow a mousedown/up cycle runs while the select tool is active
+    // (e.g. after switching tools mid-gesture), selection mode should stay on.
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('select');
+    // Manually force isDrawing so mouse:up is not a no-op
+    (engine as unknown as { isDrawing: boolean }).isDrawing = true;
+    canvasEventHandlers['mouse:up']?.({ e: makeMouseEvent('mouseup'), scenePoint: defaultScenePoint });
+    expect(mockCanvasInstance.selection).toBe(true);
+  });
+
   it('mouse:up finalises a pen stroke (converts polyline to permanent Path)', () => {
     (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
     const { engine, onBroadcastDraw } = makeEngine();
@@ -591,6 +614,15 @@ describe('CanvasEngine – mouse events', () => {
     // P022: mouseup creates one permanent Path from accumulated points
     expect(Path).toHaveBeenCalledTimes(1);
     expect(onBroadcastDraw).toHaveBeenCalled();
+  });
+
+  it('mouse:up keeps canvas.selection=false after pen stroke (non-select tool)', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    fireMouseDown('pen', engine);
+    canvasEventHandlers['mouse:move']?.({ e: makeMouseEvent('mousemove'), scenePoint: { x: 50, y: 60 } });
+    canvasEventHandlers['mouse:up']?.({ e: makeMouseEvent('mouseup'), scenePoint: { x: 50, y: 60 } });
+    expect(mockCanvasInstance.selection).toBe(false);
   });
 
   it('mouse:wheel zooms the canvas', () => {
