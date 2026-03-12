@@ -85,11 +85,28 @@ export class CommitCoordinator {
     const sha = this.popupSHA;
     this.closeCommitPopup();
     if (sha === git.currentSHA()) { showToast('Already at this commit'); return; }
+
+    // If this commit is the tip of a branch, simply switch to that branch
+    // rather than entering detached HEAD state.
+    const branchEntry = Object.entries(git.branches).find(([, tipSha]) => tipSha === sha);
+    if (branchEntry) {
+      const [branchName] = branchEntry;
+      git.checkout(branchName);
+      canvas.loadCanvasData(git.commits[sha].canvas);
+      canvas.clearDirty();
+      this.refresh();
+      showToast(`Switched to branch '${branchName}'`);
+      ws.send({ type: 'branch-update', branch: branchName, headSha: sha, isRollback: false });
+      return;
+    }
+
+    // Older commit (not a branch tip) – enter detached HEAD; drawing will
+    // automatically prompt the user to create a new branch.
     git.checkoutCommit(sha);
     canvas.loadCanvasData(git.commits[sha].canvas);
     canvas.clearDirty();
     this.refresh();
-    showToast('⤵ Viewing commit ' + sha.slice(0, 7) + ' — detached HEAD');
+    showToast('⤵ Viewing commit ' + sha.slice(0, 7) + ' — draw to auto-create a branch');
     // P053 – notify peers of detached HEAD checkout
     ws.send({ type: 'branch-update', branch: null, headSha: sha, detached: true });
   }
