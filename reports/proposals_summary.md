@@ -87,6 +87,18 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 ## Proposals – Not Started
 
 | ID | Title | Dimension(s) | File |
+|----|-------|--------------|------|
+| P058 | Reduce JavaScript Bundle Size Through Bundle Analysis and Dynamic Code Splitting | Performance, Maintainability | [P058](proposals/P058_bundle-analysis-code-splitting.md) |
+| P059 | Enable WebSocket Per-Message Deflate Compression | Performance | [P059](proposals/P059_websocket-permessage-deflate.md) |
+| P060 | Add PgBouncer Transaction-Mode Connection Pooling | Performance, Reliability | [P060](proposals/P060_pgbouncer-connection-pooling.md) |
+| P061 | Instrument with OpenTelemetry Distributed Tracing and Metrics | Reliability, Maintainability | [P061](proposals/P061_opentelemetry-tracing-metrics.md) |
+| P062 | Auto-generate OpenAPI 3.1 Specification from Zod Schemas | Maintainability | [P062](proposals/P062_openapi-documentation.md) |
+| P063 | Add GitHub Copilot Workspace Configuration and Custom Instructions | Maintainability | [P063](proposals/P063_copilot-workspace-configuration.md) |
+| P064 | Enforce Conventional Commits and Automate CHANGELOG Generation | Maintainability | [P064](proposals/P064_conventional-commits-changelog.md) |
+| P065 | Migrate Password Hashing from bcryptjs to Argon2id | Security | [P065](proposals/P065_argon2id-password-hashing.md) |
+| P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/P066_room-invitation-tokens.md) |
+| P067 | Prevent Conflicting Concurrent Edits via Canvas Object Reservation (Soft Lock) | Reliability, UX | [P067](proposals/P067_canvas-object-locking.md) |
+| P068 | Introduce Machine-Readable Error Codes in All API Error Responses | Maintainability, UX | [P068](proposals/P068_structured-error-codes.md) |
 
 ---
 
@@ -148,6 +160,17 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P055 (Confirm Modal) | P017 ✅ (CommitCoordinator), P025 ✅ (openModal focus-trap), P055 pairs with P053 (cpRollback) |
 | P056 (Nonce CSP) | P019 ✅ (CSP framework, explicitly deferred nonce work), P013 ✅ (proxy.ts TypeScript) |
 | P057 (SHA/Payload Validation) | P013 ✅ (server TypeScript), P047 (branch sanitization — same boundary pattern) |
+| P058 (Bundle Analysis) | P018 ✅ (Fabric.js npm enables tree-shaking), P021 ✅ (React perf) |
+| P059 (WS Compression) | P013 ✅ (server TypeScript), P006 ✅ (draw-delta throttling amplifies savings) |
+| P060 (PgBouncer) | P003 ✅ (Prisma established), P012 ✅ (horizontal scaling motivation) |
+| P061 (OpenTelemetry) | P010 ✅ (Pino logging), P013 ✅ (TypeScript server), P023 ✅ (health check) |
+| P062 (OpenAPI Docs) | P014 ✅ (Zod schemas already exist), P016 ✅ (CI pipeline) |
+| P063 (Copilot Config) | All completed proposals (documents the conventions they established) |
+| P064 (Conventional Commits) | P016 ✅ (CI pipeline); complements P063 (Copilot references commit format) |
+| P065 (Argon2id) | P007 ✅ (auth), P054 ✅ (constant-time verification preserved) |
+| P066 (Invitation Tokens) | P003 ✅ (Prisma), P007 ✅ (auth), P034 ✅ (access control), P054 ✅ (constant-time) |
+| P067 (Object Locking) | P001 ✅ (modules), P006 ✅ (real-time collab), P020 ✅ (resource cleanup) |
+| P068 (Error Codes) | P014 ✅ (Zod validation), P009 ✅ (i18n), P050 ✅ (next-intl wiring) |
 
 ---
 
@@ -209,8 +232,21 @@ Some proposals build on or benefit from others. The table below shows key depend
 53. ~~**P056** – Nonce-based CSP (buildCsp in lib/server/csp.ts; randomBytes nonce in proxy.ts per request; x-nonce header forwarded to layout.tsx; 'unsafe-inline' removed from next.config.mjs; NextIntlClientProvider + SessionProvider receive nonce; next.config.mjs experimental.nonce=true)~~ ✅ **Done**
 54. ~~**P057** – Commit SHA/payload validation (validateCommitMessage in lib/server/commitValidation.ts; SHA regex /^[0-9a-f]{8,64}$/; canvas 2 MB limit + JSON.parse check; parents max 2, each valid SHA; applied before dbSaveCommit in server.ts; invalid messages logged + dropped)~~ ✅ **Done**
 
-### New proposals (P029–P057)
-These proposals address issues discovered in subsequent review cycles. They are listed in recommended implementation order in the "Not Started" table above.
+### New proposals (P029–P068)
+These proposals address issues discovered in subsequent review cycles. Proposals P058–P068 are newly added and listed in recommended implementation order in the "Not Started" table above.
+
+**Recommended order for P058–P068:**
+1. **P063** – Copilot instructions (no code changes; high leverage for all future development)
+2. **P068** – Structured error codes (pure refactor; improves all subsequent API work)
+3. **P062** – OpenAPI docs (depends on P068 for typed error schemas)
+4. **P064** – Conventional commits (low-effort process improvement)
+5. **P065** – Argon2id hashing (security improvement; transparent migration)
+6. **P058** – Bundle analysis (performance; measurable immediate impact)
+7. **P059** – WebSocket compression (performance; one-line config change)
+8. **P060** – PgBouncer (infrastructure; most impact on scaled deployments)
+9. **P061** – OpenTelemetry (observability; enables data-driven decisions for remaining work)
+10. **P066** – Invitation tokens (security/UX; requires schema migration)
+11. **P067** – Object locking (UX/reliability; requires canvas + WS changes)
 
 ---
 
