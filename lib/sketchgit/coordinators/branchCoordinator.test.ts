@@ -38,12 +38,14 @@ function makeCtx(): AppContext {
       branchColor: vi.fn().mockReturnValue('#7c6eff'),
       checkout: vi.fn(),
       createBranch: vi.fn().mockReturnValue(true),
+      commit: vi.fn().mockReturnValue('sha2'),
     } as unknown as AppContext['git'],
     canvas: {
       loadCanvasData: vi.fn(),
       clearDirty: vi.fn(),
+      getCanvasData: vi.fn().mockReturnValue('{"objects":[]}'),
     } as unknown as AppContext['canvas'],
-    ws: { send: vi.fn() } as unknown as AppContext['ws'],
+    ws: { send: vi.fn(), name: 'Tester', color: '#7c6eff' } as unknown as AppContext['ws'],
     collab: {
       getPresenceClients: vi.fn().mockReturnValue([]),
       getMyClientId: vi.fn().mockReturnValue(''),
@@ -146,10 +148,17 @@ describe('BranchCoordinator', () => {
       expect(ctx.git.createBranch).toHaveBeenCalledWith('my-new-branch', null);
     });
 
-    it('does nothing when the name input is empty', () => {
+    it('auto-generates a branch name when input is empty', () => {
       (document.getElementById('newBranchName') as HTMLInputElement).value = '';
       coord.doCreateBranch();
-      expect(ctx.git.createBranch).not.toHaveBeenCalled();
+      expect(ctx.git.createBranch).toHaveBeenCalledWith('branch-1', null);
+    });
+
+    it('increments the auto-generated branch number to avoid conflicts', () => {
+      (ctx.git.branches as Record<string, string>)['branch-1'] = 'sha0';
+      (document.getElementById('newBranchName') as HTMLInputElement).value = '';
+      coord.doCreateBranch();
+      expect(ctx.git.createBranch).toHaveBeenCalledWith('branch-2', null);
     });
 
     it('does nothing when createBranch returns false (name conflict)', () => {
@@ -163,6 +172,38 @@ describe('BranchCoordinator', () => {
       (document.getElementById('newBranchName') as HTMLInputElement).value = 'hotfix';
       coord.doCreateBranch();
       expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('hotfix'));
+    });
+
+    it('creates an auto-commit with a branch creation message', () => {
+      (document.getElementById('newBranchName') as HTMLInputElement).value = 'my-feature';
+      coord.doCreateBranch();
+      expect(ctx.git.commit).toHaveBeenCalledWith(
+        '{"objects":[]}',
+        "Branch 'my-feature' created",
+      );
+    });
+
+    it('clears the dirty flag after the auto-commit', () => {
+      (document.getElementById('newBranchName') as HTMLInputElement).value = 'my-feature';
+      coord.doCreateBranch();
+      expect(ctx.canvas.clearDirty).toHaveBeenCalled();
+    });
+
+    it('sends the branch creation commit over WebSocket', () => {
+      (document.getElementById('newBranchName') as HTMLInputElement).value = 'my-feature';
+      coord.doCreateBranch();
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'commit', sha: 'sha2' }),
+      );
+    });
+
+    it('does not send commit WS message when git.commit returns null', () => {
+      (ctx.git.commit as ReturnType<typeof vi.fn>).mockReturnValue(null);
+      (document.getElementById('newBranchName') as HTMLInputElement).value = 'my-feature';
+      coord.doCreateBranch();
+      expect(ctx.ws.send).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'commit' }),
+      );
     });
   });
 

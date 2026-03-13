@@ -25,7 +25,7 @@ const WsCommitPayloadSchema = z.object({
   parent: z.string().max(MAX_SHA_LEN).nullable().optional(),
   parents: z.array(z.string().max(MAX_SHA_LEN)).max(10).optional(),
   branch,
-  message: z.string().min(1).max(MAX_MSG_LEN),
+  message: z.string().max(MAX_MSG_LEN),
   canvas: z.string().min(2).max(MAX_CANVAS_BYTES),
   isMerge: z.boolean().optional(),
 });
