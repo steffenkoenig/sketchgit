@@ -172,6 +172,24 @@ describe('threeWayMerge', () => {
       }
     });
 
+    it('preserves canvas-level properties (e.g. background) from ours, not base', () => {
+      const baseObj = { type: 'rect', _id: 'obj_bg1', fill: '#f00' };
+      const base = JSON.stringify({ version: '5.3.1', objects: [baseObj], background: '#000000' });
+      // ours changed background to white
+      const ours = JSON.stringify({ version: '5.3.1', objects: [baseObj], background: '#ffffff' });
+      // theirs added a new object, did not touch background
+      const newObj = { type: 'ellipse', _id: 'obj_bg2', fill: '#0f0' };
+      const theirs = JSON.stringify({ version: '5.3.1', objects: [baseObj, newObj], background: '#000000' });
+
+      const result = threeWayMerge(base, ours, theirs);
+      expect('result' in result).toBe(true);
+      if ('result' in result) {
+        const parsed = JSON.parse(result.result) as { objects: Record<string, unknown>[]; background: string };
+        expect(parsed.background).toBe('#ffffff'); // must come from ours, not base
+        expect(parsed.objects).toHaveLength(2);
+      }
+    });
+
     it('excludes objects deleted on both sides', () => {
       const obj = { type: 'rect', _id: 'obj_del' };
       const base = canvasWithObjects([obj]);

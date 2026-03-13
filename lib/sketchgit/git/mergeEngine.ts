@@ -166,9 +166,9 @@ export function threeWayMerge(
   }
 
   if (conflicts.length === 0) {
-    const baseParsed = JSON.parse(baseData) as Record<string, unknown>;
-    baseParsed.objects = resultObjects;
-    return { result: JSON.stringify(baseParsed), autoMerged: true };
+    const oursParsed = JSON.parse(oursData) as Record<string, unknown>;
+    oursParsed.objects = resultObjects;
+    return { result: JSON.stringify(oursParsed), autoMerged: true };
   }
 
   return { conflicts, cleanObjects: resultObjects, baseData, oursData, theirsData };
