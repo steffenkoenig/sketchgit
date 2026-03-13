@@ -789,3 +789,187 @@ describe('CanvasEngine – undo/redo (P037)', () => {
     expect(e.redoStack.length).toBe(0);
   });
 });
+
+// ─── Helpers for touch event simulation ───────────────────────────────────────
+
+/** Create a minimal Touch-like object accepted by our handler. */
+function makeTouch(clientX: number, clientY: number): Touch {
+  return { clientX, clientY, identifier: Math.random(), target: document.body } as unknown as Touch;
+}
+
+/** Build a synthetic TouchEvent with the given touches list. */
+function makeTouchEvent(type: string, touches: Touch[], opts: EventInit = {}): TouchEvent {
+  // jsdom doesn't support TouchEvent in all versions; use a plain Event cast when needed.
+  try {
+    return new TouchEvent(type, { touches, changedTouches: touches, ...opts });
+  } catch {
+    const ev = new Event(type, { cancelable: true, ...opts }) as unknown as TouchEvent;
+    Object.defineProperty(ev, 'touches', { value: touches });
+    Object.defineProperty(ev, 'changedTouches', { value: touches });
+    return ev;
+  }
+}
+
+// ─── Pinch-to-zoom tests (P085) ───────────────────────────────────────────────
+
+describe('CanvasEngine – pinch-to-zoom (P085)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  // ── Listener registration ──────────────────────────────────────────────────
+
+  it('init() registers touchstart and touchmove listeners on canvas-wrap', () => {
+    const wrap = document.getElementById('canvas-wrap')!;
+    const addSpy = vi.spyOn(wrap, 'addEventListener');
+    const { engine } = makeEngine();
+    engine.init();
+    expect(addSpy).toHaveBeenCalledWith('touchstart', expect.any(Function), { passive: false });
+    expect(addSpy).toHaveBeenCalledWith('touchmove', expect.any(Function), { passive: false });
+  });
+
+  it('destroy() removes touchstart and touchmove listeners from canvas-wrap', () => {
+    const wrap = document.getElementById('canvas-wrap')!;
+    const removeSpy = vi.spyOn(wrap, 'removeEventListener');
+    const { engine } = makeEngine();
+    engine.init();
+    engine.destroy();
+    expect(removeSpy).toHaveBeenCalledWith('touchstart', expect.any(Function));
+    expect(removeSpy).toHaveBeenCalledWith('touchmove', expect.any(Function));
+  });
+
+  // ── Gesture math ───────────────────────────────────────────────────────────
+
+  it('two-finger pinch out doubles zoom when finger distance doubles', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    mockCanvasInstance.getZoom.mockReturnValue(1);
+
+    const wrap = document.getElementById('canvas-wrap')!;
+    // Fingers start 100 px apart.
+    const startTouches = [makeTouch(0, 0), makeTouch(100, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', startTouches));
+
+    // Fingers move to 200 px apart → scale = 2 → zoom = 1 * 2 = 2.
+    const moveTouches = [makeTouch(0, 0), makeTouch(200, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchmove', moveTouches, { cancelable: true }));
+
+    expect(mockCanvasInstance.zoomToPoint).toHaveBeenCalled();
+    const [, zoomArg] = mockCanvasInstance.zoomToPoint.mock.calls[0] as [unknown, number];
+    expect(zoomArg).toBeCloseTo(2, 5);
+  });
+
+  it('two-finger pinch in halves zoom when finger distance halves', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    mockCanvasInstance.getZoom.mockReturnValue(2);
+
+    const wrap = document.getElementById('canvas-wrap')!;
+    const startTouches = [makeTouch(0, 0), makeTouch(200, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', startTouches));
+
+    // Fingers move to 100 px apart → scale = 0.5 → zoom = 2 * 0.5 = 1.
+    const moveTouches = [makeTouch(0, 0), makeTouch(100, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchmove', moveTouches, { cancelable: true }));
+
+    expect(mockCanvasInstance.zoomToPoint).toHaveBeenCalled();
+    const [, zoomArg] = mockCanvasInstance.zoomToPoint.mock.calls[0] as [unknown, number];
+    expect(zoomArg).toBeCloseTo(1, 5);
+  });
+
+  it('zoom is clamped to 0.1 at the minimum', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    mockCanvasInstance.getZoom.mockReturnValue(0.11);
+
+    const wrap = document.getElementById('canvas-wrap')!;
+    // Start 200 px apart.
+    const startTouches = [makeTouch(0, 0), makeTouch(200, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', startTouches));
+
+    // Move to near-zero distance → scale ≈ 0 → raw zoom < 0.1 → clamped to 0.1.
+    const moveTouches = [makeTouch(0, 0), makeTouch(11, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchmove', moveTouches, { cancelable: true }));
+
+    expect(mockCanvasInstance.zoomToPoint).toHaveBeenCalled();
+    const [, zoomArg] = mockCanvasInstance.zoomToPoint.mock.calls[0] as [unknown, number];
+    expect(zoomArg).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it('zoom is clamped to 10 at the maximum', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    mockCanvasInstance.getZoom.mockReturnValue(9.5);
+
+    const wrap = document.getElementById('canvas-wrap')!;
+    // Start 10 px apart.
+    const startTouches = [makeTouch(0, 0), makeTouch(10, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', startTouches));
+
+    // Move to 1000 px apart → scale = 100 → raw zoom = 950 → clamped to 10.
+    const moveTouches = [makeTouch(0, 0), makeTouch(1000, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchmove', moveTouches, { cancelable: true }));
+
+    expect(mockCanvasInstance.zoomToPoint).toHaveBeenCalled();
+    const [, zoomArg] = mockCanvasInstance.zoomToPoint.mock.calls[0] as [unknown, number];
+    expect(zoomArg).toBeLessThanOrEqual(10);
+  });
+
+  // ── Edge cases ─────────────────────────────────────────────────────────────
+
+  it('touchstart with fingers < 10 px apart does NOT initiate pinch (prevents div-by-zero)', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const wrap = document.getElementById('canvas-wrap')!;
+    // Fingers only 5 px apart – below the 10 px epsilon threshold.
+    const startTouches = [makeTouch(0, 0), makeTouch(5, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', startTouches));
+
+    // A subsequent move should not call zoomToPoint (touchStartDist is null).
+    const moveTouches = [makeTouch(0, 0), makeTouch(200, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchmove', moveTouches, { cancelable: true }));
+
+    expect(mockCanvasInstance.zoomToPoint).not.toHaveBeenCalled();
+  });
+
+  it('single-touch start resets pinch state so a following two-finger move is ignored', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const wrap = document.getElementById('canvas-wrap')!;
+    // Valid two-finger start, then interrupted by a single-touch start.
+    const twoTouches = [makeTouch(0, 0), makeTouch(100, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', twoTouches));
+    const oneTouches = [makeTouch(50, 50)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', oneTouches));
+
+    // Now attempt a two-finger move – should be a no-op since state was reset.
+    const moveTouches = [makeTouch(0, 0), makeTouch(200, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchmove', moveTouches, { cancelable: true }));
+
+    expect(mockCanvasInstance.zoomToPoint).not.toHaveBeenCalled();
+  });
+
+  it('zoomToPoint is called centred on the midpoint of the two touch points', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    mockCanvasInstance.getZoom.mockReturnValue(1);
+
+    const wrap = document.getElementById('canvas-wrap')!;
+    // Fake the wrap's bounding rect so offset calculation is deterministic.
+    vi.spyOn(wrap, 'getBoundingClientRect').mockReturnValue(
+      { left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0, toJSON: () => ({}) },
+    );
+
+    const startTouches = [makeTouch(0, 0), makeTouch(200, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchstart', startTouches));
+
+    const moveTouches = [makeTouch(0, 0), makeTouch(400, 0)];
+    wrap.dispatchEvent(makeTouchEvent('touchmove', moveTouches, { cancelable: true }));
+
+    expect(mockCanvasInstance.zoomToPoint).toHaveBeenCalled();
+    // midX = (0 + 400) / 2 = 200, midY = (0 + 0) / 2 = 0  → Point(200, 0)
+    const [pointArg] = mockCanvasInstance.zoomToPoint.mock.calls[0] as [{ x: number; y: number }, number];
+    expect(pointArg.x).toBeCloseTo(200);
+    expect(pointArg.y).toBeCloseTo(0);
+  });
+});

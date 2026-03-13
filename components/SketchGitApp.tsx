@@ -248,7 +248,7 @@ export default function SketchGitApp() {
       </div>
 
       <div className="overlay" id="conflictModal" role="dialog" aria-modal="true" aria-labelledby="conflictModalTitle">
-        <div className="modal" style={{ maxWidth: "640px", minWidth: "500px" }}>
+        <div className="modal" style={{ maxWidth: "640px" }}>
           <h2 id="conflictModalTitle">{t("modal.conflict.title")}</h2>
           <div className="conflict-header" role="alert">
             <span aria-hidden="true">⚠</span>

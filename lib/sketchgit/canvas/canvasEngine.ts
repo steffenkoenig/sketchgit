@@ -58,6 +58,13 @@ export class CanvasEngine {
   // ── P067: Remote object locks (clientId → { objectIds, color, origStyles }) ─
   private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number | undefined; strokeDashArray: number[] | undefined }> }>();
 
+  // ── P085: Pinch-to-zoom touch state ──────────────────────────────────────
+  private touchStartDist: number | null = null;
+  private touchStartZoom = 1;
+  private touchWrapEl: HTMLElement | null = null;
+  private boundTouchStart: ((e: TouchEvent) => void) | null = null;
+  private boundTouchMove: ((e: TouchEvent) => void) | null = null;
+
   // ── Callbacks provided by the orchestrator ────────────────────────────────
   private readonly onBroadcastDraw: (immediate?: boolean) => void;
   private readonly onBroadcastCursor: (e: { e: MouseEvent }) => void;
@@ -143,6 +150,15 @@ export class CanvasEngine {
 
     window.addEventListener('resize', this.boundResize);
     window.addEventListener('keydown', this.boundKeydown);
+
+    // P085 – Pinch-to-zoom: attach touch listeners on the canvas wrapper so
+    // that a two-finger pinch gesture zooms the Fabric.js canvas.  Fabric.js v7
+    // uses pointer events internally, so these touch listeners do not conflict.
+    this.touchWrapEl = wrap;
+    this.boundTouchStart = (e: TouchEvent) => this.onTouchStart(e);
+    this.boundTouchMove = (e: TouchEvent) => this.onTouchMove(e);
+    wrap.addEventListener('touchstart', this.boundTouchStart, { passive: false });
+    wrap.addEventListener('touchmove', this.boundTouchMove, { passive: false });
   }
 
   // ── P020: Resource cleanup ────────────────────────────────────────────────
@@ -155,6 +171,18 @@ export class CanvasEngine {
     if (this.boundKeydown) {
       window.removeEventListener('keydown', this.boundKeydown);
       this.boundKeydown = null;
+    }
+    // P085 – remove pinch-to-zoom listeners
+    if (this.touchWrapEl) {
+      if (this.boundTouchStart) {
+        this.touchWrapEl.removeEventListener('touchstart', this.boundTouchStart);
+        this.boundTouchStart = null;
+      }
+      if (this.boundTouchMove) {
+        this.touchWrapEl.removeEventListener('touchmove', this.boundTouchMove);
+        this.boundTouchMove = null;
+      }
+      this.touchWrapEl = null;
     }
     if (this.canvas) {
       void this.canvas.dispose(); // Fabric.js built-in: removes internal listeners & clears element
@@ -543,6 +571,60 @@ export class CanvasEngine {
     this.canvas?.add(grp);
     this.canvas?.setActiveObject(grp);
     this.activeObj = null;
+  }
+
+  // ── P085: Pinch-to-zoom touch handlers ────────────────────────────────────
+
+  /**
+   * Record the initial finger distance and current zoom level when a two-finger
+   * gesture begins.  Single-touch events are ignored so normal drawing still works.
+   *
+   * A minimum start-distance of 10 px is required to avoid division-by-zero or
+   * enormous scale factors when fingers are placed nearly on top of each other.
+   */
+  private onTouchStart(e: TouchEvent): void {
+    if (e.touches.length === 2) {
+      // Prevent the browser from initiating its own pinch-to-zoom gesture on the
+      // canvas element; our onTouchMove handler applies the zoom instead.
+      e.preventDefault();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      // Ignore a two-finger touch where fingers are essentially on the same spot
+      // to prevent division by zero / explosive scale in onTouchMove.
+      if (dist < 10) {
+        this.touchStartDist = null;
+        return;
+      }
+      this.touchStartDist = dist;
+      this.touchStartZoom = this.canvas?.getZoom() ?? 1;
+    } else {
+      this.touchStartDist = null;
+    }
+  }
+
+  /**
+   * Compute the new zoom level from the change in finger separation and apply it
+   * centred on the midpoint between the two touch points.
+   */
+  private onTouchMove(e: TouchEvent): void {
+    if (e.touches.length !== 2 || this.touchStartDist === null) return;
+    // Prevent the browser's native page-zoom and scroll during a pinch.
+    e.preventDefault();
+    const t0 = e.touches[0];
+    const t1 = e.touches[1];
+    const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+    if (dist === 0) return;
+    const scale = dist / this.touchStartDist;
+    const zoom = Math.min(Math.max(this.touchStartZoom * scale, 0.1), 10);
+    // Zoom centred on the midpoint between the two fingers.
+    const midX = (t0.clientX + t1.clientX) / 2;
+    const midY = (t0.clientY + t1.clientY) / 2;
+    const rect = this.touchWrapEl?.getBoundingClientRect();
+    const offsetX = midX - (rect?.left ?? 0);
+    const offsetY = midY - (rect?.top ?? 0);
+    this.canvas?.zoomToPoint(new Point(offsetX, offsetY), zoom);
+    this.canvas?.requestRenderAll();
   }
 
   private onWheel(e: TPointerEventInfo<WheelEvent>): void {
