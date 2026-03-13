@@ -47,6 +47,7 @@ function makeCtx(): AppContext {
       connectToPeerUI: vi.fn(),
       copyPeerId: vi.fn(),
       toggleCollabPanel: vi.fn(),
+      sendProfile: vi.fn(),
     } as unknown as AppContext['collab'],
   };
 }
@@ -114,26 +115,24 @@ describe('CollaborationCoordinator', () => {
       expect(coord.myName).toBe('Bob');
     });
 
-    it('broadcasts the new name/colour when connected', () => {
+    it('broadcasts the new name/colour via REST when connected', () => {
       (document.getElementById('nameInput') as HTMLInputElement).value = 'Carol';
       coord.setName();
-      expect(ctx.ws.send).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'profile', name: 'Carol' }),
-      );
+      expect(ctx.collab.sendProfile).toHaveBeenCalledWith('Carol', expect.any(String));
     });
 
     it('does NOT broadcast when WebSocket is disconnected', () => {
       (ctx.ws.isConnected as ReturnType<typeof vi.fn>).mockReturnValue(false);
       (document.getElementById('nameInput') as HTMLInputElement).value = 'Dave';
       coord.setName();
-      expect(ctx.ws.send).not.toHaveBeenCalled();
+      expect(ctx.collab.sendProfile).not.toHaveBeenCalled();
     });
 
     it('closes the modal and keeps the default name when the input is empty', () => {
       (document.getElementById('nameInput') as HTMLInputElement).value = '';
       coord.setName();
       expect(coord.myName).toBe('User'); // unchanged
-      expect(ctx.ws.send).not.toHaveBeenCalled();
+      expect(ctx.collab.sendProfile).not.toHaveBeenCalled();
       expect(closeModal).toHaveBeenCalledWith('nameModal');
     });
 

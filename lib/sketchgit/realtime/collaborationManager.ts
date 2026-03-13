@@ -88,6 +88,32 @@ export class CollaborationManager {
     this.ws.onStatusChange = (status) => this.handleStatusChange(status);
   }
 
+  // ─── REST event helper ────────────────────────────────────────────────────
+
+  /**
+   * Send a room event to the server via REST API.
+   *
+   * All client-initiated events (draw, commit, branch-update, cursor, profile,
+   * object-lock/unlock, follow-*, view-sync) are now submitted as HTTP POST
+   * requests.  The server validates, persists (where needed), and then
+   * broadcasts a WebSocket message to all connected room members.
+   *
+   * Errors are logged and silently swallowed – transient REST failures should
+   * not interrupt the UX.
+   */
+  private _postEvent(path: string, body: Record<string, unknown>): void {
+    // Guard: do not send REST events before the welcome handshake assigns a clientId.
+    if (!this.wsClientId) return;
+    const url = `/api/rooms/${encodeURIComponent(this.currentRoomId)}/${path}`;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: this.wsClientId, ...body }),
+    }).catch((err: unknown) => {
+      logger.warn(`[CollabManager] REST event failed (${path}): ${String(err)}`);
+    });
+  }
+
   // ─── Message routing ──────────────────────────────────────────────────────
 
   private handleMessage(data: WsMessage): void {
@@ -123,15 +149,17 @@ export class CollaborationManager {
         // Notify the app layer so it can persist the last-visited room.
         this.cb.onRoomJoined?.(this.currentRoomId);
 
-        this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color });
-        this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
-        // P079 – announce current branch to the server so presence is accurate
+        // Announce profile via REST so the server can update WS client state.
         const gitStateForProfile = this.cb.getGitState();
         const profileBranch = gitStateForProfile.detached ? undefined : gitStateForProfile.HEAD;
         const initHeadSha = profileBranch ? (gitStateForProfile.branches[profileBranch] ?? null) : null;
-        if (profileBranch) {
-          this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color, branch: profileBranch, headSha: initHeadSha });
-        }
+        this._postEvent('profile', {
+          name: this.ws.name,
+          color: this.ws.color,
+          ...(profileBranch ? { branch: profileBranch, headSha: initHeadSha } : {}),
+        });
+        // fullsync-request stays as WS (peer-to-peer canvas state sync)
+        this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
         break;
       }
 
@@ -275,7 +303,7 @@ export class CollaborationManager {
           // Auto-follow: immediately start following the presenter.
           // A future enhancement can show a dismiss button instead.
           this.followingClientId = senderId;
-          this.ws.send({ type: 'follow-accept' });
+          this._postEvent('follow', { action: 'accept' });
           showToast(`${presenterName} is presenting — following their view`);
           break;
         }
@@ -402,7 +430,7 @@ export class CollaborationManager {
 
     // If we have no prior snapshot, fall back to a full `draw` message.
     if (Object.keys(prev).length === 0 && objects.length > 0) {
-      this.ws.send({ type: 'draw', canvas: canvasJson });
+      this._postEvent('draw', { type: 'draw', canvas: canvasJson });
       this.lastBroadcastSnapshot = currentSnapshot;
       return;
     }
@@ -437,9 +465,7 @@ export class CollaborationManager {
 
     if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
 
-    // P073 – use sendBatched so a concurrent cursor update is coalesced into
-    // a single WebSocket frame (same microtask tick).
-    this.ws.sendBatched({ type: 'draw-delta', added, modified, removed });
+    this._postEvent('draw', { type: 'draw-delta', added, modified, removed });
     this.lastBroadcastSnapshot = currentSnapshot;
   }
 
@@ -495,11 +521,12 @@ export class CollaborationManager {
 
     const rect = document.getElementById('canvas-wrap')?.getBoundingClientRect();
     if (!rect) return;
-    // P073 – use sendBatched to coalesce with a concurrent draw-delta.
-    this.ws.sendBatched({
+    this._postEvent('cursor', {
       type: 'cursor',
       x: e.e.clientX - rect.left,
       y: e.e.clientY - rect.top,
+      senderName: this.ws.name,
+      senderColor: this.ws.color,
     });
     // P080 – any canvas interaction while following exits follow mode
     if (this.followingClientId) this.exitFollowMode();
@@ -508,13 +535,58 @@ export class CollaborationManager {
   // P067 – broadcast that the local user selected objects (object-lock)
   broadcastLock(objectIds: string[]): void {
     if (!this.ws.isConnected() || objectIds.length === 0) return;
-    this.ws.sendBatched({ type: 'object-lock', objectIds });
+    this._postEvent('object-lock', { type: 'object-lock', objectIds, senderColor: this.ws.color });
   }
 
   // P067 – broadcast that the local user deselected objects (object-unlock)
   broadcastUnlock(): void {
     if (!this.ws.isConnected()) return;
-    this.ws.sendBatched({ type: 'object-unlock' });
+    this._postEvent('object-unlock', { type: 'object-unlock' });
+  }
+
+  // ─── Coordinator-facing REST event methods ────────────────────────────────
+
+  /**
+   * Submit a new commit to the server via REST API.
+   * The server persists the commit to the database and broadcasts it to peers.
+   */
+  sendCommit(sha: string, commit: unknown): void {
+    this._postEvent('commits', {
+      type: 'commit',
+      sha,
+      commit,
+      senderName: this.ws.name,
+      senderColor: this.ws.color,
+    });
+  }
+
+  /**
+   * Notify the server of a branch checkout or rollback via REST API.
+   * The server updates in-memory presence state and broadcasts to peers.
+   */
+  sendBranchUpdate(branch: string | null, headSha: string, options?: { isRollback?: boolean; detached?: boolean }): void {
+    this._postEvent('branch', {
+      type: 'branch-update',
+      branch,
+      headSha,
+      isRollback: options?.isRollback ?? false,
+      detached: options?.detached ?? false,
+      senderName: this.ws.name,
+      senderColor: this.ws.color,
+    });
+  }
+
+  /**
+   * Update this client's display profile (name, colour, branch) via REST API.
+   */
+  sendProfile(name: string, color: string, branch?: string, headSha?: string | null): void {
+    this._postEvent('profile', {
+      type: 'profile',
+      name,
+      color,
+      ...(branch !== undefined ? { branch } : {}),
+      ...(headSha !== undefined ? { headSha: headSha ?? undefined } : {}),
+    });
   }
 
   // ─── Presence UI ──────────────────────────────────────────────────────────
@@ -628,7 +700,11 @@ export class CollaborationManager {
   startPresenting(): void {
     if (this._isPresenting) return;
     this._isPresenting = true;
-    this.ws.send({ type: 'follow-request' });
+    this._postEvent('follow', {
+      action: 'request',
+      senderName: this.ws.name,
+      senderColor: this.ws.color,
+    });
     // Update the "Present" button visual
     document.getElementById('presentBtn')?.classList.add('presenting');
     // Broadcast viewport at 8 Hz while presenting
@@ -636,11 +712,10 @@ export class CollaborationManager {
       const vpt = this.cb.getViewport?.();
       if (vpt) {
         const gitState = this.cb.getGitState();
-        this.ws.sendBatched({
+        this._postEvent('view-sync', {
           type: 'view-sync',
           vpt,
           branch: gitState.detached ? undefined : gitState.HEAD,
-          // detached is the commit SHA string when in detached HEAD; null for a normal branch.
           headSha: gitState.detached !== null
             ? gitState.detached
             : (gitState.branches[gitState.HEAD] ?? null),
@@ -662,7 +737,7 @@ export class CollaborationManager {
 
   stopPresenting(): void {
     this._stopPresenting();
-    this.ws.send({ type: 'follow-stop' });
+    this._postEvent('follow', { action: 'stop', senderName: this.ws.name, senderColor: this.ws.color });
   }
 
   /** Toggle presenter mode from the UI button. */

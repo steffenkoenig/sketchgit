@@ -19,10 +19,35 @@ vi.mock('@/lib/authTypes', () => ({
   getAuthSession: vi.fn().mockReturnValue(null),
 }));
 
-import { GET } from './route';
+vi.mock('@/lib/db/roomRepository', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/lib/db/roomRepository')>();
+  return {
+    ...mod,
+    checkRoomAccess: vi.fn(),
+    saveCommitWithDelta: vi.fn(),
+    appendRoomEvent: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/server/wsRoomBroadcaster', () => ({
+  broadcastToRoom: vi.fn(),
+}));
+
+vi.mock('@/lib/server/commitValidation', () => ({
+  validateCommitMessage: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock('@/lib/cache/roomSnapshotCache', () => ({
+  createRoomSnapshotCache: vi.fn(() => ({ invalidate: vi.fn() })),
+}));
+
+import { GET, POST } from './route';
 import { prisma } from '@/lib/db/prisma';
 import { auth } from '@/lib/auth';
 import { getAuthSession } from '@/lib/authTypes';
+import { checkRoomAccess, saveCommitWithDelta, appendRoomEvent } from '@/lib/db/roomRepository';
+import { broadcastToRoom } from '@/lib/server/wsRoomBroadcaster';
+import { validateCommitMessage } from '@/lib/server/commitValidation';
 import { makeRoom } from '@/lib/test/factories';
 
 const mockRoomFindUnique = prisma.room.findUnique as ReturnType<typeof vi.fn>;
@@ -30,11 +55,24 @@ const mockCommitFindMany = prisma.commit.findMany as ReturnType<typeof vi.fn>;
 const mockMembershipFindUnique = prisma.roomMembership.findUnique as ReturnType<typeof vi.fn>;
 const mockAuth = auth as ReturnType<typeof vi.fn>;
 const mockGetAuthSession = getAuthSession as ReturnType<typeof vi.fn>;
+const mockCheckRoomAccess = checkRoomAccess as ReturnType<typeof vi.fn>;
+const mockSaveCommitWithDelta = saveCommitWithDelta as ReturnType<typeof vi.fn>;
+const mockAppendRoomEvent = appendRoomEvent as ReturnType<typeof vi.fn>;
+const mockBroadcastToRoom = broadcastToRoom as ReturnType<typeof vi.fn>;
+const mockValidateCommitMessage = validateCommitMessage as ReturnType<typeof vi.fn>;
 
 function makeRequest(roomId: string, query: Record<string, string> = {}): NextRequest {
   const url = new URL(`http://localhost/api/rooms/${roomId}/commits`);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
   return new NextRequest(url.toString());
+}
+
+function makePostRequest(roomId: string, body: unknown): NextRequest {
+  return new NextRequest(`http://localhost/api/rooms/${roomId}/commits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 /** Returns only the fields the commits API endpoint reads from DB. */
@@ -157,5 +195,99 @@ describe('GET /api/rooms/[roomId]/commits', () => {
     const res = await GET(makeRequest('room-1'), { params: Promise.resolve({ roomId: 'room-1' }) });
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toContain('no-store');
+  });
+});
+
+// ─── POST /api/rooms/[roomId]/commits ─────────────────────────────────────────
+
+const SESSION = { user: { id: 'usr_1' } };
+const VALID_BODY = {
+  type: 'commit',
+  clientId: 'client_1',
+  senderName: 'Test User',
+  senderColor: '#7c6eff',
+  sha: 'abc12345',
+  commit: {
+    branch: 'main',
+    message: 'Initial commit',
+    canvas: '{"objects":[]}',
+  },
+};
+
+describe('POST /api/rooms/[roomId]/commits', () => {
+  const params = Promise.resolve({ roomId: 'room_1' });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuth.mockResolvedValue(SESSION);
+    mockGetAuthSession.mockReturnValue(SESSION);
+    mockCheckRoomAccess.mockResolvedValue({ allowed: true, role: 'EDITOR' });
+    mockSaveCommitWithDelta.mockResolvedValue(undefined);
+    mockAppendRoomEvent.mockResolvedValue(undefined);
+    mockValidateCommitMessage.mockReturnValue(true);
+  });
+
+  it('returns 201 and the sha on success', async () => {
+    const res = await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(res.status).toBe(201);
+    const json = await res.json() as { sha: string };
+    expect(json.sha).toBe('abc12345');
+  });
+
+  it('persists the commit via saveCommitWithDelta', async () => {
+    await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(mockSaveCommitWithDelta).toHaveBeenCalledWith(
+      'room_1',
+      expect.objectContaining({ sha: 'abc12345', branch: 'main', message: 'Initial commit' }),
+      'usr_1',
+    );
+  });
+
+  it('broadcasts commit to room members excluding sender', async () => {
+    await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(mockBroadcastToRoom).toHaveBeenCalledWith(
+      'room_1',
+      expect.objectContaining({ type: 'commit', sha: 'abc12345' }),
+      'client_1',
+    );
+  });
+
+  it('returns 400 for invalid JSON body', async () => {
+    const req = new NextRequest('http://localhost/api/rooms/room_1/commits', {
+      method: 'POST',
+      body: 'not json',
+    });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(400);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('INVALID_JSON');
+  });
+
+  it('returns 422 when validateCommitMessage returns false', async () => {
+    mockValidateCommitMessage.mockReturnValue(false);
+    const res = await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(res.status).toBe(422);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 403 for VIEWER role', async () => {
+    mockCheckRoomAccess.mockResolvedValue({ allowed: true, role: 'VIEWER' });
+    const res = await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when access is denied', async () => {
+    mockCheckRoomAccess.mockResolvedValue({ allowed: false, reason: 'PRIVATE_ROOM' });
+    const res = await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 500 when saveCommitWithDelta throws', async () => {
+    mockSaveCommitWithDelta.mockRejectedValue(new Error('DB error'));
+    const res = await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(res.status).toBe(500);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('INTERNAL_ERROR');
   });
 });

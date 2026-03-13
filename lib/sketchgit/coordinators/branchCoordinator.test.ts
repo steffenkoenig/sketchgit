@@ -50,6 +50,9 @@ function makeCtx(): AppContext {
     collab: {
       getPresenceClients: vi.fn().mockReturnValue([]),
       getMyClientId: vi.fn().mockReturnValue(''),
+      sendBranchUpdate: vi.fn(),
+      sendProfile: vi.fn(),
+      sendCommit: vi.fn(),
     } as unknown as AppContext['collab'],
   };
 }
@@ -190,37 +193,33 @@ describe('BranchCoordinator', () => {
       expect(ctx.canvas.clearDirty).toHaveBeenCalled();
     });
 
-    it('sends the branch creation commit over WebSocket', () => {
+    it('sends the branch creation commit via REST API', () => {
       (document.getElementById('newBranchName') as HTMLInputElement).value = 'my-feature';
+      // Add sha2 to commits so sendCommit can look it up
+      (ctx.git.commits as Record<string, unknown>)['sha2'] = { sha: 'sha2', message: "Branch 'my-feature' created", canvas: '{}' };
       coord.doCreateBranch();
-      expect(ctx.ws.send).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'commit', sha: 'sha2' }),
-      );
+      expect(ctx.collab.sendCommit).toHaveBeenCalledWith('sha2', expect.anything());
     });
 
-    it('does not send commit WS message when git.commit returns null', () => {
+    it('does not send commit when git.commit returns null', () => {
       (ctx.git.commit as ReturnType<typeof vi.fn>).mockReturnValue(null);
       (document.getElementById('newBranchName') as HTMLInputElement).value = 'my-feature';
       coord.doCreateBranch();
-      expect(ctx.ws.send).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'commit' }),
-      );
+      expect(ctx.collab.sendCommit).not.toHaveBeenCalled();
     });
   });
 
   // ─── P053: openBranchModal sends branch-update after switch ──────────────
 
   describe('P053: openBranchModal() branch-switch', () => {
-    it('sends branch-update after switching branches', () => {
+    it('sends branch-update via REST after switching branches', () => {
       coord.openBranchModal();
       const featureItem = document.querySelector('.branch-item:not(.active-branch)') as HTMLElement;
       featureItem.click();
-      expect((ctx.ws.send as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'branch-update',
-          branch: 'feature',
-          isRollback: false,
-        }),
+      expect(ctx.collab.sendBranchUpdate).toHaveBeenCalledWith(
+        'feature',
+        'sha1',
+        expect.objectContaining({ isRollback: false }),
       );
     });
   });

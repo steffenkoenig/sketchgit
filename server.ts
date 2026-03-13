@@ -26,9 +26,9 @@ import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
 import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, addRoomMember, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
-import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
-import { validateCommitMessage } from "./lib/server/commitValidation.js";
+import { replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { verifyScopeCookie, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
+import { initRoomBroadcaster } from "./lib/server/wsRoomBroadcaster.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -490,6 +490,28 @@ function schedulePushPresence(roomId: string): void {
   presenceDebounceTimers.set(roomId, timer);
 }
 
+// ─── REST API broadcaster (shared with Next.js route handlers) ────────────────
+
+/**
+ * Initialise the wsRoomBroadcaster singleton so that Next.js API route
+ * handlers can push WS messages to connected room clients.  Must be called
+ * after `broadcastRoom`, `schedulePushPresence`, and `rooms` are available.
+ */
+initRoomBroadcaster({
+  broadcast: broadcastRoom,
+  updateClient: (roomId, clientId, updates) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const client = room.get(clientId);
+    if (!client) return;
+    if (updates.displayName !== undefined) client.displayName = updates.displayName;
+    if (updates.displayColor !== undefined) client.displayColor = updates.displayColor;
+    if (updates.currentBranch !== undefined) client.currentBranch = updates.currentBranch;
+    if (updates.currentHeadSha !== undefined) client.currentHeadSha = updates.currentHeadSha;
+  },
+  schedulePresence: schedulePushPresence,
+});
+
 // ─── Session parsing ──────────────────────────────────────────────────────────
 
 async function resolveUserId(req: IncomingMessage): Promise<string | null> {
@@ -524,98 +546,6 @@ async function dbEnsureRoom(roomId: string, ownerId: string | null): Promise<voi
     });
   } catch (err) {
     logger.error({ roomId, err }, "db.ensureRoom failed");
-  }
-}
-
-interface CommitData {
-  parent?: string | null;
-  parents?: string[];
-  branch: string;
-  message: string;
-  canvas: string;
-  isMerge?: boolean;
-}
-
-async function dbSaveCommit(
-  roomId: string,
-  sha: string,
-  commitData: CommitData,
-  userId: string | null,
-): Promise<void> {
-  // P047 – sanitize branch name and commit message before any DB writes.
-  const branch = safeBranchName(commitData.branch);
-  const message = safeCommitMessage(commitData.message);
-
-  // Validate canvas JSON before entering the transaction. An invalid payload
-  // means the commit is unrenderable – log and skip rather than persisting
-  // a silent empty fallback that would confuse clients.
-  let canvasObj: object;
-  try {
-    canvasObj = JSON.parse(commitData.canvas) as object;
-  } catch (err) {
-    logger.warn({ roomId, sha, err }, "db.saveCommit: invalid canvas JSON; skipping persistence");
-    return;
-  }
-
-  // P033: attempt delta compression when there's a parent commit stored as SNAPSHOT
-  let storageType: CommitStorageType = CommitStorageType.SNAPSHOT;
-  let canvasToStore: object = canvasObj;
-
-  if (commitData.parent) {
-    try {
-      const parentCommit = await prisma.commit.findUnique({ where: { sha: commitData.parent } });
-      if (parentCommit && parentCommit.storageType === CommitStorageType.SNAPSHOT) {
-        const parentCanvas = JSON.stringify(parentCommit.canvasJson);
-        const delta = computeCanvasDelta(parentCanvas, commitData.canvas);
-        const deltaStr = JSON.stringify(delta);
-        if (deltaStr.length < commitData.canvas.length * 0.9) {
-          canvasToStore = delta as unknown as object;
-          storageType = CommitStorageType.DELTA;
-        }
-      }
-    } catch {
-      // Fall back to SNAPSHOT on any error
-    }
-  }
-
-  try {
-    await prisma.$transaction([
-      prisma.commit.upsert({
-        where: { sha },
-        create: {
-          sha,
-          roomId,
-          parentSha: commitData.parent ?? null,
-          parents: commitData.parents ?? [],
-          branch,
-          message,
-          // P011: canvasJson is now Json (JSONB) – pass a parsed object, not a string.
-          // P033: may be a delta object if storageType is DELTA.
-          canvasJson: canvasToStore,
-          isMerge: commitData.isMerge ?? false,
-          storageType,
-          authorId: userId ?? null,
-        },
-        update: {},
-      }),
-      prisma.branch.upsert({
-        where: { roomId_name: { roomId, name: branch } },
-        create: { roomId, name: branch, headSha: sha },
-        update: { headSha: sha },
-      }),
-      prisma.roomState.upsert({
-        where: { roomId },
-        create: {
-          roomId,
-          headSha: sha,
-          headBranch: branch,
-          isDetached: false,
-        },
-        update: { headSha: sha, headBranch: branch },
-      }),
-    ]);
-  } catch (err) {
-    logger.error({ roomId, sha, err }, "db.saveCommit failed");
   }
 }
 
@@ -906,8 +836,18 @@ void app.prepare()
     });
 
     /**
-     * P073 – Process a single validated WsMessage for a connected client.
-     * Extracted so the P073 batch handler can call it for each message in a batch.
+     * Process a single validated WsMessage for a connected client.
+     *
+     * After the REST-based refactor, clients no longer send draw, draw-delta,
+     * commit, branch-update, cursor, profile, object-lock, object-unlock,
+     * follow-*, or view-sync messages over WebSocket.  Those events now arrive
+     * via the respective POST API endpoints, which handle DB writes and call
+     * broadcastToRoom() to push WS notifications to all room clients.
+     *
+     * The only inbound WS messages that remain are:
+     *  - pong      – heartbeat echo (no relay needed)
+     *  - fullsync-request – peer requests git state from another peer; relayed
+     *  - fullsync  – peer-to-peer git state response; relayed to target
      */
     async function handleWsMessage(
       client: ClientState,
@@ -915,81 +855,10 @@ void app.prepare()
       roomId: string,
       clientId: string,
     ): Promise<void> {
-      if (message.type === "profile") {
-        // Guard against non-string values from malicious clients; safeName/safeColor
-        // call .trim() internally and would throw on numbers/objects.
-        client.displayName = safeName(
-          typeof message.name === "string" ? message.name : null,
-        );
-        client.displayColor = safeColor(
-          typeof message.color === "string" ? message.color : null,
-        );
-        // P079 – update branch position if supplied (optional, backward-compatible)
-        if (typeof message.branch === "string" && message.branch.length > 0) {
-          client.currentBranch = safeBranchName(message.branch);
-        }
-        if (typeof message.headSha === "string") {
-          client.currentHeadSha = message.headSha.slice(0, 64) || null;
-        }
-        schedulePushPresence(roomId);
-        return;
-      }
-
-      // Drop ping/pong before any further processing – heartbeat only
+      // Heartbeat echo – drop without relay.
       if (message.type === "ping" || message.type === "pong") return;
 
-      // P034 – Enforce write permissions: only VIEWER role cannot modify
-      // shared canvas state. ANONYMOUS users are allowed to draw and commit
-      // in public rooms (the anonymous-first UX design).
-      if (
-        (message.type === "draw" ||
-          message.type === "draw-delta" ||
-          message.type === "commit" ||
-          message.type === "branch-update") &&
-        client.role === "VIEWER"
-      ) {
-        sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
-        return;
-      }
-
-      // P091 – COMMITTER role: can draw and commit but cannot create new branches.
-      // A branch-update is considered a "new branch creation" when the branch name
-      // is not already in the room's cached snapshot, and it is neither a rollback
-      // nor a detached-HEAD checkout.
-      if (client.role === "COMMITTER" && message.type === "branch-update") {
-        const buMsg = message as WsMessage & { branch?: string | null; isRollback?: boolean; detached?: boolean };
-        if (
-          typeof buMsg.branch === "string" &&
-          buMsg.branch.length > 0 &&
-          !buMsg.isRollback &&
-          !buMsg.detached
-        ) {
-          const snapshot = roomCache.get(roomId);
-          if (snapshot && !(buMsg.branch in snapshot.branches)) {
-            sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Your share link does not allow branch creation" });
-            return;
-          }
-        }
-      }
-
-      // P091 – BRANCH-scoped share link: reject operations targeting non-allowed branches.
-      // For commit messages the branch is nested under `message.commit.branch`;
-      // for branch-update messages it is the top-level `message.branch`.
-      if (client.shareScope === "BRANCH" && client.allowedBranches) {
-        const msgWithBranch = message as WsMessage & { branch?: string; commit?: { branch?: string } };
-        const targetBranch =
-          msgWithBranch.branch ??
-          (message.type === "commit" ? msgWithBranch.commit?.branch : undefined);
-        if (
-          typeof targetBranch === "string" &&
-          !client.allowedBranches.includes(targetBranch)
-        ) {
-          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Branch not accessible via your share link" });
-          return;
-        }
-      }
-
-      // P091 – COMMIT-scoped share link: deny all writes; only fullsync-request is allowed.
+      // P091 – COMMIT-scoped share link: deny peer-to-peer fullsync relay.
       if (client.shareScope === "COMMIT") {
         if (message.type !== "fullsync-request") {
           sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Share link grants read-only commit access" });
@@ -997,66 +866,21 @@ void app.prepare()
         }
       }
 
-      // Persist commit messages to the database
-      if (message.type === "commit" && message.sha && message.commit) {
-        // P057 – Validate SHA format and payload size before persisting or relaying
-        const isValid = validateCommitMessage(
-          message.sha,
-          message.commit,
-          (reason) => logger.warn({ clientId, roomId, reason }, "ws: commit rejected"),
-        );
-        if (!isValid) return;
-
-        logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
-        // P043 – Track in-flight DB writes so graceful shutdown can drain them.
-        beginWrite();
-        try {
-          await dbSaveCommit(
-            roomId,
-            message.sha as string,
-            message.commit as CommitData,
-            client.userId,
-          );
-        } finally {
-          endWrite();
-        }
-        // P074 – append COMMIT event to activity log (non-blocking)
-        const commitData = message.commit as CommitData;
-        void appendRoomEvent(roomId, "COMMIT", client.userId, {
-          sha: message.sha,
-          branch: commitData.branch,
-          message: commitData.message,
-        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append COMMIT"));
-        // P030: invalidate cached snapshot so next connection loads fresh state
-        roomCache.invalidate(roomId);
+      // Relay peer-to-peer fullsync messages to the room.
+      if (message.type === "fullsync-request" || message.type === "fullsync") {
+        const relay: WsMessage = {
+          ...message,
+          senderId: client.clientId,
+          senderName: client.displayName,
+          senderColor: client.displayColor,
+          roomId,
+        };
+        broadcastRoom(roomId, relay, client.clientId);
+        return;
       }
 
-      // P074 – append BRANCH_CHECKOUT / ROLLBACK event for branch-update messages
-      // P079 – update the client's branch position on the server for presence
-      if (message.type === "branch-update") {
-        const buMsg = message as WsMessage & { branch?: string; headSha?: string; isRollback?: boolean };
-        // Store new branch position so presence reflects it
-        if (typeof buMsg.branch === "string" && buMsg.branch.length > 0) {
-          client.currentBranch = safeBranchName(buMsg.branch);
-          client.currentHeadSha = typeof buMsg.headSha === "string" ? buMsg.headSha.slice(0, 64) : null;
-          schedulePushPresence(roomId);
-        }
-        const evType = buMsg.isRollback ? "ROLLBACK" : "BRANCH_CHECKOUT";
-        void appendRoomEvent(roomId, evType, client.userId, {
-          branch: buMsg.branch,
-          headSha: buMsg.headSha,
-        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append branch event"));
-      }
-
-      // Relay to peers
-      const relay: WsMessage = {
-        ...message,
-        senderId: client.clientId,
-        senderName: client.displayName,
-        senderColor: client.displayColor,
-        roomId,
-      };
-      broadcastRoom(roomId, relay, client.clientId);
+      // Unknown or legacy message type – silently ignore.
+      logger.warn({ clientId, roomId, type: message.type }, "ws: ignoring legacy inbound message (use REST API)");
     }
 
     wss.on("connection", asyncHandler("ws:connection", async (ws: WebSocket, reqUrl: URL) => {
