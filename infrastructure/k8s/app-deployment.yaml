@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sketchgit
+  namespace: sketchgit
+  labels:
+    app.kubernetes.io/name: sketchgit
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sketchgit
+  template:
+    metadata:
+      labels:
+        app: sketchgit
+        app.kubernetes.io/name: sketchgit
+        app.kubernetes.io/component: app
+    spec:
+      # ── Run database migrations before starting the app ───────────────────
+      initContainers:
+        - name: db-migrate
+          # Image tag is updated automatically by the deploy workflow (deploy.yml).
+          image: ghcr.io/steffenkoenig/sketchgit:0000000000000000000000000000000000000000
+          command:
+            - npx
+            - prisma
+            - migrate
+            - deploy
+          envFrom:
+            - configMapRef:
+                name: sketchgit-config
+            - secretRef:
+                name: sketchgit-secret
+      containers:
+        - name: sketchgit
+          # Image tag is updated automatically by the deploy workflow (deploy.yml).
+          # For microk8s built-in registry: localhost:32000/sketchgit:<sha>
+          image: ghcr.io/steffenkoenig/sketchgit:0000000000000000000000000000000000000000
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: sketchgit-config
+            - secretRef:
+                name: sketchgit-secret
+          # ── Health probes ────────────────────────────────────────────────
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # ── Resource limits ──────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          # ── Graceful shutdown ────────────────────────────────────────────
+          # SHUTDOWN_DRAIN_MS (5000) + buffer
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "6"]
+      terminationGracePeriodSeconds: 30

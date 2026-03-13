@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sketchgit-config
+  namespace: sketchgit
+  labels:
+    app.kubernetes.io/name: sketchgit
+    app.kubernetes.io/component: config
+data:
+  # Runtime
+  NODE_ENV: "production"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+
+  # Redis – points at the in-cluster Redis service
+  REDIS_URL: "redis://redis:6379"
+  REDIS_MODE: "standalone"
+
+  # Rate limiting
+  RATE_LIMIT_MAX: "10"
+  RATE_LIMIT_WINDOW: "60"
+
+  # WebSocket
+  MAX_WS_PAYLOAD_BYTES: "524288"
+  WS_COMPRESSION_THRESHOLD: "1024"
+
+  # Room settings
+  MAX_CLIENTS_PER_ROOM: "50"
+  PRUNE_INACTIVE_ROOMS_DAYS: "30"
+  PRUNE_INTERVAL_HOURS: "24"
+  ROOM_EVENT_RETENTION_DAYS: "90"
+
+  # Database diagnostics
+  SLOW_QUERY_MS: "500"
+
+  # Shutdown
+  SHUTDOWN_DRAIN_MS: "5000"

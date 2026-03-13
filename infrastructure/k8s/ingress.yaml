@@ -1,0 +1,44 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Ingress for SketchGit
+#
+# Prerequisites (microk8s):
+#   microk8s enable ingress
+#   microk8s enable cert-manager   # optional, for TLS
+#
+# Replace "sketchgit.example.com" with your actual hostname.
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sketchgit
+  namespace: sketchgit
+  labels:
+    app.kubernetes.io/name: sketchgit
+    app.kubernetes.io/component: ingress
+  annotations:
+    # Increase timeouts to support long-lived WebSocket connections
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    # Allow large WebSocket payloads (MAX_WS_PAYLOAD_BYTES = 512 KB)
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+    # Optional: enable TLS via cert-manager
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  # ── Optional TLS ─────────────────────────────────────────────────────────
+  # tls:
+  #   - hosts:
+  #       - sketchgit.example.com
+  #     secretName: sketchgit-tls
+  rules:
+    - host: sketchgit.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sketchgit
+                port:
+                  number: 80

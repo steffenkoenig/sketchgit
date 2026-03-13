@@ -1,0 +1,45 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ArgoCD Application for SketchGit
+#
+# Apply this manifest to your ArgoCD namespace to register the app:
+#   kubectl apply -f infrastructure/k8s/argocd-application.yaml
+#
+# Prerequisites:
+#   - ArgoCD installed in the "argocd" namespace
+#     (microk8s: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/install.yaml)
+#   - The repository added to ArgoCD (if private):
+#     argocd repo add https://github.com/steffenkoenig/sketchgit.git
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sketchgit
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: sketchgit
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/steffenkoenig/sketchgit.git
+    targetRevision: main
+    path: infrastructure/k8s
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sketchgit
+
+  syncPolicy:
+    automated:
+      prune: true       # Remove resources deleted from git
+      selfHeal: true    # Revert manual cluster changes to match git
+    syncOptions:
+      - CreateNamespace=true          # Create the sketchgit namespace if absent
+      - ServerSideApply=true          # Use server-side apply for larger objects
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

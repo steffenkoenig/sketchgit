@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: sketchgit
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # microk8s built-in hostpath storage provisioner
+  storageClassName: microk8s-hostpath
+  resources:
+    requests:
+      storage: 10Gi
