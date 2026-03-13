@@ -1,6 +1,6 @@
 # SketchGit – Compliance Gap Summary (German / EU Law)
 
-**Last Updated:** 2026-03-13  
+**Last Updated:** 2026-03-13 (Revision 2 – GAP-016 through GAP-022 added)  
 **Scope:** German and European legal requirements applicable to a web application hosted and operated in Germany  
 **Application Version:** Based on current codebase analysis (March 2026)  
 **Operator Jurisdiction:** Federal Republic of Germany
@@ -11,9 +11,10 @@
 
 | Risk Level | Count | Gaps |
 |---|---|---|
-| 🔴 Critical | 4 | GAP-001, GAP-002, GAP-004, GAP-005 |
-| 🟠 High | 9 | GAP-003, GAP-006, GAP-007, GAP-008, GAP-009, GAP-010, GAP-011, GAP-012, GAP-013 |
-| 🟡 Medium | 2 | GAP-014, GAP-015 |
+| 🔴 Critical | 6 | GAP-001, GAP-002, GAP-004, GAP-005, GAP-016, GAP-018 |
+| 🟠 High | 11 | GAP-003, GAP-006, GAP-007, GAP-008, GAP-009, GAP-010, GAP-011, GAP-012, GAP-013, GAP-017, GAP-021 |
+| 🟡 Medium | 4 | GAP-014, GAP-015, GAP-020, GAP-022 |
+| 🟢 Low | 1 | GAP-019 |
 | ✅ Resolved | 0 | — |
 
 ---
@@ -37,6 +38,13 @@
 | [GAP-013](GAP-013-it-sicherheit.md) | IT-Sicherheit (IT Security / NIS2) | DSGVO Art. 32 | 🟠 High | ⚠️ Partial | 8–16 h |
 | [GAP-014](GAP-014-oauth-token-speicherung.md) | OAuth-Token-Speicherung | DSGVO Art. 32 | 🟡 Medium | ❌ Open | 8–16 h |
 | [GAP-015](GAP-015-dsa-digital-services-act.md) | DSA – Digital Services Act | DSA (EU) 2022/2065 | 🟡 Medium | ⚠️ Partial | 2–4 h |
+| [GAP-016](GAP-016-google-fonts-cdn.md) | Google Fonts CDN (IP Transfer to Google) | DSGVO Art. 6 / TTDSG § 25 | 🔴 Critical | ❌ Open | 1–2 h |
+| [GAP-017](GAP-017-ip-adressen-protokollierung.md) | IP-Adressen-Protokollierung | DDG § 19 / DSGVO Art. 5 lit. e | 🟠 High | ⚠️ Partial | 2–4 h |
+| [GAP-018](GAP-018-minderjaerigenschutz.md) | Minderjährigenschutz (Age Verification) | DSGVO Art. 8 / BDSG § 7 | 🔴 Critical | ❌ Open | 4–8 h |
+| [GAP-019](GAP-019-fernmeldegeheimnis.md) | Fernmeldegeheimnis (TTDSG § 3) | TTDSG § 3 / TKG | 🟢 Low | ✅ Classification confirmed | 1–2 h |
+| [GAP-020](GAP-020-datenschutzbeauftragter.md) | Datenschutzbeauftragter – DPO Assessment | DSGVO Art. 37 | 🟡 Medium | ❌ Open | 2–4 h |
+| [GAP-021](GAP-021-urheberrecht-copyright.md) | Urheberrecht & Copyright Takedown | UrhG § 97 / DSA Art. 14 | 🟠 High | ❌ Open | 4–8 h |
+| [GAP-022](GAP-022-besondere-datenkategorien.md) | Besondere Datenkategorien (Art. 9) | DSGVO Art. 9 | 🟡 Medium | ⚠️ Partial | 4–6 h |
 
 ---
 
@@ -56,6 +64,8 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-005** – Conclude AVV with Resend (if `RESEND_API_KEY` is set)
 - [ ] **GAP-010** – Create `/terms` page with basic ToS
 - [ ] **GAP-011** – Replace all `example.com` placeholders in `security.txt`
+- [ ] **GAP-016** – Self-host Google Fonts (remove `@import url('https://fonts.googleapis.com/...')` from `app/globals.css`; use `next/font/google` or local WOFF2 files)
+- [ ] **GAP-018** – Add age confirmation checkbox (16+) to registration form and `ageConfirmed` field to User model
 
 ### Phase 2 – High (Complete within 30 days of launch)
 
@@ -73,6 +83,11 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-013** – Add `npm audit --audit-level=high` to CI pipeline
 - [ ] **GAP-015** – Add DSA contact email to Impressum
 - [ ] **GAP-015** – Add illegal content reporting channel to footer/ToS
+- [ ] **GAP-017** – Fix `connectionsPerIp` Map: decrement/delete entry on WebSocket close (no unbounded IP accumulation)
+- [ ] **GAP-017** – Configure server log retention (7–14 days) and pseudonymise IPs in log output
+- [ ] **GAP-017** – Disclose IP logging and retention period in privacy policy
+- [ ] **GAP-021** – Designate an `abuse@` / `copyright@` email and publish it in footer and ToS
+- [ ] **GAP-021** – Document internal copyright complaint handling procedure
 
 ### Phase 3 – Medium (Complete within 90 days)
 
@@ -84,6 +99,10 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-013** – Conduct initial penetration test / security review
 - [ ] **GAP-014** – Implement OAuth token encryption at rest (AES-256-GCM)
 - [ ] **GAP-014** – Implement GitHub OAuth token revocation on account deletion
+- [ ] **GAP-019** – Record TTDSG § 3 classification statement in VVT (SketchGit is not a telecom service; drawing data is application state)
+- [ ] **GAP-019** – Add "Echtzeit-Zusammenarbeit" WebSocket processing disclosure to privacy policy
+- [ ] **GAP-020** – Write and date DPO threshold assessment (Art. 37 + BDSG § 38); add DPO status statement to privacy policy
+- [ ] **GAP-022** – Add special-category data consent clause to Terms of Service and privacy policy
 
 ### Phase 4 – Ongoing / Best Practice
 
@@ -94,6 +113,8 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-013** – Annual penetration test
 - [ ] **GAP-013** – Annual TOM review
 - [ ] **GAP-015** – Annual DSA compliance review
+- [ ] **GAP-018** – Annual review of age-verification mechanism as regulations evolve
+- [ ] **GAP-020** – Annual DPO threshold reassessment (re-evaluate if user base or team grows)
 
 ---
 
@@ -163,3 +184,4 @@ The following areas are already correctly implemented and require no remediation
 | Date | Change | Author |
 |---|---|---|
 | 2026-03-13 | Initial gap analysis created (GAP-001 through GAP-015) | Copilot Agent |
+| 2026-03-13 | Revision 2: Added GAP-016 (Google Fonts CDN), GAP-017 (IP logging), GAP-018 (Minors), GAP-019 (Fernmeldegeheimnis – classification confirmed: not a telecom service), GAP-020 (DPO), GAP-021 (Copyright takedown), GAP-022 (Special categories). Updated risk counts and implementation checklists. | Copilot Agent |
