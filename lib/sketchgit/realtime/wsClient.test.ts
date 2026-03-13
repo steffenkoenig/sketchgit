@@ -257,6 +257,72 @@ describe('WsClient', () => {
     // A new MockWebSocket should have been created.
     expect(MockWebSocket.lastInstance).not.toBe(firstWs);
   });
+
+  // ── Error handler ────────────────────────────────────────────────────────
+
+  it('logs a warning via logger.warn on WebSocket error (no fields when ErrorEvent is bare)', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+
+    const ws = MockWebSocket.lastInstance!;
+    // Emit a bare ErrorEvent (no message / error – typical for WS connect failures)
+    ws._emit('error', new Event('error'));
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      {},
+      '[WsClient] WebSocket error – will retry on close',
+    );
+  });
+
+  it('includes message and error fields in logger.warn when ErrorEvent carries details', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+
+    const ws = MockWebSocket.lastInstance!;
+    const underlyingError = new Error('connection refused');
+    const ev = new ErrorEvent('error', { message: 'WebSocket error', error: underlyingError });
+    ws._emit('error', ev);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      { message: 'WebSocket error', error: 'connection refused' },
+      '[WsClient] WebSocket error – will retry on close',
+    );
+  });
+});
+
+// ─── NEXT_PUBLIC_WS_URL override ─────────────────────────────────────────────
+
+describe('WsClient._buildUrl NEXT_PUBLIC_WS_URL override', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    MockWebSocket.lastInstance = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.NEXT_PUBLIC_WS_URL;
+  });
+
+  it('uses NEXT_PUBLIC_WS_URL as the WebSocket base when set', () => {
+    process.env.NEXT_PUBLIC_WS_URL = 'wss://my-ws-server.railway.app/ws';
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#a78bfa');
+
+    const ws = MockWebSocket.lastInstance!;
+    expect(ws.url).toBe(
+      'wss://my-ws-server.railway.app/ws?room=room1&name=Alice&color=%23a78bfa',
+    );
+  });
+
+  it('falls back to the same-host /ws path when NEXT_PUBLIC_WS_URL is not set', () => {
+    delete process.env.NEXT_PUBLIC_WS_URL;
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#ff0000');
+
+    const ws = MockWebSocket.lastInstance!;
+    // jsdom default origin is http://localhost:3000 so protocol → ws: (includes port)
+    expect(ws.url).toMatch(/^ws:\/\/localhost(:\d+)?\/ws\?room=room1/);
+  });
 });
 
 // ─── P073: sendBatched ───────────────────────────────────────────────────────

@@ -142,11 +142,18 @@ export class WsClient {
   // ─── Internal helpers ─────────────────────────────────────────────────────
 
   private _buildUrl(): string {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
     const name = encodeURIComponent(this.myName || 'User');
     const color = encodeURIComponent(this.myColor || '#7c6eff');
-    return `${protocol}//${host}/ws?room=${encodeURIComponent(this.roomId)}&name=${name}&color=${color}`;
+    // NEXT_PUBLIC_WS_URL overrides the default same-host WebSocket endpoint.
+    // Set this when the WebSocket server is hosted separately from the Next.js
+    // app (e.g. on Railway/Render/Fly.io while the frontend is on Vercel).
+    // This variable is substituted at build time by the Next.js bundler
+    // (NEXT_PUBLIC_* prefix), not looked up at runtime.
+    // Example: NEXT_PUBLIC_WS_URL=wss://my-ws-server.railway.app/ws
+    const base =
+      process.env.NEXT_PUBLIC_WS_URL ??
+      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    return `${base}?room=${encodeURIComponent(this.roomId)}&name=${name}&color=${color}`;
   }
 
   private _openSocket(): void {
