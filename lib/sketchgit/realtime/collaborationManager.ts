@@ -42,6 +42,8 @@ export interface CollabCallbacks {
   applyViewport?: (vpt: [number, number, number, number, number, number]) => void;
   /** P080 – Return the current local canvas viewport for broadcasting. */
   getViewport?: () => [number, number, number, number, number, number];
+  /** Called once the welcome handshake confirms the room ID. Used to persist the last-visited room. */
+  onRoomJoined?: (roomId: string) => void;
 }
 
 export class CollaborationManager {
@@ -93,15 +95,24 @@ export class CollaborationManager {
       case 'welcome': {
         this.wsClientId = data.clientId as string;
         this.currentRoomId = (data.roomId as string) || this.currentRoomId;
-        const link = this.roomInviteLink(this.currentRoomId);
 
-        const myPeerEl = document.getElementById('myPeerId');
-        if (myPeerEl) myPeerEl.textContent = link;
-
-        // Reflect room id in the URL bar
+        // Reflect room id in the URL bar.  Only inject `?branch=` when the
+        // incoming URL carries no branch param – preserving a deep-link
+        // `?branch=feat` so that applyGitState() can still honour it.
         const url = new URL(window.location.href);
         url.searchParams.set('room', this.currentRoomId);
+        if (!url.searchParams.get('branch')) {
+          const gitState = this.cb.getGitState();
+          const initBranch = gitState.detached ? undefined : gitState.HEAD;
+          if (initBranch) url.searchParams.set('branch', initBranch);
+        }
         window.history.replaceState({}, '', url.toString());
+
+        // Build the invite link from the finalised URL so it includes the
+        // correct room (and branch, if one was just set above).
+        const link = this.roomInviteLink(this.currentRoomId);
+        const myPeerEl = document.getElementById('myPeerId');
+        if (myPeerEl) myPeerEl.textContent = link;
 
         const peerStatus = document.getElementById('peerStatus');
         if (peerStatus) {
@@ -109,14 +120,17 @@ export class CollaborationManager {
           peerStatus.className = 'peer-status ok';
         }
 
+        // Notify the app layer so it can persist the last-visited room.
+        this.cb.onRoomJoined?.(this.currentRoomId);
+
         this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color });
         this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
         // P079 – announce current branch to the server so presence is accurate
-        const gitState = this.cb.getGitState();
-        const initBranch = gitState.detached ? undefined : gitState.HEAD;
-        const initHeadSha = initBranch ? (gitState.branches[initBranch] ?? null) : null;
-        if (initBranch) {
-          this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color, branch: initBranch, headSha: initHeadSha });
+        const gitStateForProfile = this.cb.getGitState();
+        const profileBranch = gitStateForProfile.detached ? undefined : gitStateForProfile.HEAD;
+        const initHeadSha = profileBranch ? (gitStateForProfile.branches[profileBranch] ?? null) : null;
+        if (profileBranch) {
+          this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color, branch: profileBranch, headSha: initHeadSha });
         }
         break;
       }
@@ -577,10 +591,23 @@ export class CollaborationManager {
     return cleaned || 'default';
   }
 
-  getRoomFromUrl(): string {
+  /**
+   * Extract the room ID from the `?room=` URL parameter.
+   *
+   * @param fallback – Used when the URL carries no `room` param (e.g. the
+   *   last-visited room restored from localStorage by the caller).  Falls
+   *   back to `'default'` when the fallback is also empty.
+   */
+  getRoomFromUrl(fallback = 'default'): string {
     const params = new URLSearchParams(window.location.search);
     const raw = (params.get('room') || '').trim();
-    return this.sanitizeRoomId(raw || 'default');
+    return this.sanitizeRoomId(raw || fallback || 'default');
+  }
+
+  /** Extract the branch name from the `?branch=` URL parameter, or return an empty string. */
+  getBranchFromUrl(): string {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('branch') || '').trim();
   }
 
   copyPeerId(): void {

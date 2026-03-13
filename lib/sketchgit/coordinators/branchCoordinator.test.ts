@@ -14,6 +14,7 @@ import type { AppContext } from './appContext';
 
 vi.mock('../ui/toast', () => ({ showToast: vi.fn() }));
 vi.mock('../ui/modals', () => ({ openModal: vi.fn(), closeModal: vi.fn() }));
+vi.mock('../userPreferences', () => ({ savePreferences: vi.fn(), setBranchInUrl: vi.fn() }));
 
 import { showToast } from '../ui/toast';
 import { openModal, closeModal } from '../ui/modals';

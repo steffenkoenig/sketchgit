@@ -13,10 +13,18 @@ import type { AppContext } from './appContext';
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock('../ui/modals', () => ({ openModal: vi.fn(), closeModal: vi.fn() }));
+vi.mock('../userPreferences', () => ({
+  loadPreferences: vi.fn().mockReturnValue(null),
+  savePreferences: vi.fn(),
+  setBranchInUrl: vi.fn(),
+}));
 
 import { openModal, closeModal } from '../ui/modals';
+import { loadPreferences, savePreferences } from '../userPreferences';
 
 const mockOpenModal = openModal as ReturnType<typeof vi.fn>;
+const mockLoadPreferences = loadPreferences as ReturnType<typeof vi.fn>;
+const mockSavePreferences = savePreferences as ReturnType<typeof vi.fn>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,6 +166,63 @@ describe('CollaborationCoordinator', () => {
     it('delegates to CollaborationManager', () => {
       coord.toggleCollabPanel();
       expect(ctx.collab.toggleCollabPanel).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ─── Returning-visitor recognition (localStorage preferences) ─────────────
+
+  describe('init() with saved preferences', () => {
+    it('restores saved name into myName without opening the modal', () => {
+      mockLoadPreferences.mockReturnValue({ name: 'Returning User', color: '', lastRoomId: '', lastBranchName: '' });
+      coord.init();
+      expect(coord.myName).toBe('Returning User');
+      expect(mockOpenModal).not.toHaveBeenCalledWith('nameModal');
+    });
+
+    it('restores saved color into myColor', () => {
+      mockLoadPreferences.mockReturnValue({ name: 'Tina', color: '#abcdef', lastRoomId: '', lastBranchName: '' });
+      coord.init();
+      expect(coord.myColor).toBe('#abcdef');
+    });
+
+    it('pre-fills the nameInput element with the saved name', () => {
+      mockLoadPreferences.mockReturnValue({ name: 'Frank', color: '', lastRoomId: '', lastBranchName: '' });
+      coord.init();
+      const input = document.getElementById('nameInput') as HTMLInputElement;
+      expect(input.value).toBe('Frank');
+    });
+
+    it('passes the saved lastRoomId as fallback to getRoomFromUrl', () => {
+      mockLoadPreferences.mockReturnValue({ name: 'Grace', color: '', lastRoomId: 'my-room', lastBranchName: '' });
+      coord.init();
+      expect(ctx.collab.getRoomFromUrl).toHaveBeenCalledWith('my-room');
+    });
+
+    it('opens the modal when no preferences are stored (first visit)', () => {
+      mockLoadPreferences.mockReturnValue(null);
+      coord.init();
+      expect(mockOpenModal).toHaveBeenCalledWith('nameModal');
+    });
+
+    it('connects WebSocket with the restored name', () => {
+      mockLoadPreferences.mockReturnValue({ name: 'Hank', color: '#ff0000', lastRoomId: '', lastBranchName: '' });
+      coord.init();
+      expect(ctx.ws.connect).toHaveBeenCalledWith(expect.any(String), 'Hank', '#ff0000');
+    });
+  });
+
+  describe('setName() persistence', () => {
+    it('calls savePreferences with the new name and current color', () => {
+      (document.getElementById('nameInput') as HTMLInputElement).value = 'Ivy';
+      coord.myColor = '#123456';
+      coord.setName();
+      expect(mockSavePreferences).toHaveBeenCalledWith(expect.objectContaining({ name: 'Ivy', color: '#123456' }));
+    });
+
+    it('does NOT call savePreferences when the input is empty', () => {
+      (document.getElementById('nameInput') as HTMLInputElement).value = '';
+      coord.setName();
+      expect(mockSavePreferences).not.toHaveBeenCalled();
     });
   });
 });

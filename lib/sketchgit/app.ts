@@ -30,12 +30,17 @@ import { BranchCoordinator } from './coordinators/branchCoordinator';
 import { MergeCoordinator } from './coordinators/mergeCoordinator';
 import { CollaborationCoordinator } from './coordinators/collaborationCoordinator';
 import { Commit } from './types';
+import { loadPreferences, savePreferences, setBranchInUrl } from './userPreferences';
 
 // ─── Factory (same public API as before) ──────────────────────────────────────
 
 export function createSketchGitApp() {
 
   // ── Subsystem instances ────────────────────────────────────────────────────
+
+  // Load preferences once at startup so callbacks can use the cached value
+  // without hitting localStorage on every fullsync.
+  const startupPrefs = loadPreferences();
 
   const git = new GitModel((msg) => showToast(msg, true));
   const ws = new WsClient();
@@ -62,6 +67,35 @@ export function createSketchGitApp() {
       const headSha = git.detached ?? git.branches[git.HEAD];
       const c = git.commits[headSha];
       if (c) canvas.loadCanvasData(c.canvas);
+
+      // Restore the preferred branch for returning visitors:
+      //  1. Honour an explicit ?branch= URL param (shareable links).
+      //  2. Fall back to the localStorage-persisted last branch.
+      // Only switch when the target branch actually exists in the received
+      // state so we never land in an inconsistent git state.
+      const preferredBranch =
+        collab.getBranchFromUrl() || (startupPrefs?.lastBranchName ?? '');
+      if (
+        preferredBranch &&
+        state.branches[preferredBranch] !== undefined &&
+        preferredBranch !== git.HEAD
+      ) {
+        git.checkout(preferredBranch);
+        const branchSha = git.branches[preferredBranch];
+        const branchCommit = git.commits[branchSha];
+        if (branchCommit) canvas.loadCanvasData(branchCommit.canvas);
+        canvas.clearDirty();
+        // Keep the address bar in sync with the restored branch.
+        setBranchInUrl(preferredBranch);
+        // Announce the restored branch to peers/server.
+        ws.send({
+          type: 'profile',
+          name: ws.name,
+          color: ws.color,
+          branch: preferredBranch,
+          headSha: branchSha ?? null,
+        });
+      }
     },
     receiveCommit: (sha, commit) => {
       git.commits[sha] = commit as Commit;
@@ -76,6 +110,8 @@ export function createSketchGitApp() {
     // P080 – delegate viewport to the canvas engine
     applyViewport: (vpt) => canvas.applyViewport(vpt),
     getViewport: () => canvas.getViewport(),
+    // Persist the last-visited room so returning visitors are redirected there.
+    onRoomJoined: (roomId) => savePreferences({ lastRoomId: roomId }),
   });
 
   const canvas = new CanvasEngine(
