@@ -114,6 +114,17 @@ describe('userPreferences', () => {
     it('does not throw when called with an empty object', () => {
       expect(() => savePreferences({})).not.toThrow();
     });
+
+    it('welcome→setName sequence: lastRoomId written before name is not erased', () => {
+      // Simulates what happens in practice: the welcome handler saves lastRoomId
+      // before the user has confirmed their name in the modal.
+      savePreferences({ lastRoomId: 'room-abc' });
+      // User then confirms their name – must not lose lastRoomId.
+      savePreferences({ name: 'Frank', color: '#aabbcc' });
+      const prefs = loadPreferences();
+      expect(prefs?.name).toBe('Frank');
+      expect(prefs?.lastRoomId).toBe('room-abc');
+    });
   });
 
   // ── setBranchInUrl ──────────────────────────────────────────────────────

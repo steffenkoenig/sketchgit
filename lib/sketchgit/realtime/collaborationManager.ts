@@ -95,19 +95,24 @@ export class CollaborationManager {
       case 'welcome': {
         this.wsClientId = data.clientId as string;
         this.currentRoomId = (data.roomId as string) || this.currentRoomId;
-        const link = this.roomInviteLink(this.currentRoomId);
 
-        const myPeerEl = document.getElementById('myPeerId');
-        if (myPeerEl) myPeerEl.textContent = link;
-
-        // Reflect room id (and current branch) in the URL bar so bookmarks and
-        // shared links land in the correct room/branch.
+        // Reflect room id in the URL bar.  Only inject `?branch=` when the
+        // incoming URL carries no branch param – preserving a deep-link
+        // `?branch=feat` so that applyGitState() can still honour it.
         const url = new URL(window.location.href);
         url.searchParams.set('room', this.currentRoomId);
-        const gitState = this.cb.getGitState();
-        const initBranch = gitState.detached ? undefined : gitState.HEAD;
-        if (initBranch) url.searchParams.set('branch', initBranch);
+        if (!url.searchParams.get('branch')) {
+          const gitState = this.cb.getGitState();
+          const initBranch = gitState.detached ? undefined : gitState.HEAD;
+          if (initBranch) url.searchParams.set('branch', initBranch);
+        }
         window.history.replaceState({}, '', url.toString());
+
+        // Build the invite link from the finalised URL so it includes the
+        // correct room (and branch, if one was just set above).
+        const link = this.roomInviteLink(this.currentRoomId);
+        const myPeerEl = document.getElementById('myPeerId');
+        if (myPeerEl) myPeerEl.textContent = link;
 
         const peerStatus = document.getElementById('peerStatus');
         if (peerStatus) {
@@ -121,7 +126,9 @@ export class CollaborationManager {
         this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color });
         this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
         // P079 – announce current branch to the server so presence is accurate
-        const initHeadSha = initBranch ? (gitState.branches[initBranch] ?? null) : null;
+        const gitStateForProfile = this.cb.getGitState();
+        const initBranch = gitStateForProfile.detached ? undefined : gitStateForProfile.HEAD;
+        const initHeadSha = initBranch ? (gitStateForProfile.branches[initBranch] ?? null) : null;
         if (initBranch) {
           this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color, branch: initBranch, headSha: initHeadSha });
         }

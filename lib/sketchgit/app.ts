@@ -30,7 +30,7 @@ import { BranchCoordinator } from './coordinators/branchCoordinator';
 import { MergeCoordinator } from './coordinators/mergeCoordinator';
 import { CollaborationCoordinator } from './coordinators/collaborationCoordinator';
 import { Commit } from './types';
-import { loadPreferences, savePreferences } from './userPreferences';
+import { loadPreferences, savePreferences, setBranchInUrl } from './userPreferences';
 
 // ─── Factory (same public API as before) ──────────────────────────────────────
 
@@ -85,6 +85,8 @@ export function createSketchGitApp() {
         const branchCommit = git.commits[branchSha];
         if (branchCommit) canvas.loadCanvasData(branchCommit.canvas);
         canvas.clearDirty();
+        // Keep the address bar in sync with the restored branch.
+        setBranchInUrl(preferredBranch);
         // Announce the restored branch to peers/server.
         ws.send({
           type: 'profile',

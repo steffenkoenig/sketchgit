@@ -25,6 +25,22 @@ export interface UserPreferences {
 const STORAGE_KEY = 'sketchgit_prefs';
 
 /**
+ * Read whatever is stored without name validation.
+ * Used only as the merge base in `savePreferences` so that partial writes
+ * (e.g. `savePreferences({ lastRoomId })` before the user has set a name)
+ * are never discarded when a later call supplies the remaining fields.
+ */
+function _loadRaw(): Partial<UserPreferences> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    return (JSON.parse(raw) as Partial<UserPreferences>) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Load persisted preferences.
  * Returns `null` when nothing is stored or the stored value is invalid.
  * A stored object without a non-empty `name` is treated as invalid so
@@ -65,7 +81,7 @@ export function setBranchInUrl(branchName: string): void {
  */
 export function savePreferences(update: Partial<UserPreferences>): void {
   try {
-    const existing = loadPreferences() ?? ({} as Partial<UserPreferences>);
+    const existing = _loadRaw();
     const merged: Partial<UserPreferences> = { ...existing, ...update };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
   } catch {
