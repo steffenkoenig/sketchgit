@@ -88,13 +88,7 @@ export function createSketchGitApp() {
         // Keep the address bar in sync with the restored branch.
         setBranchInUrl(preferredBranch);
         // Announce the restored branch to peers/server.
-        ws.send({
-          type: 'profile',
-          name: ws.name,
-          color: ws.color,
-          branch: preferredBranch,
-          headSha: branchSha ?? null,
-        });
+        collab.sendProfile(ws.name, ws.color, preferredBranch, branchSha ?? null);
       }
     },
     receiveCommit: (sha, commit) => {

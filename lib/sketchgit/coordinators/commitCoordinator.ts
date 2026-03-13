@@ -81,7 +81,7 @@ export class CommitCoordinator {
   /** Checkout the commit currently shown in the popup. */
   cpCheckout(): void {
     if (!this.popupSHA) return;
-    const { git, canvas, ws } = this.ctx;
+    const { git, canvas, collab } = this.ctx;
     const sha = this.popupSHA;
     this.closeCommitPopup();
     if (sha === git.currentSHA()) { showToast('Already at this commit'); return; }
@@ -96,7 +96,7 @@ export class CommitCoordinator {
       canvas.clearDirty();
       this.refresh();
       showToast(`Switched to branch '${branchName}'`);
-      ws.send({ type: 'branch-update', branch: branchName, headSha: sha, isRollback: false });
+      collab.sendBranchUpdate(branchName, sha, { isRollback: false });
       return;
     }
 
@@ -108,7 +108,7 @@ export class CommitCoordinator {
     this.refresh();
     showToast('⤵ Viewing commit ' + sha.slice(0, 7) + ' — draw to auto-create a branch');
     // P053 – notify peers of detached HEAD checkout
-    ws.send({ type: 'branch-update', branch: null, headSha: sha, detached: true });
+    collab.sendBranchUpdate(null, sha, { detached: true });
   }
 
   /** Open the branch-create modal from the current popup commit. */
@@ -149,7 +149,7 @@ export class CommitCoordinator {
       '⚠ Rollback',
       (confirmed) => {
         if (!confirmed) return;
-        const { git: g, canvas, ws } = this.ctx;
+        const { git: g, canvas, collab } = this.ctx;
         g.branches[branch] = sha;
         g.detached = null;
         canvas.loadCanvasData(g.commits[sha].canvas);
@@ -157,7 +157,7 @@ export class CommitCoordinator {
         this.refresh();
         showToast('Rolled back to ' + sha.slice(0, 7));
         // P053 – notify peers that this branch tip was rolled back
-        ws.send({ type: 'branch-update', branch, headSha: sha, isRollback: true });
+        collab.sendBranchUpdate(branch, sha, { isRollback: true });
       },
     );
   }
@@ -177,7 +177,7 @@ export class CommitCoordinator {
   }
 
   doCommit(): void {
-    const { git, canvas, ws } = this.ctx;
+    const { git, canvas, collab } = this.ctx;
     const msgEl = document.getElementById('commitMsg') as HTMLInputElement | null;
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -188,7 +188,7 @@ export class CommitCoordinator {
     canvas.clearDirty();
     this.refresh();
     showToast(`✓ Committed: ${msg}`);
-    ws.send({ type: 'commit', sha, commit: git.commits[sha] });
+    collab.sendCommit(sha, git.commits[sha]);
   }
 
   // ─── P055: Accessible confirmation dialog ─────────────────────────────────
