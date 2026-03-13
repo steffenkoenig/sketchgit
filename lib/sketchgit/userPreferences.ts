@@ -34,7 +34,7 @@ function _loadRaw(): Partial<UserPreferences> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    return (JSON.parse(raw) as Partial<UserPreferences>) ?? {};
+    return JSON.parse(raw) as Partial<UserPreferences>;
   } catch {
     return {};
   }

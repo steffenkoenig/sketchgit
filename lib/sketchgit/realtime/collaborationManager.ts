@@ -127,10 +127,10 @@ export class CollaborationManager {
         this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
         // P079 – announce current branch to the server so presence is accurate
         const gitStateForProfile = this.cb.getGitState();
-        const initBranch = gitStateForProfile.detached ? undefined : gitStateForProfile.HEAD;
-        const initHeadSha = initBranch ? (gitStateForProfile.branches[initBranch] ?? null) : null;
-        if (initBranch) {
-          this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color, branch: initBranch, headSha: initHeadSha });
+        const profileBranch = gitStateForProfile.detached ? undefined : gitStateForProfile.HEAD;
+        const initHeadSha = profileBranch ? (gitStateForProfile.branches[profileBranch] ?? null) : null;
+        if (profileBranch) {
+          this.ws.send({ type: 'profile', name: this.ws.name, color: this.ws.color, branch: profileBranch, headSha: initHeadSha });
         }
         break;
       }
