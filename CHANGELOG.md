@@ -6,7 +6,25 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
-## [1.1.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v1.0.0...sketchgit-next-v1.1.0) (2026-03-13)
+## [0.2.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v1.1.0...sketchgit-next-v1.2.0) (2026-03-13)
+
+
+### Features
+
+* **share-links:** add sharing UI — topbar button + commit popup action (P091) ([ba28de9](https://github.com/steffenkoenig/sketchgit/commit/ba28de93027c2094c943315d491ffac9975874d7))
+
+
+### Bug Fixes
+
+* bring branch coverage above 69% threshold ([245d435](https://github.com/steffenkoenig/sketchgit/commit/245d43569089b39cb2c625db9cfe4712fdb63716))
+* bring branch coverage above 69% threshold ([3b79846](https://github.com/steffenkoenig/sketchgit/commit/3b79846aa498f137820a3adf300b73ff59d941e0))
+* **deploy:** correct tag trigger pattern to match release-please tags ([a31a1a6](https://github.com/steffenkoenig/sketchgit/commit/a31a1a6d5a0f3ffdb67019a22597a7e25b209a9c))
+* **deploy:** correct workflow tag trigger to match release-please tags ([2effa16](https://github.com/steffenkoenig/sketchgit/commit/2effa16c4feccd273388b8e8cadeb309406d8248))
+* remove unused `mockPngImage` destructuring and replace `any[]` with `unknown[]` ([b92f3b2](https://github.com/steffenkoenig/sketchgit/commit/b92f3b22b6911d2ff88205226c8e6436090a94d8))
+* remove unused mockPngImage destructuring and replace any[] with unknown[] ([92af785](https://github.com/steffenkoenig/sketchgit/commit/92af7853a6c1779ca3546abdf85571fa5cd1b60e))
+* **share-links:** address all PR review comments — scope guards, fullsync filtering, error handling ([a76f1c4](https://github.com/steffenkoenig/sketchgit/commit/a76f1c4718ac07be195fc60d912b4fa7610795a4))
+
+## [0.1.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v1.0.0...sketchgit-next-v1.1.0) (2026-03-13)
 
 
 ### Features
@@ -107,7 +125,7 @@ automatically appear here when the next Release Please PR is merged.
 * update README to reflect current app state ([326c732](https://github.com/steffenkoenig/sketchgit/commit/326c73284dec5086ab6b24af285934fcbc6db2d5))
 * update README to reflect current app state ([38e1b2d](https://github.com/steffenkoenig/sketchgit/commit/38e1b2d12714fbe565a5276d83ccb5b64f3e4a96))
 
-## [1.0.0] – Initial Release
+## [0.0.0] – Initial Release
 
 ### Features
 
