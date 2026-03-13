@@ -78,14 +78,14 @@ export class CollaborationCoordinator {
   // ─── Identity ──────────────────────────────────────────────────────────────
 
   setName(): void {
-    const { ws } = this.ctx;
+    const { ws, collab } = this.ctx;
     const n = (document.getElementById('nameInput') as HTMLInputElement | null)?.value.trim();
     if (n) {
       this.myName = n;
       // Persist so the name modal is skipped on the next visit.
       savePreferences({ name: n, color: this.myColor });
       if (ws.isConnected()) {
-        ws.send({ type: 'profile', name: this.myName, color: this.myColor });
+        collab.sendProfile(this.myName, this.myColor);
       }
     }
     closeModal('nameModal');

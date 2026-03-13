@@ -47,7 +47,7 @@ export class MergeCoordinator {
   }
 
   doMerge(): void {
-    const { git, canvas, ws } = this.ctx;
+    const { git, canvas, collab } = this.ctx;
     const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement | null;
     const src = sel?.value ?? '';
     closeModal('mergeModal');
@@ -61,7 +61,7 @@ export class MergeCoordinator {
       this.refresh();
       showToast(`✓ Merged '${src}' into '${git.HEAD}'`);
       // P052 – Broadcast the merge commit to peers and persist to DB
-      ws.send({ type: 'commit', sha: result.sha, commit: git.commits[result.sha] });
+      collab.sendCommit(result.sha, git.commits[result.sha]);
     } else if ('conflicts' in result) {
       const conflictResult = result.conflicts;
       const { conflicts, cleanObjects, oursData, branchNames } = conflictResult;
@@ -97,7 +97,7 @@ export class MergeCoordinator {
 
   applyMergeResolution(): void {
     if (!this.pendingMerge) return;
-    const { git, canvas, ws } = this.ctx;
+    const { git, canvas, collab } = this.ctx;
     const { conflicts, cleanObjects, oursData, branchNames } = this.pendingMerge;
     const baseParsed = JSON.parse(oursData) as Record<string, unknown>;
 
@@ -133,7 +133,7 @@ export class MergeCoordinator {
     this.refresh();
     showToast(`✓ Merge complete — ${conflicts.length} conflict(s) resolved`);
     // P052 – Broadcast the conflict-resolved merge commit to peers and persist to DB
-    ws.send({ type: 'commit', sha, commit: git.commits[sha] });
+    collab.sendCommit(sha, git.commits[sha]);
   }
 
   // ─── Private conflict UI helpers ───────────────────────────────────────────

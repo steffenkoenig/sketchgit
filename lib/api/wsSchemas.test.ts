@@ -122,15 +122,38 @@ describe('WsBranchUpdateSchema', () => {
 });
 
 describe('InboundWsMessageSchema discriminated union', () => {
-  it('dispatches to correct schema by type', () => {
-    const result = InboundWsMessageSchema.safeParse({ type: 'ping' });
+  it('accepts pong (heartbeat echo still uses WS)', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'pong' });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.type).toBe('ping');
+    if (result.success) expect(result.data.type).toBe('pong');
   });
 
-  it('accepts branch-update messages', () => {
-    const result = InboundWsMessageSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' });
+  it('accepts fullsync-request (peer-to-peer sync still uses WS)', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'fullsync-request', senderId: 'abc12345' });
     expect(result.success).toBe(true);
+  });
+
+  it('accepts fullsync (peer-to-peer sync response still uses WS)', () => {
+    const result = InboundWsMessageSchema.safeParse({
+      type: 'fullsync',
+      commits: {},
+      branches: {},
+      HEAD: 'main',
+      detached: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects draw – now submitted via REST API', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'draw', canvas: '{}' }).success).toBe(false);
+  });
+
+  it('rejects commit – now submitted via REST API', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'commit', sha: 'abc12345', commit: { branch: 'main', message: 'x', canvas: '{}' } }).success).toBe(false);
+  });
+
+  it('rejects branch-update – now submitted via REST API', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' }).success).toBe(false);
   });
 
   it('rejects unknown type', () => {
@@ -139,9 +162,5 @@ describe('InboundWsMessageSchema discriminated union', () => {
 
   it('rejects missing type', () => {
     expect(InboundWsMessageSchema.safeParse({ canvas: '{}' }).success).toBe(false);
-  });
-
-  it('rejects commit missing required fields', () => {
-    expect(InboundWsMessageSchema.safeParse({ type: 'commit', sha: 'abc12345' }).success).toBe(false);
   });
 });

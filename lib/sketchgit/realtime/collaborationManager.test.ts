@@ -4,6 +4,11 @@ import { CollaborationManager, CollabCallbacks } from './collaborationManager';
 import type { WsClient } from './wsClient';
 import type { WsMessage, ConnectionStatus } from '../types';
 
+// ─── Mock fetch (REST events now go via HTTP, not WS) ────────────────────────
+
+const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+vi.stubGlobal('fetch', mockFetch);
+
 // ─── Mock WsClient ────────────────────────────────────────────────────────────
 
 function makeMockWs() {
@@ -104,11 +109,17 @@ describe('CollaborationManager – message handling', () => {
     expect(document.getElementById('myPeerId')!.textContent).toContain('room-xyz');
   });
 
-  it('welcome: sends profile and fullsync-request messages', () => {
+  it('welcome: sends profile via REST and fullsync-request via WS', () => {
+    mockFetch.mockClear();
     send(ws, { type: 'welcome', clientId: 'c1', roomId: 'r1' });
+    // fullsync-request stays on WS
     const types = ws.send.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
-    expect(types).toContain('profile');
     expect(types).toContain('fullsync-request');
+    // profile is now submitted via REST
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/profile'),
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('welcome: keeps currentRoomId when roomId is absent from message', () => {
@@ -337,6 +348,7 @@ describe('CollaborationManager – broadcastDraw', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    mockFetch.mockClear();
     setupDom();
     ws = makeMockWs();
     cb = makeCallbacks();
@@ -347,13 +359,17 @@ describe('CollaborationManager – broadcastDraw', () => {
     vi.useRealTimers();
   });
 
-  it('immediate=true: sends draw message right away', () => {
+  it('immediate=true: sends draw message via REST right away', () => {
     const canvas = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect' }] });
     cb.getCanvasData.mockReturnValue(canvas);
     collab.broadcastDraw(true);
-    // First broadcast with no snapshot → sends full 'draw'
-    const types = ws.send.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
-    expect(types).toContain('draw');
+    // First broadcast with no snapshot → sends full 'draw' via REST
+    const drawCalls = mockFetch.mock.calls.filter(
+      (c: unknown[]) => (c[0] as string).includes('/draw'),
+    );
+    expect(drawCalls.length).toBeGreaterThan(0);
+    const body = JSON.parse((drawCalls[0][1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.type).toBe('draw');
   });
 
   it('immediate=false: coalesces multiple calls into one flush', () => {
@@ -363,38 +379,43 @@ describe('CollaborationManager – broadcastDraw', () => {
     collab.broadcastDraw(false);
     collab.broadcastDraw(false);
     vi.runOnlyPendingTimers();
-    // Only one flush should have happened
-    expect(ws.send).toHaveBeenCalledTimes(1);
+    // Only one REST call should have happened
+    const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
+    expect(drawCalls).toHaveLength(1);
   });
 
   it('does nothing when socket is not connected', () => {
     ws.isConnected.mockReturnValue(false);
     collab.broadcastDraw(true);
-    expect(ws.send).not.toHaveBeenCalled();
+    // No REST call for draw
+    const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
+    expect(drawCalls).toHaveLength(0);
   });
 
   it('sends draw-delta after second broadcast (snapshot already set)', () => {
     const canvas = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect', fill: 'red' }] });
     cb.getCanvasData.mockReturnValue(canvas);
     collab.broadcastDraw(true); // sets the snapshot
+    mockFetch.mockClear();
 
     // Change the canvas
     const canvas2 = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect', fill: 'blue' }] });
     cb.getCanvasData.mockReturnValue(canvas2);
-    collab.broadcastDraw(true); // should send draw-delta via sendBatched
-    const types = ws.sendBatched.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
-    expect(types).toContain('draw-delta');
+    collab.broadcastDraw(true); // should send draw-delta via REST
+    const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
+    expect(drawCalls.length).toBeGreaterThan(0);
+    const body = JSON.parse((drawCalls[0][1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.type).toBe('draw-delta');
   });
 
   it('does not send draw-delta when canvas is unchanged', () => {
     const canvas = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect', fill: 'red' }] });
     cb.getCanvasData.mockReturnValue(canvas);
     collab.broadcastDraw(true); // sets snapshot
-    ws.send.mockClear();
-    ws.sendBatched.mockClear();
+    mockFetch.mockClear();
     collab.broadcastDraw(true); // no changes
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(ws.sendBatched).not.toHaveBeenCalled();
+    const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
+    expect(drawCalls).toHaveLength(0);
   });
 });
 
@@ -404,11 +425,12 @@ describe('CollaborationManager – broadcastCursor', () => {
 
   beforeEach(() => {
     setupDom();
+    mockFetch.mockClear();
     ws = makeMockWs();
     collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
   });
 
-  it('sends cursor message when connected and throttle window has passed', () => {
+  it('sends cursor message via REST when connected and throttle window has passed', () => {
     const wrap = document.getElementById('canvas-wrap')!;
     vi.spyOn(wrap, 'getBoundingClientRect').mockReturnValue({
       left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0,
@@ -416,9 +438,11 @@ describe('CollaborationManager – broadcastCursor', () => {
     });
     (collab as unknown as { lastCursorSent: number }).lastCursorSent = 0;
     collab.broadcastCursor({ e: { clientX: 100, clientY: 200 } as MouseEvent });
-    // cursor uses sendBatched (P073)
-    const types = ws.sendBatched.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
-    expect(types).toContain('cursor');
+    // cursor is now submitted via REST
+    const cursorCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/cursor'));
+    expect(cursorCalls.length).toBeGreaterThan(0);
+    const body = JSON.parse((cursorCalls[0][1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.type).toBe('cursor');
   });
 
   it('drops cursor events within the throttle window', () => {
@@ -429,15 +453,15 @@ describe('CollaborationManager – broadcastCursor', () => {
     });
     (collab as unknown as { lastCursorSent: number }).lastCursorSent = Date.now(); // just sent
     collab.broadcastCursor({ e: { clientX: 100, clientY: 200 } as MouseEvent });
-    const types = ws.sendBatched.mock.calls.map((c: unknown[]) => (c[0] as WsMessage).type);
-    expect(types).not.toContain('cursor');
+    const cursorCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/cursor'));
+    expect(cursorCalls).toHaveLength(0);
   });
 
   it('does nothing when socket is not connected', () => {
     ws.isConnected.mockReturnValue(false);
     collab.broadcastCursor({ e: { clientX: 10, clientY: 20 } as MouseEvent });
-    expect(ws.send).not.toHaveBeenCalled();
-    expect(ws.sendBatched).not.toHaveBeenCalled();
+    const cursorCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/cursor'));
+    expect(cursorCalls).toHaveLength(0);
   });
 });
 
@@ -530,9 +554,10 @@ describe('CollaborationManager – destroy', () => {
 
     collab.destroy();
 
-    // Timer should be cancelled (send should not be called)
+    // Timer should be cancelled (no REST call should be made)
     vi.runAllTimers();
-    expect(ws.send).not.toHaveBeenCalled();
+    const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
+    expect(drawCalls).toHaveLength(0);
 
     // Cursor element should be removed
     expect(document.getElementById('rcursor-p1')).toBeNull();
@@ -649,28 +674,39 @@ describe('P079 CollaborationManager – updateCollabUI with branch label', () =>
 });
 
 describe('P080 CollaborationManager – presenter mode', () => {
-  it('startPresenting sends follow-request and starts view-sync timer', () => {
+  it('startPresenting sends follow-request via REST and starts view-sync timer', () => {
     vi.useFakeTimers();
+    mockFetch.mockClear();
     setupDom();
     const ws = makeMockWs();
     const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
     (collab as unknown as { wsClientId: string }).wsClientId = 'me';
     collab.startPresenting();
-    expect(ws.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'follow-request' }));
+    // follow-request now submitted via REST
+    const followCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/follow'));
+    expect(followCalls.length).toBeGreaterThan(0);
+    const body = JSON.parse((followCalls[0][1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.action).toBe('request');
     expect(collab.isPresenting).toBe(true);
     collab.stopPresenting();
     vi.useRealTimers();
   });
 
-  it('stopPresenting sends follow-stop and clears timer', () => {
+  it('stopPresenting sends follow-stop via REST and clears timer', () => {
     vi.useFakeTimers();
+    mockFetch.mockClear();
     setupDom();
     const ws = makeMockWs();
     const collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
     (collab as unknown as { wsClientId: string }).wsClientId = 'me';
     collab.startPresenting();
+    mockFetch.mockClear();
     collab.stopPresenting();
-    expect(ws.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'follow-stop' }));
+    // follow-stop now submitted via REST
+    const followCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/follow'));
+    expect(followCalls.length).toBeGreaterThan(0);
+    const body = JSON.parse((followCalls[0][1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.action).toBe('stop');
     expect(collab.isPresenting).toBe(false);
     vi.useRealTimers();
   });
