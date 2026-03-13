@@ -122,7 +122,7 @@ export async function POST(
   }
 
   // Validate the commit payload (P057)
-  const isValid = validateCommitMessage(sha, commit, () => {});
+  const isValid = validateCommitMessage(sha, commit, (msg) => console.error("[commits/route] validation:", msg));
   if (!isValid) {
     return apiError(ApiErrorCode.VALIDATION_ERROR, "Invalid commit payload", 422);
   }

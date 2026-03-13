@@ -353,6 +353,8 @@ describe('CollaborationManager – broadcastDraw', () => {
     ws = makeMockWs();
     cb = makeCallbacks();
     collab = new CollaborationManager(ws as unknown as WsClient, cb);
+    // Simulate welcome handshake so _postEvent is not blocked.
+    (collab as unknown as { wsClientId: string }).wsClientId = 'test-client';
   });
 
   afterEach(() => {
@@ -388,6 +390,16 @@ describe('CollaborationManager – broadcastDraw', () => {
     ws.isConnected.mockReturnValue(false);
     collab.broadcastDraw(true);
     // No REST call for draw
+    const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
+    expect(drawCalls).toHaveLength(0);
+  });
+
+  it('does nothing before the welcome message assigns a clientId', () => {
+    // Reset clientId to simulate pre-welcome state
+    (collab as unknown as { wsClientId: null }).wsClientId = null;
+    const canvas = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect' }] });
+    cb.getCanvasData.mockReturnValue(canvas);
+    collab.broadcastDraw(true);
     const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
     expect(drawCalls).toHaveLength(0);
   });
@@ -428,6 +440,8 @@ describe('CollaborationManager – broadcastCursor', () => {
     mockFetch.mockClear();
     ws = makeMockWs();
     collab = new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
+    // Simulate welcome handshake so _postEvent is not blocked.
+    (collab as unknown as { wsClientId: string }).wsClientId = 'test-client';
   });
 
   it('sends cursor message via REST when connected and throttle window has passed', () => {
@@ -534,6 +548,7 @@ describe('CollaborationManager – room utilities', () => {
 describe('CollaborationManager – destroy', () => {
   it('cancels pending draw flush timer and removes cursor elements', () => {
     vi.useFakeTimers();
+    mockFetch.mockClear();
     setupDom();
     const ws = makeMockWs();
     const cb = makeCallbacks();
@@ -541,6 +556,8 @@ describe('CollaborationManager – destroy', () => {
       JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect' }] }),
     );
     const collab = new CollaborationManager(ws as unknown as WsClient, cb);
+    // Simulate post-welcome state so _postEvent would fire if timer ran
+    (collab as unknown as { wsClientId: string }).wsClientId = 'test-client';
 
     // Schedule a pending draw flush
     collab.broadcastDraw(false);
