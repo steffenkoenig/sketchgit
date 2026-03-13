@@ -22,7 +22,7 @@ spec:
 
   source:
     repoURL: https://github.com/steffenkoenig/sketchgit.git
-    targetRevision: HEAD
+    targetRevision: main
     path: infrastructure/k8s
 
   destination:
