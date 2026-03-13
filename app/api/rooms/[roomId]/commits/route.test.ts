@@ -4,9 +4,12 @@ import { NextRequest } from 'next/server';
 vi.mock('@/lib/db/prisma', () => {
   return {
     prisma: {
-      room: { findUnique: vi.fn() },
-      commit: { findMany: vi.fn() },
+      room: { findUnique: vi.fn(), upsert: vi.fn() },
+      commit: { findMany: vi.fn(), upsert: vi.fn() },
+      branch: { findMany: vi.fn(), upsert: vi.fn() },
+      roomState: { findUnique: vi.fn(), upsert: vi.fn() },
       roomMembership: { findUnique: vi.fn() },
+      $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
     },
   };
 });
@@ -19,7 +22,7 @@ vi.mock('@/lib/authTypes', () => ({
   getAuthSession: vi.fn().mockReturnValue(null),
 }));
 
-import { GET } from './route';
+import { GET, POST } from './route';
 import { prisma } from '@/lib/db/prisma';
 import { auth } from '@/lib/auth';
 import { getAuthSession } from '@/lib/authTypes';
@@ -157,5 +160,139 @@ describe('GET /api/rooms/[roomId]/commits', () => {
     const res = await GET(makeRequest('room-1'), { params: Promise.resolve({ roomId: 'room-1' }) });
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toContain('no-store');
+  });
+});
+
+// ─── GET ?canvas=true (polling fallback) ──────────────────────────────────────
+
+describe('GET /api/rooms/[roomId]/commits?canvas=true', () => {
+  const mockBranchFindMany = prisma.branch.findMany as ReturnType<typeof vi.fn>;
+  const mockRoomStateFindUnique = prisma.roomState.findUnique as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockBranchFindMany.mockResolvedValue([]);
+    mockRoomStateFindUnique.mockResolvedValue(null);
+  });
+
+  it('returns empty commits array when no commits exist', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'r1', isPublic: true }));
+    mockCommitFindMany.mockResolvedValue([]);
+    const res = await GET(makeRequest('r1', { canvas: 'true' }), { params: Promise.resolve({ roomId: 'r1' }) });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { commits: unknown[]; nextCursor: null };
+    expect(body.commits).toHaveLength(0);
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it('returns commits with canvas field included', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'r1', isPublic: true }));
+    const canvasObj = { objects: [], version: '5.3.1', background: '#0a0a0f' };
+    mockCommitFindMany.mockResolvedValue([{
+      sha: 'abc',
+      parentSha: null,
+      parents: [],
+      branch: 'main',
+      message: 'init',
+      createdAt: new Date(1000),
+      isMerge: false,
+      storageType: 'SNAPSHOT',
+      canvasJson: canvasObj,
+    }]);
+    mockBranchFindMany.mockResolvedValue([{ name: 'main', headSha: 'abc' }]);
+    mockRoomStateFindUnique.mockResolvedValue({ headBranch: 'main', headSha: 'abc', isDetached: false });
+
+    const res = await GET(makeRequest('r1', { canvas: 'true' }), { params: Promise.resolve({ roomId: 'r1' }) });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { commits: Array<{ sha: string; canvas: string }> };
+    expect(body.commits).toHaveLength(1);
+    expect(body.commits[0].sha).toBe('abc');
+    expect(typeof body.commits[0].canvas).toBe('string');
+  });
+
+  it('returns no-store Cache-Control (mutable)', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'r1', isPublic: true }));
+    mockCommitFindMany.mockResolvedValue([]);
+    const res = await GET(makeRequest('r1', { canvas: 'true' }), { params: Promise.resolve({ roomId: 'r1' }) });
+    expect(res.headers.get('cache-control')).toContain('no-store');
+  });
+});
+
+// ─── POST /api/rooms/[roomId]/commits ─────────────────────────────────────────
+
+describe('POST /api/rooms/[roomId]/commits', () => {
+  const mockRoomUpsert = prisma.room.upsert as ReturnType<typeof vi.fn>;
+  const mockCommitUpsert = prisma.commit.upsert as ReturnType<typeof vi.fn>;
+  const mockBranchUpsert = prisma.branch.upsert as ReturnType<typeof vi.fn>;
+  const mockRoomStateUpsert = prisma.roomState.upsert as ReturnType<typeof vi.fn>;
+
+  const validBody = {
+    sha: 'abcdef1234567890',
+    commit: {
+      parent: null,
+      parents: [],
+      branch: 'main',
+      message: 'feat: add shape',
+      canvas: '{"objects":[],"version":"5.3.1"}',
+      isMerge: false,
+    },
+  };
+
+  function makePostRequest(roomId: string, body: unknown): NextRequest {
+    return new NextRequest(`http://localhost/api/rooms/${roomId}/commits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRoomUpsert.mockResolvedValue({});
+    mockCommitUpsert.mockResolvedValue({});
+    mockBranchUpsert.mockResolvedValue({});
+    mockRoomStateUpsert.mockResolvedValue({});
+  });
+
+  it('returns 201 with sha on success (public room)', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'r1', isPublic: true }));
+    const res = await POST(makePostRequest('r1', validBody), { params: Promise.resolve({ roomId: 'r1' }) });
+    expect(res.status).toBe(201);
+    const body = await res.json() as { sha: string };
+    expect(body.sha).toBe(validBody.sha);
+  });
+
+  it('returns 404 when room does not exist', async () => {
+    mockRoomFindUnique.mockResolvedValue(null);
+    const res = await POST(makePostRequest('no-room', validBody), { params: Promise.resolve({ roomId: 'no-room' }) });
+    expect(res.status).toBe(404);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROOM_NOT_FOUND');
+  });
+
+  it('returns 401 for private room when unauthenticated', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'r-priv', isPublic: false }));
+    const res = await POST(makePostRequest('r-priv', validBody), { params: Promise.resolve({ roomId: 'r-priv' }) });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 422 for invalid body (missing branch)', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'r1', isPublic: true }));
+    const badBody = { sha: 'abcdef1234567890', commit: { parents: [], message: 'x', canvas: '{}' } };
+    const res = await POST(makePostRequest('r1', badBody), { params: Promise.resolve({ roomId: 'r1' }) });
+    expect(res.status).toBe(422);
+  });
+
+  it('returns 400 for invalid JSON', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'r1', isPublic: true }));
+    const req = new NextRequest('http://localhost/api/rooms/r1/commits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not-json',
+    });
+    const res = await POST(req, { params: Promise.resolve({ roomId: 'r1' }) });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('INVALID_JSON');
   });
 });

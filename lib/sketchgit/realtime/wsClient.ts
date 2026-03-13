@@ -19,6 +19,23 @@
 import { ConnectionStatus, WsMessage } from '../types';
 import { showToast } from '../ui/toast';
 import { logger } from '../logger';
+import { PollingFallback } from './pollingFallback';
+
+// ─── Narrow type for commit messages ─────────────────────────────────────────
+
+interface CommitWsMessage extends WsMessage {
+  readonly type: 'commit';
+  sha: string;
+  commit: unknown;
+}
+
+function isCommitMessage(data: WsMessage): data is CommitWsMessage {
+  return (
+    data.type === 'commit' &&
+    typeof (data as CommitWsMessage).sha === 'string' &&
+    (data as CommitWsMessage).commit !== undefined
+  );
+}
 
 // ─── Reconnect configuration ─────────────────────────────────────────────────
 
@@ -41,6 +58,9 @@ export class WsClient {
   private retryCount = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false; // true when disconnect() is called
+
+  // ── Polling fallback (REST-based degraded mode) ───────────────────────────
+  private polling: PollingFallback | null = null;
 
   // ── Public getters for identity fields ───────────────────────────────────
   get name(): string { return this.myName; }
@@ -70,12 +90,15 @@ export class WsClient {
     this.myColor = myColor;
     this.retryCount = 0;
     this.intentionalClose = false;
+    // Stop polling – WS is about to (re)connect.
+    this._stopPolling();
     this._openSocket();
   }
 
   /** Close the connection cleanly – no reconnect will be attempted. */
   disconnect(): void {
     this.intentionalClose = true;
+    this._stopPolling();
     this._clearTimers();
     if (this.socket) {
       try { this.socket.close(); } catch { /* ignore */ }
@@ -86,9 +109,16 @@ export class WsClient {
 
   /**
    * Send a message to the server.
-   * If the socket is not open the message is queued and sent on reconnect.
+   * When polling fallback is active, commit messages are persisted via REST
+   * instead of being queued for a WS connection that will not come back.
+   * All other messages are still queued (they will send if WS reconnects).
    */
   send(data: WsMessage): void {
+    // Route commit writes to REST when in polling fallback mode.
+    if (this.polling?.isActive() && isCommitMessage(data)) {
+      void this.polling.postCommit(data.sha, data.commit);
+      return;
+    }
     const json = JSON.stringify(data);
     if (this.socket?.readyState === WebSocket.OPEN) {
       try { this.socket.send(json); } catch { /* ignore */ }
@@ -137,6 +167,28 @@ export class WsClient {
 
   isConnected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  isPolling(): boolean {
+    return this.polling?.isActive() ?? false;
+  }
+
+  /**
+   * Start the REST polling fallback.  Called by CollaborationManager when the
+   * WS connection has permanently failed (max retries exceeded).
+   *
+   * @param knownShas – SHAs already in the local git model; prevents re-dispatching
+   *                    commits the client already has on the first poll.
+   */
+  startPolling(knownShas: Set<string>): void {
+    if (this.polling?.isActive()) return; // already polling
+    this.polling = new PollingFallback(this.roomId, (msg) => this.onMessage?.(msg));
+    this.polling.start(knownShas);
+  }
+
+  /** Stop the REST polling fallback. Called when WS is about to reconnect. */
+  stopPolling(): void {
+    this._stopPolling();
   }
 
   // ─── Internal helpers ─────────────────────────────────────────────────────
@@ -281,6 +333,11 @@ export class WsClient {
       this.reconnectTimer = null;
     }
     this._clearHeartbeat();
+  }
+
+  private _stopPolling(): void {
+    this.polling?.stop();
+    this.polling = null;
   }
 
   private _setStatus(status: ConnectionStatus): void {
