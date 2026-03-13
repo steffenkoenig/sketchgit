@@ -21,9 +21,8 @@ spec:
       # ── Run database migrations before starting the app ───────────────────
       initContainers:
         - name: db-migrate
-          # Use the same image as the main container.
-          # Replace with your actual image reference.
-          image: ghcr.io/steffenkoenig/sketchgit:latest
+          # Image tag is updated automatically by the deploy workflow (deploy.yml).
+          image: ghcr.io/steffenkoenig/sketchgit:0000000000000000000000000000000000000000
           command:
             - npx
             - prisma
@@ -36,9 +35,9 @@ spec:
                 name: sketchgit-secret
       containers:
         - name: sketchgit
-          # Replace with your actual image reference.
-          # For microk8s built-in registry: localhost:32000/sketchgit:<tag>
-          image: ghcr.io/steffenkoenig/sketchgit:latest
+          # Image tag is updated automatically by the deploy workflow (deploy.yml).
+          # For microk8s built-in registry: localhost:32000/sketchgit:<sha>
+          image: ghcr.io/steffenkoenig/sketchgit:0000000000000000000000000000000000000000
           imagePullPolicy: Always
           ports:
             - name: http
