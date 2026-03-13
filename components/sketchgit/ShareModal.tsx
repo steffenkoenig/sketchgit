@@ -45,6 +45,15 @@ export type ShareModalProps = {
 export function ShareModal({ isOpen, onClose, roomId, prefilledCommitSha }: ShareModalProps) {
   const t = useTranslations();
 
+  /** Translate an API error `{ code?, message? }` to a localised string. */
+  const resolveApiError = useCallback(
+    (err: { code?: string; message?: string }): string => {
+      const code = err.code ?? "INTERNAL_ERROR";
+      return t(`errors.${code}` as Parameters<typeof t>[0]) ?? err.message ?? t("errors.INTERNAL_ERROR");
+    },
+    [t],
+  );
+
   // ── form state ─────────────────────────────────────────────────────────────
   const [label, setLabel] = useState("");
   const [scope, setScope] = useState<ShareScope>("ROOM");
@@ -62,6 +71,7 @@ export function ShareModal({ isOpen, onClose, roomId, prefilledCommitSha }: Shar
   const [links, setLinks] = useState<ShareLinkSummary[]>([]);
   const [loadingLinks, setLoadingLinks] = useState(false);
   const [linksLoaded, setLinksLoaded] = useState(false);
+  const [linksError, setLinksError] = useState<string | null>(null);
 
   // ── reset form and pre-fill on open ────────────────────────────────────────
   useEffect(() => {
@@ -74,6 +84,7 @@ export function ShareModal({ isOpen, onClose, roomId, prefilledCommitSha }: Shar
     setNewLinkUrl(null);
     setCopiedNew(false);
     setLinksLoaded(false);
+    setLinksError(null);
     if (prefilledCommitSha) {
       setScope("COMMIT");
       setCommitSha(prefilledCommitSha);
@@ -89,21 +100,25 @@ export function ShareModal({ isOpen, onClose, roomId, prefilledCommitSha }: Shar
   const loadLinks = useCallback(async () => {
     if (!roomId) return;
     setLoadingLinks(true);
+    setLinksError(null);
     try {
       const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/share-links`);
       if (res.ok) {
         const data = (await res.json()) as { links: ShareLinkSummary[] };
         setLinks(data.links ?? []);
       } else {
+        const err = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+        setLinksError(resolveApiError(err));
         setLinks([]);
       }
     } catch {
+      setLinksError(t("errors.INTERNAL_ERROR"));
       setLinks([]);
     } finally {
       setLoadingLinks(false);
       setLinksLoaded(true);
     }
-  }, [roomId]);
+  }, [roomId, resolveApiError]);
 
   useEffect(() => {
     if (isOpen && roomId) {
@@ -141,9 +156,9 @@ export function ShareModal({ isOpen, onClose, roomId, prefilledCommitSha }: Shar
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = (await res.json()) as { url?: string; message?: string };
+      const data = (await res.json()) as { url?: string; code?: string; message?: string };
       if (!res.ok) {
-        setCreateError(data.message ?? t("errors.INTERNAL_ERROR"));
+        setCreateError(resolveApiError(data));
       } else {
         setNewLinkUrl(data.url ?? null);
         void loadLinks();
@@ -153,7 +168,7 @@ export function ShareModal({ isOpen, onClose, roomId, prefilledCommitSha }: Shar
     } finally {
       setCreating(false);
     }
-  }, [roomId, scope, permission, label, branches, commitSha, expiresInHours, maxUses, t, loadLinks]);
+  }, [roomId, scope, permission, label, branches, commitSha, expiresInHours, maxUses, t, resolveApiError, loadLinks]);
 
   // ── copy the newly created link to clipboard ──────────────────────────────
   const handleCopyNew = useCallback(() => {
@@ -326,6 +341,14 @@ export function ShareModal({ isOpen, onClose, roomId, prefilledCommitSha }: Shar
         {loadingLinks ? (
           <div className="info-box" style={{ marginTop: "12px" }}>
             {t("modal.share.loading")}
+          </div>
+        ) : linksError ? (
+          <div
+            className="info-box"
+            role="alert"
+            style={{ marginTop: "12px", color: "var(--a2)", borderColor: "var(--a2)" }}
+          >
+            {linksError}
           </div>
         ) : linksLoaded && links.length > 0 ? (
           <div style={{ marginTop: "12px" }}>

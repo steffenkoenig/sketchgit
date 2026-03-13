@@ -3,7 +3,7 @@
  *
  * P091 – Revoke a single share link by its ID.
  *
- * Auth: room OWNER or the creator of the link.
+ * Auth: room OWNER only.
  * Returns: { revoked: true }
  */
 import { NextRequest, NextResponse } from "next/server";

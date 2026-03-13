@@ -953,21 +953,33 @@ void app.prepare()
       }
 
       // P091 – COMMITTER role: can draw and commit but cannot create new branches.
-      if (
-        client.role === "COMMITTER" &&
-        message.type === "branch-update"
-      ) {
-        const buMsg = message as WsMessage & { action?: string };
-        if (buMsg.action === "create") {
-          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Your share link does not allow branch creation" });
-          return;
+      // A branch-update is considered a "new branch creation" when the branch name
+      // is not already in the room's cached snapshot, and it is neither a rollback
+      // nor a detached-HEAD checkout.
+      if (client.role === "COMMITTER" && message.type === "branch-update") {
+        const buMsg = message as WsMessage & { branch?: string | null; isRollback?: boolean; detached?: boolean };
+        if (
+          typeof buMsg.branch === "string" &&
+          buMsg.branch.length > 0 &&
+          !buMsg.isRollback &&
+          !buMsg.detached
+        ) {
+          const snapshot = roomCache.get(roomId);
+          if (snapshot && !(buMsg.branch in snapshot.branches)) {
+            sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Your share link does not allow branch creation" });
+            return;
+          }
         }
       }
 
       // P091 – BRANCH-scoped share link: reject operations targeting non-allowed branches.
+      // For commit messages the branch is nested under `message.commit.branch`;
+      // for branch-update messages it is the top-level `message.branch`.
       if (client.shareScope === "BRANCH" && client.allowedBranches) {
+        const msgWithBranch = message as WsMessage & { branch?: string; commit?: { branch?: string } };
         const targetBranch =
-          (message as WsMessage & { branch?: string }).branch;
+          msgWithBranch.branch ??
+          (message.type === "commit" ? msgWithBranch.commit?.branch : undefined);
         if (
           typeof targetBranch === "string" &&
           !client.allowedBranches.includes(targetBranch)
@@ -1182,20 +1194,69 @@ void app.prepare()
 
       // Serve historical state from DB (or cache). Always send to each connecting
       // client so they get the latest committed state even when rejoining a room.
+      // P091 – Scope-aware fullsync: BRANCH and COMMIT scoped clients receive only
+      // the subset of history their share link grants access to.
       let snapshot: RoomSnapshot | null | undefined = roomCache.get(roomId);
       if (!snapshot) {
         snapshot = await dbLoadSnapshot(roomId);
         if (snapshot) roomCache.set(roomId, snapshot);
       }
       if (snapshot) {
-        sendTo(client, {
-          type: "fullsync",
-          targetId: clientId,
-          commits: snapshot.commits,
-          branches: snapshot.branches,
-          HEAD: snapshot.HEAD,
-          detached: snapshot.detached,
-        });
+        if (client.shareScope === "COMMIT" && client.allowedCommitSha) {
+          // COMMIT scope: send only the single requested commit in detached HEAD state.
+          const sha = client.allowedCommitSha;
+          const singleCommit = snapshot.commits[sha];
+          sendTo(client, {
+            type: "fullsync",
+            targetId: clientId,
+            commits: singleCommit ? { [sha]: singleCommit } : {},
+            branches: {},
+            HEAD: sha,
+            detached: sha,
+          });
+        } else if (client.shareScope === "BRANCH" && client.allowedBranches) {
+          // BRANCH scope: filter commits and branches to those belonging to allowed branches.
+          const allowed = new Set(client.allowedBranches);
+          const filteredBranches: Record<string, string> = {};
+          for (const [name, sha] of Object.entries(snapshot.branches)) {
+            if (allowed.has(name)) filteredBranches[name] = sha;
+          }
+          // Include all commits reachable from allowed branch tips.
+          const allowedShas = new Set(Object.values(filteredBranches));
+          const filteredCommits: Record<string, CommitRecord> = {};
+          for (const [sha, commit] of Object.entries(snapshot.commits)) {
+            if (
+              allowedShas.has(sha) ||
+              (typeof (commit as CommitRecord & { branch?: string }).branch === "string" &&
+                allowed.has((commit as CommitRecord & { branch?: string }).branch!))
+            ) {
+              filteredCommits[sha] = commit;
+            }
+          }
+          // Use the first allowed branch that exists in the filtered snapshot as HEAD,
+          // falling back to the room HEAD only if it's already in the allowed set.
+          const firstFilteredBranch = Object.keys(filteredBranches)[0];
+          const head = allowed.has(snapshot.HEAD)
+            ? snapshot.HEAD
+            : (firstFilteredBranch ?? snapshot.HEAD);
+          sendTo(client, {
+            type: "fullsync",
+            targetId: clientId,
+            commits: filteredCommits,
+            branches: filteredBranches,
+            HEAD: head,
+            detached: null,
+          });
+        } else {
+          sendTo(client, {
+            type: "fullsync",
+            targetId: clientId,
+            commits: snapshot.commits,
+            branches: snapshot.branches,
+            HEAD: snapshot.HEAD,
+            detached: snapshot.detached,
+          });
+        }
       }
 
       client.on("message", asyncHandler("ws:message", async (raw) => {

@@ -797,12 +797,14 @@ export async function consumeShareLink(
   maxUses: number | null,
 ): Promise<boolean> {
   if (maxUses === null) {
-    // Unlimited — just increment.
-    const result = await prisma.shareLink.updateMany({
+    // Unlimited — verify the token exists without writing a hot-row increment.
+    // useCount is not tracked for unlimited links since it serves no enforcement
+    // purpose when there is no cap.
+    const exists = await prisma.shareLink.findFirst({
       where: { token },
-      data: { useCount: { increment: 1 } },
+      select: { id: true },
     });
-    return result.count > 0;
+    return exists !== null;
   }
   // Conditional update prevents TOCTOU race when maxUses is finite.
   const result = await prisma.shareLink.updateMany({

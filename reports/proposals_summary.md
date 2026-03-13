@@ -119,7 +119,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
 | P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/P090_feature-flag-system.md) |
-| P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/P091_granular-share-links.md) |
+| P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/done/P091_granular-share-links.md) |
 
 ---
 

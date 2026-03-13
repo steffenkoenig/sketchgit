@@ -173,8 +173,16 @@ export function parseCookies(cookieHeader: string | undefined): Map<string, stri
     const eqIdx = part.indexOf("=");
     if (eqIdx < 1) continue;
     const name = part.slice(0, eqIdx).trim();
-    const value = part.slice(eqIdx + 1).trim();
-    if (name) map.set(name, decodeURIComponent(value));
+    const raw = part.slice(eqIdx + 1).trim();
+    let value: string;
+    try {
+      value = decodeURIComponent(raw);
+    } catch {
+      // Malformed percent-encoding — use the raw value rather than crashing
+      // the WS upgrade path.
+      value = raw;
+    }
+    if (name) map.set(name, value);
   }
   return map;
 }
