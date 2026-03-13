@@ -578,6 +578,9 @@ export class CanvasEngine {
   /**
    * Record the initial finger distance and current zoom level when a two-finger
    * gesture begins.  Single-touch events are ignored so normal drawing still works.
+   *
+   * A minimum start-distance of 10 px is required to avoid division-by-zero or
+   * enormous scale factors when fingers are placed nearly on top of each other.
    */
   private onTouchStart(e: TouchEvent): void {
     if (e.touches.length === 2) {
@@ -586,7 +589,14 @@ export class CanvasEngine {
       e.preventDefault();
       const t0 = e.touches[0];
       const t1 = e.touches[1];
-      this.touchStartDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      // Ignore a two-finger touch where fingers are essentially on the same spot
+      // to prevent division by zero / explosive scale in onTouchMove.
+      if (dist < 10) {
+        this.touchStartDist = null;
+        return;
+      }
+      this.touchStartDist = dist;
       this.touchStartZoom = this.canvas?.getZoom() ?? 1;
     } else {
       this.touchStartDist = null;
