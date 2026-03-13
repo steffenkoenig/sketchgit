@@ -21,10 +21,15 @@ vi.mock('@/lib/authTypes', () => ({
 
 import { GET } from './route';
 import { prisma } from '@/lib/db/prisma';
+import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/authTypes';
 import { makeRoom } from '@/lib/test/factories';
 
 const mockRoomFindUnique = prisma.room.findUnique as ReturnType<typeof vi.fn>;
 const mockCommitFindMany = prisma.commit.findMany as ReturnType<typeof vi.fn>;
+const mockMembershipFindUnique = prisma.roomMembership.findUnique as ReturnType<typeof vi.fn>;
+const mockAuth = auth as ReturnType<typeof vi.fn>;
+const mockGetAuthSession = getAuthSession as ReturnType<typeof vi.fn>;
 
 function makeRequest(roomId: string, query: Record<string, string> = {}): NextRequest {
   const url = new URL(`http://localhost/api/rooms/${roomId}/commits`);
@@ -121,6 +126,18 @@ describe('GET /api/rooms/[roomId]/commits', () => {
     expect(res.status).toBe(401);
     const body = await res.json() as { code: string };
     expect(body.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('returns 403 for private room when authenticated but not a member', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'room-priv', isPublic: false }));
+    const session = { user: { id: 'usr_1' } };
+    mockAuth.mockResolvedValueOnce(session);
+    mockGetAuthSession.mockReturnValueOnce(session);
+    mockMembershipFindUnique.mockResolvedValue(null);
+    const res = await GET(makeRequest('room-priv'), { params: Promise.resolve({ roomId: 'room-priv' }) });
+    expect(res.status).toBe(403);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('FORBIDDEN');
   });
 
   // ── P070: Cache-Control headers ──────────────────────────────────────────────
