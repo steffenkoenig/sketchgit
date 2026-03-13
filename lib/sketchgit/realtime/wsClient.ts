@@ -19,6 +19,23 @@
 import { ConnectionStatus, WsMessage } from '../types';
 import { showToast } from '../ui/toast';
 import { logger } from '../logger';
+import { PollingFallback } from './pollingFallback';
+
+// ─── Narrow type for commit messages ─────────────────────────────────────────
+
+interface CommitWsMessage extends WsMessage {
+  readonly type: 'commit';
+  sha: string;
+  commit: unknown;
+}
+
+function isCommitMessage(data: WsMessage): data is CommitWsMessage {
+  return (
+    data.type === 'commit' &&
+    typeof (data as CommitWsMessage).sha === 'string' &&
+    (data as CommitWsMessage).commit !== undefined
+  );
+}
 
 // ─── Reconnect configuration ─────────────────────────────────────────────────
 
@@ -41,6 +58,9 @@ export class WsClient {
   private retryCount = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false; // true when disconnect() is called
+
+  // ── Polling fallback (REST-based degraded mode) ───────────────────────────
+  private polling: PollingFallback | null = null;
 
   // ── Public getters for identity fields ───────────────────────────────────
   get name(): string { return this.myName; }
@@ -70,12 +90,15 @@ export class WsClient {
     this.myColor = myColor;
     this.retryCount = 0;
     this.intentionalClose = false;
+    // Stop polling – WS is about to (re)connect.
+    this._stopPolling();
     this._openSocket();
   }
 
   /** Close the connection cleanly – no reconnect will be attempted. */
   disconnect(): void {
     this.intentionalClose = true;
+    this._stopPolling();
     this._clearTimers();
     if (this.socket) {
       try { this.socket.close(); } catch { /* ignore */ }
@@ -86,9 +109,16 @@ export class WsClient {
 
   /**
    * Send a message to the server.
-   * If the socket is not open the message is queued and sent on reconnect.
+   * When polling fallback is active, commit messages are persisted via REST
+   * instead of being queued for a WS connection that will not come back.
+   * All other messages are still queued (they will send if WS reconnects).
    */
   send(data: WsMessage): void {
+    // Route commit writes to REST when in polling fallback mode.
+    if (this.polling?.isActive() && isCommitMessage(data)) {
+      void this.polling.postCommit(data.sha, data.commit);
+      return;
+    }
     const json = JSON.stringify(data);
     if (this.socket?.readyState === WebSocket.OPEN) {
       try { this.socket.send(json); } catch { /* ignore */ }
@@ -139,14 +169,43 @@ export class WsClient {
     return this.socket?.readyState === WebSocket.OPEN;
   }
 
+  isPolling(): boolean {
+    return this.polling?.isActive() ?? false;
+  }
+
+  /**
+   * Start the REST polling fallback.  Called by CollaborationManager when the
+   * WS connection has permanently failed (max retries exceeded).
+   *
+   * @param knownShas – SHAs already in the local git model; prevents re-dispatching
+   *                    commits the client already has on the first poll.
+   */
+  startPolling(knownShas: Set<string>): void {
+    if (this.polling?.isActive()) return; // already polling
+    this.polling = new PollingFallback(this.roomId, (msg) => this.onMessage?.(msg));
+    this.polling.start(knownShas);
+  }
+
+  /** Stop the REST polling fallback. Called when WS is about to reconnect. */
+  stopPolling(): void {
+    this._stopPolling();
+  }
+
   // ─── Internal helpers ─────────────────────────────────────────────────────
 
   private _buildUrl(): string {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
     const name = encodeURIComponent(this.myName || 'User');
     const color = encodeURIComponent(this.myColor || '#7c6eff');
-    return `${protocol}//${host}/ws?room=${encodeURIComponent(this.roomId)}&name=${name}&color=${color}`;
+    // NEXT_PUBLIC_WS_URL overrides the default same-host WebSocket endpoint.
+    // Set this when the WebSocket server is hosted separately from the Next.js
+    // app (e.g. on Railway/Render/Fly.io while the frontend is on Vercel).
+    // This variable is substituted at build time by the Next.js bundler
+    // (NEXT_PUBLIC_* prefix), not looked up at runtime.
+    // Example: NEXT_PUBLIC_WS_URL=wss://my-ws-server.railway.app/ws
+    const base =
+      process.env.NEXT_PUBLIC_WS_URL ??
+      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    return `${base}?room=${encodeURIComponent(this.roomId)}&name=${name}&color=${color}`;
   }
 
   private _openSocket(): void {
@@ -197,9 +256,13 @@ export class WsClient {
       this.onMessage?.(data);
     });
 
-    ws.addEventListener('error', () => {
+    ws.addEventListener('error', (ev: Event) => {
       // onerror is always followed by onclose; log and let onclose handle retry
-      logger.warn('[WsClient] WebSocket error – will retry on close');
+      const event = ev as ErrorEvent;
+      const fields: Record<string, unknown> = {};
+      if (event.message) fields.message = event.message;
+      if (event.error instanceof Error) fields.error = event.error.message;
+      logger.warn(fields, '[WsClient] WebSocket error – will retry on close');
     });
 
     ws.addEventListener('close', (ev) => {
@@ -270,6 +333,11 @@ export class WsClient {
       this.reconnectTimer = null;
     }
     this._clearHeartbeat();
+  }
+
+  private _stopPolling(): void {
+    this.polling?.stop();
+    this.polling = null;
   }
 
   private _setStatus(status: ConnectionStatus): void {
