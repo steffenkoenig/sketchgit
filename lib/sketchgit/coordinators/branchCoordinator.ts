@@ -15,6 +15,7 @@
 import { AppContext } from './appContext';
 import { showToast } from '../ui/toast';
 import { openModal, closeModal } from '../ui/modals';
+import { savePreferences } from '../userPreferences';
 
 export class BranchCoordinator {
   /** SHA to branch from; null means "from current HEAD". */
@@ -114,6 +115,9 @@ export class BranchCoordinator {
           branch: name,
           headSha: branchTip ?? null,
         });
+        // Persist last-visited branch and reflect it in the URL bar.
+        savePreferences({ lastBranchName: name });
+        _setBranchInUrl(name);
       });
       list.appendChild(item);
     }
@@ -182,6 +186,9 @@ export class BranchCoordinator {
     if (commitSha) {
       ws.send({ type: 'commit', sha: commitSha, commit: git.commits[commitSha] });
     }
+    // Persist last-visited branch and reflect it in the URL bar.
+    savePreferences({ lastBranchName: name });
+    _setBranchInUrl(name);
   }
 
   /** Generate the next available auto-name (branch-1, branch-2, …). */
@@ -191,4 +198,13 @@ export class BranchCoordinator {
     while (git.branches[`branch-${n}`] !== undefined) n++;
     return `branch-${n}`;
   }
+}
+
+// ─── Module-level helper ──────────────────────────────────────────────────────
+
+/** Update the `?branch=` URL param without triggering a navigation. */
+function _setBranchInUrl(branchName: string): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set('branch', branchName);
+  window.history.replaceState({}, '', url.toString());
 }
