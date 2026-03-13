@@ -60,7 +60,7 @@ function makeRoomLink(overrides: Partial<{
   useCount: number;
   branches: string[];
   commitSha: string | null;
-  isPublic: boolean;
+  room: { isPublic: boolean };
 }> = {}) {
   return {
     id: 'sl_1',

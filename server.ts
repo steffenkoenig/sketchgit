@@ -28,7 +28,7 @@ import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
 import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, addRoomMember, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { validateCommitMessage } from "./lib/server/commitValidation.js";
-import { verifyScopeCookie, parseCookies, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
+import { verifyScopeCookie, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -1109,7 +1109,7 @@ void app.prepare()
         // access to BRANCH/COMMIT-scoped links without a full membership record.
         if (!access.allowed) {
           const cookies = parseCookies(client._cookieHeader);
-          const scopeValue = cookies.get("sketchgit_share_scope");
+          const scopeValue = cookies["sketchgit_share_scope"];
           if (scopeValue) {
             const payload = verifyScopeCookie(scopeValue);
             if (payload && payload.roomId === roomId) {

@@ -221,7 +221,7 @@ export interface RoomSummary {
   createdAt: Date;
   updatedAt: Date;
   commitCount: number;
-  role: "OWNER" | "EDITOR" | "VIEWER";
+  role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER";
 }
 
 /**
