@@ -14,7 +14,7 @@ vi.mock('fabric', () => {
 });
 
 // P076 – mock pdf-lib using vi.hoisted so variables are available inside vi.mock factory.
-const { mockPdfPage, mockPngImage, mockPdfDoc } = vi.hoisted(() => {
+const { mockPdfPage, mockPdfDoc } = vi.hoisted(() => {
   const mockPdfPage = { drawImage: vi.fn() };
   const mockPngImage = { scaleToFit: vi.fn().mockReturnValue({ width: 200, height: 100 }) };
   const mockPdfDoc = {
