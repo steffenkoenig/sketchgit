@@ -51,9 +51,8 @@ export async function POST(
     {
       type: "object-lock",
       objectIds,
-      color: senderColor ?? color ?? "#fbbf24",
-      senderId: clientId,
       senderColor: senderColor ?? color ?? "#fbbf24",
+      senderId: clientId,
       roomId,
     },
     clientId,

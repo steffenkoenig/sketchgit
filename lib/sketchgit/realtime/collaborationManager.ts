@@ -102,11 +102,13 @@ export class CollaborationManager {
    * not interrupt the UX.
    */
   private _postEvent(path: string, body: Record<string, unknown>): void {
+    // Guard: do not send REST events before the welcome handshake assigns a clientId.
+    if (!this.wsClientId) return;
     const url = `/api/rooms/${encodeURIComponent(this.currentRoomId)}/${path}`;
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: this.wsClientId ?? '', ...body }),
+      body: JSON.stringify({ clientId: this.wsClientId, ...body }),
     }).catch((err: unknown) => {
       logger.warn(`[CollabManager] REST event failed (${path}): ${String(err)}`);
     });
