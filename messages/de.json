@@ -164,6 +164,10 @@
     "INVALID_JSON": "Der Anfrage-Body konnte nicht geparst werden.",
     "EXPORT_FAILED": "Canvas-Export fehlgeschlagen. Bitte erneut versuchen.",
     "CANVAS_NOT_FOUND": "Keine Canvas-Daten für diesen Commit gefunden.",
-    "INTERNAL_ERROR": "Ein unerwarteter Fehler ist aufgetreten. Bitte erneut versuchen."
+    "INTERNAL_ERROR": "Ein unerwarteter Fehler ist aufgetreten. Bitte erneut versuchen.",
+    "SHARE_LINK_EXPIRED": "Dieser Freigabe-Link ist abgelaufen.",
+    "SHARE_LINK_EXHAUSTED": "Dieser Freigabe-Link hat sein Nutzungslimit erreicht.",
+    "SHARE_LINK_INVALID": "Dieser Freigabe-Link ist ungültig oder wurde widerrufen.",
+    "SHARE_LINK_FORBIDDEN": "Ihr Freigabe-Link erlaubt diese Aktion nicht."
   }
 }

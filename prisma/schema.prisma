@@ -28,6 +28,7 @@ model User {
   commits          Commit[]
   roomEvents       RoomEvent[]      @relation("RoomEventActor")
   createdInvitations RoomInvitation[] @relation("RoomInvitationCreator")
+  createdShareLinks  ShareLink[]      @relation("ShareLinkCreator")
 }
 
 model Account {
@@ -74,6 +75,7 @@ model Room {
   state       RoomState?
   events      RoomEvent[]
   invitations RoomInvitation[]
+  shareLinks  ShareLink[]
 }
 
 model RoomMembership {
@@ -93,6 +95,8 @@ model RoomMembership {
 enum MemberRole {
   OWNER
   EDITOR
+  // P091 – can draw and commit but cannot create new branches or administer
+  COMMITTER
   VIEWER
 }
 
@@ -192,4 +196,48 @@ model RoomInvitation {
 
   @@index([roomId])
   @@index([expiresAt])
+}
+
+// ─── Granular share links (P091) ──────────────────────────────────────────────
+
+enum ShareScope {
+  ROOM   // Grants access to the entire room (all branches and commits)
+  BRANCH // Grants access to one or more named branches only
+  COMMIT // Grants read-only access to a single commit snapshot
+}
+
+enum SharePermission {
+  ADMIN          // Administer room: manage members, room settings
+  BRANCH_CREATE  // Draw, commit, and create branches (equivalent to EDITOR)
+  WRITE          // Draw and commit only; no branch creation
+  VIEW           // Read-only: browse commits/branches, no writes
+}
+
+model ShareLink {
+  id         String          @id @default(cuid())
+  /// 32-byte cryptographically random token, hex-encoded (64 chars)
+  token      String          @unique
+  roomId     String
+  /// Optional human-readable label to distinguish multiple links
+  label      String?
+  scope      ShareScope      @default(ROOM)
+  /// Populated for BRANCH scope: names of branches the recipient may access
+  branches   String[]        @default([])
+  /// Populated for COMMIT scope: SHA of the accessible commit
+  commitSha  String?
+  permission SharePermission @default(VIEW)
+  createdBy  String?
+  /// null = never expires
+  expiresAt  DateTime?
+  /// null = unlimited uses
+  maxUses    Int?
+  useCount   Int             @default(0)
+  createdAt  DateTime        @default(now())
+
+  room    Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  creator User? @relation("ShareLinkCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([roomId])
+  @@index([expiresAt])
+  @@index([commitSha])
 }

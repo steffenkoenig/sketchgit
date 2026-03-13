@@ -25,9 +25,10 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
-import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
+import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, addRoomMember, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { validateCommitMessage } from "./lib/server/commitValidation.js";
+import { verifyScopeCookie, parseCookies, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -177,6 +178,12 @@ type ClientState = WebSocket & {
   currentBranch: string;
   /** P079 – HEAD SHA for the client's current branch tip */
   currentHeadSha: string | null;
+  /** P091 – scope restriction from share link (null = full access) */
+  shareScope: "ROOM" | "BRANCH" | "COMMIT" | null;
+  /** P091 – branch names the client may access (non-null for BRANCH scope) */
+  allowedBranches: string[] | null;
+  /** P091 – commit SHA the client may access (non-null for COMMIT scope) */
+  allowedCommitSha: string | null;
   /** Internal: user id resolved during WebSocket upgrade */
   _userId?: string | null;
   /** Internal: remote IP captured during the HTTP upgrade */
@@ -939,6 +946,39 @@ void app.prepare()
         return;
       }
 
+      // P091 – COMMITTER role: can draw and commit but cannot create new branches.
+      if (
+        client.role === "COMMITTER" &&
+        message.type === "branch-update"
+      ) {
+        const buMsg = message as WsMessage & { action?: string };
+        if (buMsg.action === "create") {
+          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Your share link does not allow branch creation" });
+          return;
+        }
+      }
+
+      // P091 – BRANCH-scoped share link: reject operations targeting non-allowed branches.
+      if (client.shareScope === "BRANCH" && client.allowedBranches) {
+        const targetBranch =
+          (message as WsMessage & { branch?: string }).branch;
+        if (
+          typeof targetBranch === "string" &&
+          !client.allowedBranches.includes(targetBranch)
+        ) {
+          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Branch not accessible via your share link" });
+          return;
+        }
+      }
+
+      // P091 – COMMIT-scoped share link: deny all writes; only fullsync-request is allowed.
+      if (client.shareScope === "COMMIT") {
+        if (message.type !== "fullsync-request") {
+          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Share link grants read-only commit access" });
+          return;
+        }
+      }
+
       // Persist commit messages to the database
       if (message.type === "commit" && message.sha && message.commit) {
         // P057 – Validate SHA format and payload size before persisting or relaying
@@ -1018,6 +1058,10 @@ void app.prepare()
       // P079 – initialise branch position to 'main'; updated via profile/branch-update
       client.currentBranch = 'main';
       client.currentHeadSha = null;
+      // P091 – initialise scope fields (no restriction by default)
+      client.shareScope = null;
+      client.allowedBranches = null;
+      client.allowedCommitSha = null;
 
       // P034 – Enforce room access control before adding the client to the room.
       // P066 – If access is denied but the client presents a valid invitation
@@ -1050,6 +1094,39 @@ void app.prepare()
                 });
               }
               access = { allowed: true, role: "EDITOR" };
+            }
+          }
+        }
+
+        // P091 – If access is still denied, check for a scope cookie set by
+        // GET /api/share/[token]. The cookie encodes scope metadata and grants
+        // access to BRANCH/COMMIT-scoped links without a full membership record.
+        if (!access.allowed) {
+          const cookieHeader = (ws as unknown as { _req?: IncomingMessage })._req?.headers?.cookie
+            ?? reqUrl.searchParams.get("_cookie") // test shim only
+            ?? undefined;
+          const cookies = parseCookies(cookieHeader as string | undefined);
+          const scopeValue = cookies.get("sketchgit_share_scope");
+          if (scopeValue) {
+            const payload = verifyScopeCookie(scopeValue);
+            if (payload && payload.roomId === roomId) {
+              const role = mapPermissionToRole(payload.permission);
+              access = { allowed: true, role };
+              client.shareScope = payload.scope;
+              client.allowedBranches = payload.scope === "BRANCH" ? payload.branches : null;
+              client.allowedCommitSha = payload.scope === "COMMIT" ? payload.commitSha : null;
+              // For COMMIT scope force VIEWER role regardless of permission
+              if (payload.scope === "COMMIT") {
+                access = { allowed: true, role: "VIEWER" };
+              }
+              // Add room membership for authenticated users with write access
+              if (
+                client.userId &&
+                payload.scope === "ROOM" &&
+                payload.permission !== "VIEW"
+              ) {
+                await addRoomMember(roomId, client.userId, role as "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER");
+              }
             }
           }
         }

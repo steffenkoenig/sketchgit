@@ -38,6 +38,11 @@ export const ApiErrorCode = {
   INVITATION_EXPIRED: "INVITATION_EXPIRED",
   INVITATION_EXHAUSTED: "INVITATION_EXHAUSTED",
   INVITATION_INVALID: "INVITATION_INVALID",
+  // ── Share links (P091) ───────────────────────────────────────────────────
+  SHARE_LINK_EXPIRED: "SHARE_LINK_EXPIRED",
+  SHARE_LINK_EXHAUSTED: "SHARE_LINK_EXHAUSTED",
+  SHARE_LINK_INVALID: "SHARE_LINK_INVALID",
+  SHARE_LINK_FORBIDDEN: "SHARE_LINK_FORBIDDEN",
   // ── Server ────────────────────────────────────────────────────────────────
   INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;

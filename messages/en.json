@@ -164,6 +164,13 @@
     "INVALID_JSON": "The request body could not be parsed.",
     "EXPORT_FAILED": "Canvas export failed. Please try again.",
     "CANVAS_NOT_FOUND": "No canvas data found for this commit.",
-    "INTERNAL_ERROR": "An unexpected error occurred. Please try again."
+    "INTERNAL_ERROR": "An unexpected error occurred. Please try again.",
+    "INVITATION_EXPIRED": "This invitation has expired.",
+    "INVITATION_EXHAUSTED": "This invitation has reached its use limit.",
+    "INVITATION_INVALID": "This invitation link is invalid.",
+    "SHARE_LINK_EXPIRED": "This share link has expired.",
+    "SHARE_LINK_EXHAUSTED": "This share link has reached its use limit.",
+    "SHARE_LINK_INVALID": "This share link is invalid or has been revoked.",
+    "SHARE_LINK_FORBIDDEN": "Your share link does not grant permission for this action."
   }
 }

@@ -14,7 +14,7 @@
  * P077 – centralised test fixture library to eliminate per-test inline mock objects.
  */
 
-import type { User, Room, Commit, RoomMembership } from "@prisma/client";
+import type { User, Room, Commit, RoomMembership, ShareLink, ShareScope, SharePermission } from "@prisma/client";
 
 let _seq = 0;
 
@@ -72,7 +72,7 @@ export function makeRoom(overrides: Partial<Room> = {}): Room {
 export function makeMembership(
   roomId: string,
   userId: string,
-  role: "OWNER" | "EDITOR" | "VIEWER" = "OWNER",
+  role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER" = "OWNER",
   overrides: Partial<RoomMembership> = {},
 ): RoomMembership {
   return {
@@ -103,6 +103,32 @@ export function makeCommit(
     storageType: "SNAPSHOT",
     isMerge: false,
     authorId: null,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+// ─── ShareLink ────────────────────────────────────────────────────────────────
+
+export function makeShareLink(
+  roomId: string,
+  overrides: Partial<ShareLink> = {},
+): ShareLink {
+  const id = overrides.id ?? `sl_${seq()}`;
+  const token = overrides.token ?? `${"a".repeat(64)}`;
+  return {
+    id,
+    token,
+    roomId,
+    label: null,
+    scope: "ROOM" as ShareScope,
+    branches: [],
+    commitSha: null,
+    permission: "VIEW" as SharePermission,
+    createdBy: null,
+    expiresAt: null,
+    maxUses: null,
+    useCount: 0,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
   };
