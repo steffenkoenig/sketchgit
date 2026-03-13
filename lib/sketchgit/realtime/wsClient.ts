@@ -197,9 +197,13 @@ export class WsClient {
       this.onMessage?.(data);
     });
 
-    ws.addEventListener('error', () => {
+    ws.addEventListener('error', (ev: Event) => {
       // onerror is always followed by onclose; log and let onclose handle retry
-      logger.warn('[WsClient] WebSocket error – will retry on close');
+      const event = ev as ErrorEvent;
+      const fields: Record<string, unknown> = {};
+      if (event.message) fields.message = event.message;
+      if (event.error instanceof Error) fields.error = event.error.message;
+      logger.warn(fields, '[WsClient] WebSocket error – will retry on close');
     });
 
     ws.addEventListener('close', (ev) => {

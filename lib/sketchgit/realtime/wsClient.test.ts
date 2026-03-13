@@ -46,7 +46,13 @@ class MockWebSocket {
 // Install mock before WsClient is imported so it captures the global.
 globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 
+// ── Logger mock ───────────────────────────────────────────────────────────────
+vi.mock('../logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 import { WsClient } from './wsClient';
+import { logger } from '../logger';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
