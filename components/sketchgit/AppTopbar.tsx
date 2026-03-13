@@ -169,6 +169,17 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         aria-haspopup="dialog"
       >{t("topbar.commit")}</Button>
 
+      {/* P091: Share button – only meaningful for authenticated users (API enforces OWNER) */}
+      {session?.user && (
+        <Button
+          variant="outline" size="sm"
+          className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-sky-500 hover:bg-slate-800"
+          onClick={() => call("openShareModal")}
+          aria-label="Open share links dialog"
+          aria-haspopup="dialog"
+        >{t("topbar.share")}</Button>
+      )}
+
       {/* P039: Canvas export download links */}
       <a
         href={`${exportBase}?format=png`}

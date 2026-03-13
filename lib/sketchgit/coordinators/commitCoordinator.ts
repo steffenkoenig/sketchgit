@@ -119,6 +119,20 @@ export class CommitCoordinator {
     this.openBranchCreate(fromSha);
   }
 
+  /**
+   * Open the share modal pre-filled with the commit currently shown in the popup.
+   * Fires a DOM custom event so the React shell can update its state without
+   * creating a hard import dependency between canvas-side code and React.
+   */
+  cpShareCommit(): void {
+    if (!this.popupSHA) return;
+    const sha = this.popupSHA;
+    this.closeCommitPopup();
+    document.dispatchEvent(
+      new CustomEvent('sketchgit:openShareModal', { detail: { commitSha: sha } }),
+    );
+  }
+
   /** Roll back the current branch tip to the commit shown in the popup. */
   cpRollback(): void {
     if (!this.popupSHA) return;

@@ -23,6 +23,7 @@
     "merge": "⇄ Zusammenführen",
     "branch": "⎇ Branch",
     "commit": "● Commit",
+    "share": "🔗 Teilen",
     "signIn": "👤 Anmelden",
     "signOut": "⤴ Abmelden",
     "myDrawings": "Meine Zeichnungen",
@@ -69,6 +70,38 @@
       "label": "Dein Anzeigename",
       "placeholder": "z.B. Alice",
       "confirm": "Zeichnen starten"
+    },
+    "share": {
+      "title": "🔗 Zeichnung teilen",
+      "label": "Bezeichnung (optional)",
+      "labelPlaceholder": "z.B. Nur lesen für Team…",
+      "scope": "Geltungsbereich",
+      "scopeRoom": "Gesamter Raum",
+      "scopeBranch": "Bestimmte Branches",
+      "scopeCommit": "Einzelner Commit (nur lesen)",
+      "branches": "Branch-Namen (kommagetrennt)",
+      "branchesPlaceholder": "z.B. main, feature/x",
+      "commitSha": "Commit-SHA",
+      "commitShaPlaceholder": "64-stellige Commit-SHA",
+      "permission": "Berechtigung",
+      "permView": "Ansicht (nur lesen)",
+      "permWrite": "Schreiben (zeichnen & committen)",
+      "permBranchCreate": "Branch erstellen (Editor)",
+      "permAdmin": "Admin",
+      "expiresIn": "Läuft ab in Stunden (optional)",
+      "expiresPlaceholder": "z.B. 24 — leer lassen für kein Ablaufdatum",
+      "maxUses": "Max. Verwendungen (optional)",
+      "maxUsesPlaceholder": "z.B. 10 — leer lassen für unbegrenzt",
+      "create": "Link erstellen",
+      "cancel": "Schließen",
+      "copyLink": "Kopieren",
+      "copied": "✓ Kopiert",
+      "revoke": "Widerrufen",
+      "revokeAll": "Alle widerrufen",
+      "loading": "Links werden geladen…",
+      "existingLinks": "Aktive Links",
+      "uses": "Aufrufe",
+      "noLinks": "Noch keine aktiven Freigabe-Links."
     }
   },
   "collab": {
@@ -87,7 +120,8 @@
     "headBadge": "◉ HEAD",
     "view": "⤵ Diesen Commit ansehen",
     "newBranch": "⎇ Neuer Branch von hier",
-    "rollback": "⚠ Branch auf diesen Commit zurücksetzen"
+    "rollback": "⚠ Branch auf diesen Commit zurücksetzen",
+    "share": "🔗 Diesen Commit teilen"
   },
   "objectTypes": {
     "rect": "▭ Rechteck",
