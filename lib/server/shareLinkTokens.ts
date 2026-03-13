@@ -96,7 +96,14 @@ export interface ScopeCookiePayload {
   branches: string[];
   commitSha: string | null;
   permission: "ADMIN" | "BRANCH_CREATE" | "WRITE" | "VIEW";
-  /** Expiry unix-ms (short-lived: set to ~15 min from issue to limit replay). */
+  /**
+   * Expiry unix-ms. Set to ~15 min from issue to limit the replay window.
+   *
+   * Security note: within the TTL window a stolen cookie could be replayed.
+   * The short TTL (15 min) limits exposure. Full nonce-based single-use
+   * cookie tracking would require a server-side store and is left for a
+   * future hardening pass.
+   */
   exp: number;
 }
 

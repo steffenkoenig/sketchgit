@@ -785,6 +785,12 @@ export async function getShareLinkByToken(token: string): Promise<{
  * Atomically increment a share link's useCount, enforcing maxUses.
  * Returns true when the increment succeeded (still had a remaining use).
  * When `maxUses` is null (unlimited), always increments and returns true.
+ *
+ * The caller fetches the link record (including `maxUses`) before calling this
+ * function. Passing `maxUses` from that fetch is safe because the conditional
+ * `updateMany` WHERE clause (`useCount: { lt: maxUses }`) is evaluated
+ * atomically in the database — concurrent calls cannot both succeed once the
+ * limit is reached, preventing TOCTOU over-use.
  */
 export async function consumeShareLink(
   token: string,

@@ -53,7 +53,7 @@ export async function GET(
 
   // 1. Verify HMAC signature before any DB lookup
   const expMs = expStr != null ? parseInt(expStr, 10) : null;
-  if (expStr != null && (expMs === null || isNaN(expMs))) {
+  if (expStr != null && isNaN(expMs as number)) {
     return apiError(ApiErrorCode.SHARE_LINK_INVALID, "Invalid share link URL", 400);
   }
   if (!verifyShareLinkSignature(token, roomId, scope, expMs, sig)) {

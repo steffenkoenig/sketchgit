@@ -188,6 +188,8 @@ type ClientState = WebSocket & {
   _userId?: string | null;
   /** Internal: remote IP captured during the HTTP upgrade */
   _ip: string;
+  /** Internal: raw Cookie header captured during the HTTP upgrade (P091) */
+  _cookieHeader?: string | undefined;
 };
 
 const rooms = new Map<string, Map<string, ClientState>>();
@@ -891,6 +893,10 @@ void app.prepare()
           const typedWs = ws as ClientState;
           typedWs._userId = userId;
           typedWs._ip = ip;
+          // P091 – capture Cookie header here during the upgrade so the
+          // connection handler can read the scope cookie without needing
+          // the original IncomingMessage.
+          typedWs._cookieHeader = req.headers.cookie ?? undefined;
           wss.emit("connection", ws, reqUrl);
         });
       })().catch((err: unknown) => {
@@ -1102,10 +1108,7 @@ void app.prepare()
         // GET /api/share/[token]. The cookie encodes scope metadata and grants
         // access to BRANCH/COMMIT-scoped links without a full membership record.
         if (!access.allowed) {
-          const cookieHeader = (ws as unknown as { _req?: IncomingMessage })._req?.headers?.cookie
-            ?? reqUrl.searchParams.get("_cookie") // test shim only
-            ?? undefined;
-          const cookies = parseCookies(cookieHeader as string | undefined);
+          const cookies = parseCookies(client._cookieHeader);
           const scopeValue = cookies.get("sketchgit_share_scope");
           if (scopeValue) {
             const payload = verifyScopeCookie(scopeValue);
@@ -1125,7 +1128,7 @@ void app.prepare()
                 payload.scope === "ROOM" &&
                 payload.permission !== "VIEW"
               ) {
-                await addRoomMember(roomId, client.userId, role as "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER");
+                await addRoomMember(roomId, client.userId, role);
               }
             }
           }
