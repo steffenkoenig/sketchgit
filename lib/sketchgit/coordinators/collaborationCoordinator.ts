@@ -40,8 +40,10 @@ export class CollaborationCoordinator {
     // Restore saved preferences for returning visitors (works for anonymous
     // users too – no account required).
     const prefs = loadPreferences();
-    if (prefs?.name) this.myName = prefs.name;
-    if (prefs?.color) this.myColor = prefs.color;
+    if (prefs) {
+      if (prefs.name) this.myName = prefs.name;
+      if (prefs.color) this.myColor = prefs.color;
+    }
 
     canvas.init();
     const initData = JSON.stringify({ version: '5.3.1', objects: [], background: '#0a0a0f' });

@@ -16,6 +16,7 @@ vi.mock('../ui/modals', () => ({ openModal: vi.fn(), closeModal: vi.fn() }));
 vi.mock('../userPreferences', () => ({
   loadPreferences: vi.fn().mockReturnValue(null),
   savePreferences: vi.fn(),
+  setBranchInUrl: vi.fn(),
 }));
 
 import { openModal, closeModal } from '../ui/modals';

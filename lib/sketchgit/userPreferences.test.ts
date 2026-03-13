@@ -7,7 +7,7 @@
 
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { loadPreferences, savePreferences } from './userPreferences';
+import { loadPreferences, savePreferences, setBranchInUrl } from './userPreferences';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -113,6 +113,26 @@ describe('userPreferences', () => {
 
     it('does not throw when called with an empty object', () => {
       expect(() => savePreferences({})).not.toThrow();
+    });
+  });
+
+  // ── setBranchInUrl ──────────────────────────────────────────────────────
+
+  describe('setBranchInUrl()', () => {
+    it('calls history.replaceState with a URL containing the branch param', () => {
+      const spy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+      setBranchInUrl('feat-x');
+      expect(spy).toHaveBeenCalledOnce();
+      const calledUrl = spy.mock.calls[0][2] as string;
+      expect(new URL(calledUrl, 'http://x').searchParams.get('branch')).toBe('feat-x');
+      spy.mockRestore();
+    });
+
+    it('preserves existing URL params when updating branch', () => {
+      const spy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+      setBranchInUrl('new-branch');
+      expect(spy).toHaveBeenCalledOnce();
+      spy.mockRestore();
     });
   });
 });

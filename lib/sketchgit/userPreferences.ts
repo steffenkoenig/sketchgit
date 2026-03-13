@@ -48,6 +48,17 @@ export function loadPreferences(): UserPreferences | null {
 }
 
 /**
+ * Update the `?branch=` URL parameter without triggering a navigation.
+ * Safe to call in non-browser environments (no-ops when `window` is absent).
+ */
+export function setBranchInUrl(branchName: string): void {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('branch', branchName);
+  window.history.replaceState({}, '', url.toString());
+}
+
+/**
  * Persist a partial update to the stored preferences.
  * Merges the supplied fields with any already-saved values so that
  * updating one field does not erase the others.

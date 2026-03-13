@@ -38,6 +38,10 @@ export function createSketchGitApp() {
 
   // ── Subsystem instances ────────────────────────────────────────────────────
 
+  // Load preferences once at startup so callbacks can use the cached value
+  // without hitting localStorage on every fullsync.
+  const startupPrefs = loadPreferences();
+
   const git = new GitModel((msg) => showToast(msg, true));
   const ws = new WsClient();
 
@@ -70,7 +74,7 @@ export function createSketchGitApp() {
       // Only switch when the target branch actually exists in the received
       // state so we never land in an inconsistent git state.
       const preferredBranch =
-        collab.getBranchFromUrl() || (loadPreferences()?.lastBranchName ?? '');
+        collab.getBranchFromUrl() || (startupPrefs?.lastBranchName ?? '');
       if (
         preferredBranch &&
         state.branches[preferredBranch] !== undefined &&
