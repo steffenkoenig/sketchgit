@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/providers";
 import { NextIntlClientProvider } from "next-intl";
@@ -9,6 +9,16 @@ import { headers, cookies } from "next/headers";
 export const metadata: Metadata = {
   title: "SketchGit",
   description: "Collaborative visual git playground"
+};
+
+/** P085 – Mobile viewport: ensures the page renders at device width instead
+ *  of the browser's default 980px virtual viewport, which would make all UI
+ *  elements appear tiny on phones.  interactive-widget=resizes-content prevents
+ *  the virtual keyboard from hiding the canvas on iOS/Android. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  interactiveWidget: "resizes-content",
 };
 
 type RootLayoutProps = {
