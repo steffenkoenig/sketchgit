@@ -11,7 +11,7 @@ infrastructure/k8s/
 ├── argocd-application.yaml   # ArgoCD Application resource
 ├── namespace.yaml            # sketchgit Namespace
 ├── configmap.yaml            # Non-sensitive runtime configuration
-├── secret.yaml               # App secrets (template – fill before applying)
+├── secret.yaml               # App secrets (template – fill before applying; do not commit real secrets)
 ├── postgres-secret.yaml      # PostgreSQL credentials (template)
 ├── postgres-pvc.yaml         # PersistentVolumeClaim for PostgreSQL data
 ├── postgres-statefulset.yaml # PostgreSQL 16 StatefulSet
@@ -77,8 +77,8 @@ Set `image: localhost:32000/sketchgit:<tag>` in `app-deployment.yaml`.
 
 ### Required: fill in secret values
 
-Edit `secret.yaml` and replace every `CHANGE_ME` placeholder with a real value
-**before** committing or applying the file:
+Edit a local copy of `secret.yaml` (do not commit real secrets) and replace every `CHANGE_ME` placeholder with a real value
+**before** applying the file to your cluster:
 
 | Variable | Description |
 |---|---|
