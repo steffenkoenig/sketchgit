@@ -225,9 +225,9 @@ describe('CommitCoordinator', () => {
 
     it('uses "Update drawing" as default message when input is blank', () => {
       (document.getElementById('commitMsg') as HTMLInputElement).value = '';
-      (ctx.git.commits as Record<string, unknown>)['sha1'] = { sha: 'sha1', message: 'Update drawing' };
+      (ctx.git.commits as Record<string, unknown>)['sha1'] = { sha: 'sha1', message: 'Snapshot at 00:00' };
       coord.doCommit();
-      expect(ctx.git.commit).toHaveBeenCalledWith(expect.any(String), 'Update drawing');
+      expect(ctx.git.commit).toHaveBeenCalledWith(expect.any(String), expect.stringMatching(/^Snapshot at /));
     });
 
     it('does nothing if git.commit returns null (nothing to commit)', () => {

@@ -32,8 +32,8 @@
   "modal": {
     "commit": {
       "title": "● Änderungen committen",
-      "label": "Commit-Nachricht",
-      "placeholder": "Beschreibe, was du gezeichnet hast...",
+      "label": "Commit-Nachricht (optional)",
+      "placeholder": "Leer lassen für automatische Nachricht…",
       "cancel": "Abbrechen",
       "confirm": "Committen"
     },
@@ -44,8 +44,8 @@
     },
     "branchCreate": {
       "title": "⎇ Neuer Branch",
-      "label": "Branch-Name",
-      "placeholder": "feature/meine-idee",
+      "label": "Branch-Name (optional)",
+      "placeholder": "Leer lassen für automatischen Namen…",
       "cancel": "Abbrechen",
       "confirm": "Branch erstellen"
     },

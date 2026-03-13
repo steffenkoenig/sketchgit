@@ -222,10 +222,10 @@ describe('createSketchGitApp', () => {
 
   it('doCommit uses default message when input is empty', () => {
     (document.getElementById('commitMsg') as HTMLInputElement).value = '';
-    mocks.mockGit.commits.sha1 = { sha: 'sha1', message: 'Update drawing', canvas: '{}', branch: 'main', parents: ['sha0'], ts: 2000, isMerge: false };
+    mocks.mockGit.commits.sha1 = { sha: 'sha1', message: 'Snapshot at 00:00', canvas: '{}', branch: 'main', parents: ['sha0'], ts: 2000, isMerge: false };
     const app = createSketchGitApp();
     app.doCommit();
-    expect(mocks.mockGit.commit).toHaveBeenCalledWith(expect.any(String), 'Update drawing');
+    expect(mocks.mockGit.commit).toHaveBeenCalledWith(expect.any(String), expect.stringMatching(/^Snapshot at /));
   });
 
   it('doCommit does nothing when commit returns null', () => {

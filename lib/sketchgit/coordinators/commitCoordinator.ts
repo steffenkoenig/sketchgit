@@ -165,7 +165,9 @@ export class CommitCoordinator {
   doCommit(): void {
     const { git, canvas, ws } = this.ctx;
     const msgEl = document.getElementById('commitMsg') as HTMLInputElement | null;
-    const msg = (msgEl?.value ?? '').trim() || 'Update drawing';
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const msg = (msgEl?.value ?? '').trim() || `Snapshot at ${timeStr}`;
     const sha = git.commit(canvas.getCanvasData(), msg);
     if (!sha) return;
     closeModal('commitModal');

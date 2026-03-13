@@ -160,21 +160,35 @@ export class BranchCoordinator {
   }
 
   doCreateBranch(): void {
-    const { git, ws } = this.ctx;
+    const { git, canvas, ws } = this.ctx;
     const nameEl = document.getElementById('newBranchName') as HTMLInputElement | null;
-    const name = (nameEl?.value ?? '').trim().replace(/\s+/g, '-');
-    if (!name) return;
+    const rawName = (nameEl?.value ?? '').trim().replace(/\s+/g, '-');
+    const name = rawName || this._nextBranchName();
     if (!git.createBranch(name, this.branchFromSHA)) return;
     git.checkout(name);
+
+    // Auto-commit: record that this branch was created
+    const autoMsg = `Branch '${name}' created`;
+    const commitSha = git.commit(canvas.getCanvasData(), autoMsg);
+    canvas.clearDirty();
+
     closeModal('branchCreateModal');
     this.refresh();
     showToast(`✓ Created & switched to '${name}'`);
     this.ctxMenuSHA = null;
-    // BUG-011 – notify peers of the branch checkout so presence panels and
-    // branch modals show the correct branch for this user, matching the
-    // notifications sent by the branch-switch flow in openBranchModal().
     const headSha = git.branches[name] ?? '';
     ws.send({ type: 'branch-update', branch: name, headSha, isRollback: false });
     ws.send({ type: 'profile', name: ws.name, color: ws.color, branch: name, headSha });
+    if (commitSha) {
+      ws.send({ type: 'commit', sha: commitSha, commit: git.commits[commitSha] });
+    }
+  }
+
+  /** Generate the next available auto-name (branch-1, branch-2, …). */
+  private _nextBranchName(): string {
+    const { git } = this.ctx;
+    let n = 1;
+    while (git.branches[`branch-${n}`] !== undefined) n++;
+    return `branch-${n}`;
   }
 }

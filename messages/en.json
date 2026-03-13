@@ -32,8 +32,8 @@
   "modal": {
     "commit": {
       "title": "● Commit Changes",
-      "label": "Commit message",
-      "placeholder": "Describe what you drew...",
+      "label": "Commit message (optional)",
+      "placeholder": "Leave blank for auto message…",
       "cancel": "Cancel",
       "confirm": "Commit"
     },
@@ -44,8 +44,8 @@
     },
     "branchCreate": {
       "title": "⎇ New Branch",
-      "label": "Branch name",
-      "placeholder": "feature/my-idea",
+      "label": "Branch name (optional)",
+      "placeholder": "Leave blank for auto name…",
       "cancel": "Cancel",
       "confirm": "Create Branch"
     },
