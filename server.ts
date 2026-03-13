@@ -25,9 +25,10 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
-import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
+import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, addRoomMember, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { validateCommitMessage } from "./lib/server/commitValidation.js";
+import { verifyScopeCookie, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -177,10 +178,18 @@ type ClientState = WebSocket & {
   currentBranch: string;
   /** P079 – HEAD SHA for the client's current branch tip */
   currentHeadSha: string | null;
+  /** P091 – scope restriction from share link (null = full access) */
+  shareScope: "ROOM" | "BRANCH" | "COMMIT" | null;
+  /** P091 – branch names the client may access (non-null for BRANCH scope) */
+  allowedBranches: string[] | null;
+  /** P091 – commit SHA the client may access (non-null for COMMIT scope) */
+  allowedCommitSha: string | null;
   /** Internal: user id resolved during WebSocket upgrade */
   _userId?: string | null;
   /** Internal: remote IP captured during the HTTP upgrade */
   _ip: string;
+  /** Internal: raw Cookie header captured during the HTTP upgrade (P091) */
+  _cookieHeader?: string | undefined;
 };
 
 const rooms = new Map<string, Map<string, ClientState>>();
@@ -884,6 +893,10 @@ void app.prepare()
           const typedWs = ws as ClientState;
           typedWs._userId = userId;
           typedWs._ip = ip;
+          // P091 – capture Cookie header here during the upgrade so the
+          // connection handler can read the scope cookie without needing
+          // the original IncomingMessage.
+          typedWs._cookieHeader = req.headers.cookie ?? undefined;
           wss.emit("connection", ws, reqUrl);
         });
       })().catch((err: unknown) => {
@@ -937,6 +950,51 @@ void app.prepare()
       ) {
         sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
         return;
+      }
+
+      // P091 – COMMITTER role: can draw and commit but cannot create new branches.
+      // A branch-update is considered a "new branch creation" when the branch name
+      // is not already in the room's cached snapshot, and it is neither a rollback
+      // nor a detached-HEAD checkout.
+      if (client.role === "COMMITTER" && message.type === "branch-update") {
+        const buMsg = message as WsMessage & { branch?: string | null; isRollback?: boolean; detached?: boolean };
+        if (
+          typeof buMsg.branch === "string" &&
+          buMsg.branch.length > 0 &&
+          !buMsg.isRollback &&
+          !buMsg.detached
+        ) {
+          const snapshot = roomCache.get(roomId);
+          if (snapshot && !(buMsg.branch in snapshot.branches)) {
+            sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Your share link does not allow branch creation" });
+            return;
+          }
+        }
+      }
+
+      // P091 – BRANCH-scoped share link: reject operations targeting non-allowed branches.
+      // For commit messages the branch is nested under `message.commit.branch`;
+      // for branch-update messages it is the top-level `message.branch`.
+      if (client.shareScope === "BRANCH" && client.allowedBranches) {
+        const msgWithBranch = message as WsMessage & { branch?: string; commit?: { branch?: string } };
+        const targetBranch =
+          msgWithBranch.branch ??
+          (message.type === "commit" ? msgWithBranch.commit?.branch : undefined);
+        if (
+          typeof targetBranch === "string" &&
+          !client.allowedBranches.includes(targetBranch)
+        ) {
+          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Branch not accessible via your share link" });
+          return;
+        }
+      }
+
+      // P091 – COMMIT-scoped share link: deny all writes; only fullsync-request is allowed.
+      if (client.shareScope === "COMMIT") {
+        if (message.type !== "fullsync-request") {
+          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Share link grants read-only commit access" });
+          return;
+        }
       }
 
       // Persist commit messages to the database
@@ -1018,6 +1076,10 @@ void app.prepare()
       // P079 – initialise branch position to 'main'; updated via profile/branch-update
       client.currentBranch = 'main';
       client.currentHeadSha = null;
+      // P091 – initialise scope fields (no restriction by default)
+      client.shareScope = null;
+      client.allowedBranches = null;
+      client.allowedCommitSha = null;
 
       // P034 – Enforce room access control before adding the client to the room.
       // P066 – If access is denied but the client presents a valid invitation
@@ -1050,6 +1112,36 @@ void app.prepare()
                 });
               }
               access = { allowed: true, role: "EDITOR" };
+            }
+          }
+        }
+
+        // P091 – If access is still denied, check for a scope cookie set by
+        // GET /api/share/[token]. The cookie encodes scope metadata and grants
+        // access to BRANCH/COMMIT-scoped links without a full membership record.
+        if (!access.allowed) {
+          const cookies = parseCookies(client._cookieHeader);
+          const scopeValue = cookies["sketchgit_share_scope"];
+          if (scopeValue) {
+            const payload = verifyScopeCookie(scopeValue);
+            if (payload && payload.roomId === roomId) {
+              const role = mapPermissionToRole(payload.permission);
+              access = { allowed: true, role };
+              client.shareScope = payload.scope;
+              client.allowedBranches = payload.scope === "BRANCH" ? payload.branches : null;
+              client.allowedCommitSha = payload.scope === "COMMIT" ? payload.commitSha : null;
+              // For COMMIT scope force VIEWER role regardless of permission
+              if (payload.scope === "COMMIT") {
+                access = { allowed: true, role: "VIEWER" };
+              }
+              // Add room membership for authenticated users with write access
+              if (
+                client.userId &&
+                payload.scope === "ROOM" &&
+                payload.permission !== "VIEW"
+              ) {
+                await addRoomMember(roomId, client.userId, role);
+              }
             }
           }
         }
@@ -1102,20 +1194,69 @@ void app.prepare()
 
       // Serve historical state from DB (or cache). Always send to each connecting
       // client so they get the latest committed state even when rejoining a room.
+      // P091 – Scope-aware fullsync: BRANCH and COMMIT scoped clients receive only
+      // the subset of history their share link grants access to.
       let snapshot: RoomSnapshot | null | undefined = roomCache.get(roomId);
       if (!snapshot) {
         snapshot = await dbLoadSnapshot(roomId);
         if (snapshot) roomCache.set(roomId, snapshot);
       }
       if (snapshot) {
-        sendTo(client, {
-          type: "fullsync",
-          targetId: clientId,
-          commits: snapshot.commits,
-          branches: snapshot.branches,
-          HEAD: snapshot.HEAD,
-          detached: snapshot.detached,
-        });
+        if (client.shareScope === "COMMIT" && client.allowedCommitSha) {
+          // COMMIT scope: send only the single requested commit in detached HEAD state.
+          const sha = client.allowedCommitSha;
+          const singleCommit = snapshot.commits[sha];
+          sendTo(client, {
+            type: "fullsync",
+            targetId: clientId,
+            commits: singleCommit ? { [sha]: singleCommit } : {},
+            branches: {},
+            HEAD: sha,
+            detached: sha,
+          });
+        } else if (client.shareScope === "BRANCH" && client.allowedBranches) {
+          // BRANCH scope: filter commits and branches to those belonging to allowed branches.
+          const allowed = new Set(client.allowedBranches);
+          const filteredBranches: Record<string, string> = {};
+          for (const [name, sha] of Object.entries(snapshot.branches)) {
+            if (allowed.has(name)) filteredBranches[name] = sha;
+          }
+          // Include all commits reachable from allowed branch tips.
+          const allowedShas = new Set(Object.values(filteredBranches));
+          const filteredCommits: Record<string, CommitRecord> = {};
+          for (const [sha, commit] of Object.entries(snapshot.commits)) {
+            if (
+              allowedShas.has(sha) ||
+              (typeof (commit as CommitRecord & { branch?: string }).branch === "string" &&
+                allowed.has((commit as CommitRecord & { branch?: string }).branch!))
+            ) {
+              filteredCommits[sha] = commit;
+            }
+          }
+          // Use the first allowed branch that exists in the filtered snapshot as HEAD,
+          // falling back to the room HEAD only if it's already in the allowed set.
+          const firstFilteredBranch = Object.keys(filteredBranches)[0];
+          const head = allowed.has(snapshot.HEAD)
+            ? snapshot.HEAD
+            : (firstFilteredBranch ?? snapshot.HEAD);
+          sendTo(client, {
+            type: "fullsync",
+            targetId: clientId,
+            commits: filteredCommits,
+            branches: filteredBranches,
+            HEAD: head,
+            detached: null,
+          });
+        } else {
+          sendTo(client, {
+            type: "fullsync",
+            targetId: clientId,
+            commits: snapshot.commits,
+            branches: snapshot.branches,
+            HEAD: snapshot.HEAD,
+            detached: snapshot.detached,
+          });
+        }
       }
 
       client.on("message", asyncHandler("ws:message", async (raw) => {

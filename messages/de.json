@@ -23,6 +23,7 @@
     "merge": "⇄ Zusammenführen",
     "branch": "⎇ Branch",
     "commit": "● Commit",
+    "share": "🔗 Teilen",
     "signIn": "👤 Anmelden",
     "signOut": "⤴ Abmelden",
     "myDrawings": "Meine Zeichnungen",
@@ -69,6 +70,38 @@
       "label": "Dein Anzeigename",
       "placeholder": "z.B. Alice",
       "confirm": "Zeichnen starten"
+    },
+    "share": {
+      "title": "🔗 Zeichnung teilen",
+      "label": "Bezeichnung (optional)",
+      "labelPlaceholder": "z.B. Nur lesen für Team…",
+      "scope": "Geltungsbereich",
+      "scopeRoom": "Gesamter Raum",
+      "scopeBranch": "Bestimmte Branches",
+      "scopeCommit": "Einzelner Commit (nur lesen)",
+      "branches": "Branch-Namen (kommagetrennt)",
+      "branchesPlaceholder": "z.B. main, feature/x",
+      "commitSha": "Commit-SHA",
+      "commitShaPlaceholder": "64-stellige Commit-SHA",
+      "permission": "Berechtigung",
+      "permView": "Ansicht (nur lesen)",
+      "permWrite": "Schreiben (zeichnen & committen)",
+      "permBranchCreate": "Branch erstellen (Editor)",
+      "permAdmin": "Admin",
+      "expiresIn": "Läuft ab in Stunden (optional)",
+      "expiresPlaceholder": "z.B. 24 — leer lassen für kein Ablaufdatum",
+      "maxUses": "Max. Verwendungen (optional)",
+      "maxUsesPlaceholder": "z.B. 10 — leer lassen für unbegrenzt",
+      "create": "Link erstellen",
+      "cancel": "Schließen",
+      "copyLink": "Kopieren",
+      "copied": "✓ Kopiert",
+      "revoke": "Widerrufen",
+      "revokeAll": "Alle widerrufen",
+      "loading": "Links werden geladen…",
+      "existingLinks": "Aktive Links",
+      "uses": "Aufrufe",
+      "noLinks": "Noch keine aktiven Freigabe-Links."
     }
   },
   "collab": {
@@ -87,7 +120,8 @@
     "headBadge": "◉ HEAD",
     "view": "⤵ Diesen Commit ansehen",
     "newBranch": "⎇ Neuer Branch von hier",
-    "rollback": "⚠ Branch auf diesen Commit zurücksetzen"
+    "rollback": "⚠ Branch auf diesen Commit zurücksetzen",
+    "share": "🔗 Diesen Commit teilen"
   },
   "objectTypes": {
     "rect": "▭ Rechteck",
@@ -164,6 +198,13 @@
     "INVALID_JSON": "Der Anfrage-Body konnte nicht geparst werden.",
     "EXPORT_FAILED": "Canvas-Export fehlgeschlagen. Bitte erneut versuchen.",
     "CANVAS_NOT_FOUND": "Keine Canvas-Daten für diesen Commit gefunden.",
-    "INTERNAL_ERROR": "Ein unerwarteter Fehler ist aufgetreten. Bitte erneut versuchen."
+    "INTERNAL_ERROR": "Ein unerwarteter Fehler ist aufgetreten. Bitte erneut versuchen.",
+    "INVITATION_EXPIRED": "Diese Einladung ist abgelaufen.",
+    "INVITATION_EXHAUSTED": "Diese Einladung hat ihr Nutzungslimit erreicht.",
+    "INVITATION_INVALID": "Dieser Einladungslink ist ungültig.",
+    "SHARE_LINK_EXPIRED": "Dieser Freigabe-Link ist abgelaufen.",
+    "SHARE_LINK_EXHAUSTED": "Dieser Freigabe-Link hat sein Nutzungslimit erreicht.",
+    "SHARE_LINK_INVALID": "Dieser Freigabe-Link ist ungültig oder wurde widerrufen.",
+    "SHARE_LINK_FORBIDDEN": "Ihr Freigabe-Link erlaubt diese Aktion nicht."
   }
 }

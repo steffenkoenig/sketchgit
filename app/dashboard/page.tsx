@@ -125,10 +125,11 @@ export default async function DashboardPage() {
   );
 }
 
-function RoleBadge({ role }: { role: "OWNER" | "EDITOR" | "VIEWER" }) {
+function RoleBadge({ role }: { role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER" }) {
   const styles: Record<typeof role, string> = {
     OWNER: "bg-violet-900/50 text-violet-300",
     EDITOR: "bg-blue-900/50 text-blue-300",
+    COMMITTER: "bg-emerald-900/50 text-emerald-300",
     VIEWER: "bg-slate-800 text-slate-400",
   };
   return (

@@ -3,10 +3,10 @@
  * All functions are async and interact with PostgreSQL via the Prisma client.
  */
 import { prisma } from "@/lib/db/prisma";
-import { Prisma, CommitStorageType, MemberRole, RoomEventType } from "@prisma/client";
+import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission } from "@prisma/client";
 import { replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 
-export type { RoomEventType };
+export type { RoomEventType, ShareScope, SharePermission };
 
 // ─── Types (mirror the client-side git model) ─────────────────────────────────
 
@@ -221,7 +221,7 @@ export interface RoomSummary {
   createdAt: Date;
   updatedAt: Date;
   commitCount: number;
-  role: "OWNER" | "EDITOR" | "VIEWER";
+  role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER";
 }
 
 /**
@@ -663,7 +663,7 @@ export async function resolveCommitCanvas(
 export async function addRoomMember(
   roomId: string,
   userId: string,
-  role: "OWNER" | "EDITOR" | "VIEWER",
+  role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER",
 ): Promise<void> {
   await prisma.roomMembership.upsert({
     where: { roomId_userId: { roomId, userId } },
@@ -697,4 +697,165 @@ export async function getRoomHeadSha(roomId: string): Promise<string | null> {
     select: { headSha: true },
   });
   return state?.headSha ?? null;
+}
+
+// ─── Share links (P091) ───────────────────────────────────────────────────────
+
+export interface ShareLinkSummary {
+  id: string;
+  label: string | null;
+  scope: ShareScope;
+  branches: string[];
+  commitSha: string | null;
+  permission: SharePermission;
+  expiresAt: Date | null;
+  maxUses: number | null;
+  useCount: number;
+  createdAt: Date;
+  createdBy: string | null;
+}
+
+/**
+ * Persist a new share link record.
+ * Returns the generated `id` so the caller can embed it in the signed URL.
+ */
+export async function createShareLink(data: {
+  token: string;
+  roomId: string;
+  createdBy: string | null;
+  label?: string;
+  scope: ShareScope;
+  branches?: string[];
+  commitSha?: string;
+  permission: SharePermission;
+  expiresAt: Date | null;
+  maxUses: number | null;
+}): Promise<{ id: string }> {
+  return prisma.shareLink.create({
+    data: {
+      token: data.token,
+      roomId: data.roomId,
+      createdBy: data.createdBy,
+      label: data.label ?? null,
+      scope: data.scope,
+      branches: data.branches ?? [],
+      commitSha: data.commitSha ?? null,
+      permission: data.permission,
+      expiresAt: data.expiresAt,
+      maxUses: data.maxUses,
+    },
+    select: { id: true },
+  });
+}
+
+/**
+ * Return a share link by token, including the room's isPublic flag.
+ * Returns null when the token does not exist.
+ */
+export async function getShareLinkByToken(token: string): Promise<{
+  id: string;
+  roomId: string;
+  scope: ShareScope;
+  branches: string[];
+  commitSha: string | null;
+  permission: SharePermission;
+  expiresAt: Date | null;
+  maxUses: number | null;
+  useCount: number;
+  room: { isPublic: boolean };
+} | null> {
+  return prisma.shareLink.findUnique({
+    where: { token },
+    select: {
+      id: true,
+      roomId: true,
+      scope: true,
+      branches: true,
+      commitSha: true,
+      permission: true,
+      expiresAt: true,
+      maxUses: true,
+      useCount: true,
+      room: { select: { isPublic: true } },
+    },
+  });
+}
+
+/**
+ * Atomically increment a share link's useCount, enforcing maxUses.
+ * Returns true when the increment succeeded (still had a remaining use).
+ * When `maxUses` is null (unlimited), always increments and returns true.
+ *
+ * The caller fetches the link record (including `maxUses`) before calling this
+ * function. Passing `maxUses` from that fetch is safe because the conditional
+ * `updateMany` WHERE clause (`useCount: { lt: maxUses }`) is evaluated
+ * atomically in the database — concurrent calls cannot both succeed once the
+ * limit is reached, preventing TOCTOU over-use.
+ */
+export async function consumeShareLink(
+  token: string,
+  maxUses: number | null,
+): Promise<boolean> {
+  if (maxUses === null) {
+    // Unlimited — verify the token exists without writing a hot-row increment.
+    // useCount is not tracked for unlimited links since it serves no enforcement
+    // purpose when there is no cap.
+    const exists = await prisma.shareLink.findFirst({
+      where: { token },
+      select: { id: true },
+    });
+    return exists !== null;
+  }
+  // Conditional update prevents TOCTOU race when maxUses is finite.
+  const result = await prisma.shareLink.updateMany({
+    where: { token, useCount: { lt: maxUses } },
+    data: { useCount: { increment: 1 } },
+  });
+  return result.count > 0;
+}
+
+/**
+ * Return all share links for a room, ordered newest-first.
+ * The `token` field is intentionally excluded to avoid leaking tokens in list responses.
+ */
+export async function listShareLinks(roomId: string): Promise<ShareLinkSummary[]> {
+  return prisma.shareLink.findMany({
+    where: { roomId },
+    select: {
+      id: true,
+      label: true,
+      scope: true,
+      branches: true,
+      commitSha: true,
+      permission: true,
+      expiresAt: true,
+      maxUses: true,
+      useCount: true,
+      createdAt: true,
+      createdBy: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/**
+ * Delete a single share link by `id` within a room.
+ * Returns true when a record was deleted, false when not found.
+ */
+export async function revokeShareLink(
+  id: string,
+  roomId: string,
+): Promise<boolean> {
+  const result = await prisma.shareLink.deleteMany({
+    where: { id, roomId },
+  });
+  return result.count > 0;
+}
+
+/**
+ * Delete all share links for a room. Returns the number of deleted records.
+ */
+export async function revokeAllShareLinks(roomId: string): Promise<number> {
+  const result = await prisma.shareLink.deleteMany({ where: { roomId } });
+  return result.count;
 }

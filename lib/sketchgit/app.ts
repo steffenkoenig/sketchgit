@@ -214,6 +214,7 @@ export function createSketchGitApp() {
     cpCheckout: () => commit.cpCheckout(),
     cpBranchFrom: () => commit.cpBranchFrom(),
     cpRollback: () => commit.cpRollback(),
+    cpShareCommit: () => commit.cpShareCommit(),
 
     // Commit modal
     openCommitModal: () => commit.openCommitModal(),
@@ -242,6 +243,13 @@ export function createSketchGitApp() {
     closeModal,
     tlScrollLeft,
     tlScrollRight,
+
+    // Share modal (opens via DOM event; React shell listens and updates state)
+    openShareModal: () => {
+      document.dispatchEvent(
+        new CustomEvent('sketchgit:openShareModal', { detail: {} }),
+      );
+    },
 
     // P020: Resource cleanup on React component unmount.
     destroy(): void {

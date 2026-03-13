@@ -119,6 +119,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
 | P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/P090_feature-flag-system.md) |
+| P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/done/P091_granular-share-links.md) |
 
 ---
 
@@ -213,6 +214,7 @@ Some proposals build on or benefit from others. The table below shows key depend
 | P088 (Read Replica) | P003 ✅ (Prisma), P023 ✅ (health check), P030 ✅ (LRU cache); P060 (PgBouncer) |
 | P089 (License Compliance) | P016 ✅ (CI pipeline), P045 ✅ (Trivy — complementary security scanning) |
 | P090 (Feature Flags) | P003 ✅ (Prisma), P077 ✅ (test factories), P074 ✅ (activity feed), P027 ✅ (env validation); P088 (first flag: read-replica routing) |
+| P091 (Granular Share Links) | P003 ✅ (Prisma), P005 ✅ (TypeScript strict), P007 ✅ (auth + anonymous-first), P034 ✅ (WS access control), P054 ✅ (constant-time comparisons), P066 ✅ (invitation tokens — superseded); P009 ✅ (i18n), P015 ✅ (rate limiting), P062 ✅ (OpenAPI), P074 ✅ (activity feed) |
 
 ---
 
@@ -312,12 +314,12 @@ These proposals address issues discovered in subsequent review cycles. Proposals
 11. **P075** – Redis Sentinel/Cluster (infrastructure; needed before multi-region deployment)
 12. **P074** – Activity feed (new DB model + API endpoint; provides audit trail)
 
-### New proposals (P081–P090)
+### New proposals (P081–P091)
 These proposals address gaps discovered in a third review cycle, covering client-side
-resilience, operational observability, testing breadth, data integrity, and developer
-tooling.
+resilience, operational observability, testing breadth, data integrity, developer
+tooling, and collaboration features.
 
-**Recommended order for P081–P090:**
+**Recommended order for P081–P091:**
 1. **P089** – License compliance scanning (zero-risk CI step; immediate compliance value)
 2. **P086** – Copilot custom skills (high leverage for all subsequent scaffolding tasks)
 3. **P081** – React error boundaries (critical reliability; prevents total UI crashes)
@@ -326,8 +328,9 @@ tooling.
 6. **P082** – Automated accessibility testing (extends P025/P038; CI gate for regressions)
 7. **P087** – Visual regression testing (extends P038; catches unintended UI changes)
 8. **P090** – Feature flag system (safe incremental rollout; unblocks phased feature releases)
-9. **P088** – Database read replica (scalability; requires P090 flag for progressive rollout)
-10. **P083** – Load and stress testing (validates the system after P088 and P090 are deployed)
+9. **P091** – Granular share links (collaboration; supersedes P066; requires P003/P007/P066)
+10. **P088** – Database read replica (scalability; requires P090 flag for progressive rollout)
+11. **P083** – Load and stress testing (validates the system after P088 and P090 are deployed)
 
 ---
 

@@ -87,6 +87,12 @@ const EnvSchema = z.object({
   // not explicitly set. Must be at least 32 characters.
   INVITATION_SECRET: z.string().min(32).optional(),
 
+  // ── Share-link token secret (P091) ────────────────────────────────────────
+  // HMAC secret used to sign share-link tokens and scope cookies.
+  // Falls back to INVITATION_SECRET → AUTH_SECRET when not explicitly set.
+  // Must be at least 32 characters.
+  SHARE_LINK_SECRET: z.string().min(32).optional(),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

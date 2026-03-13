@@ -20,11 +20,13 @@
  *  the existing messages/en.json + messages/de.json catalogues are consumed.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppTopbar } from "./sketchgit/AppTopbar";
 import { LeftToolbar } from "./sketchgit/LeftToolbar";
+import { ShareModal } from "./sketchgit/ShareModal";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
 export default function SketchGitApp() {
@@ -32,6 +34,23 @@ export default function SketchGitApp() {
   const { data: session, status } = useSession();
   // P050 – access the pre-loaded translation catalogue
   const t = useTranslations();
+
+  // ── Share modal state ──────────────────────────────────────────────────────
+  // Opened from the topbar "Share" button (no pre-fill) or from the commit
+  // popup "Share this commit" action (commitSha pre-filled).
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCommitSha, setShareCommitSha] = useState<string | null>(null);
+
+  // Listen for the canvas-side custom event that requests the share modal to open.
+  useEffect(() => {
+    function handleOpenShareModal(e: Event) {
+      const detail = (e as CustomEvent<{ commitSha?: string }>).detail;
+      setShareCommitSha(detail.commitSha ?? null);
+      setShareOpen(true);
+    }
+    document.addEventListener('sketchgit:openShareModal', handleOpenShareModal);
+    return () => document.removeEventListener('sketchgit:openShareModal', handleOpenShareModal);
+  }, []);
 
   // P018: Fabric.js is now bundled via npm – no CDN Script tag needed.
   // P020: Return a cleanup function so the engine is destroyed on unmount,
@@ -74,6 +93,10 @@ export default function SketchGitApp() {
     () => session ?? null,
     [session?.user?.name, session?.user?.email, session?.user?.image], // eslint-disable-line
   );
+
+  // Derive the current room ID from the URL — mirrors AppTopbar's own resolution.
+  const searchParams = useSearchParams();
+  const roomId = searchParams.get("room") ?? "default";
 
   return (
     <>
@@ -192,6 +215,7 @@ export default function SketchGitApp() {
         <div className="cp-actions">
           <button className="cp-btn accent" onClick={() => call("cpCheckout")} aria-label="View this commit (detached HEAD)">{t("commitPopup.view")}</button>
           <button className="cp-btn green" onClick={() => call("cpBranchFrom")} aria-label="Create a new branch from this commit">{t("commitPopup.newBranch")}</button>
+          <button className="cp-btn" onClick={() => call("cpShareCommit")} aria-label="Share this commit via a link">{t("commitPopup.share")}</button>
           <div className="cp-divider" role="separator"></div>
           <button className="cp-btn warn" onClick={() => call("cpRollback")} aria-label="Roll back the current branch tip to this commit">{t("commitPopup.rollback")}</button>
         </div>
@@ -279,7 +303,7 @@ export default function SketchGitApp() {
 
       <div id="toast" role="status" aria-live="assertive" aria-atomic="true"></div>
 
-      {/* P055: Accessible confirmation modal – replaces window.confirm() for destructive actions */}
+      {/* P025: Accessible confirmation modal – replaces window.confirm() for destructive actions */}
       <div className="overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
         <div className="modal">
           <h2 id="confirmModalTitle">⚠ Confirm Action</h2>
@@ -299,6 +323,14 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+
+      {/* P091: Share links modal – opened from topbar or commit popup */}
+      <ShareModal
+        isOpen={shareOpen}
+        onClose={() => setShareOpen(false)}
+        roomId={roomId}
+        prefilledCommitSha={shareCommitSha}
+      />
     </>
   );
 }

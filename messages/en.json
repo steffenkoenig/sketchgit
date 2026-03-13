@@ -23,6 +23,7 @@
     "merge": "⇄ Merge",
     "branch": "⎇ Branch",
     "commit": "● Commit",
+    "share": "🔗 Share",
     "signIn": "👤 Sign in",
     "signOut": "⤴ Sign out",
     "myDrawings": "My Drawings",
@@ -69,6 +70,38 @@
       "label": "Your display name",
       "placeholder": "e.g. Alice",
       "confirm": "Start Drawing"
+    },
+    "share": {
+      "title": "🔗 Share Drawing",
+      "label": "Label (optional)",
+      "labelPlaceholder": "e.g. Read-only for team…",
+      "scope": "Scope",
+      "scopeRoom": "Entire room",
+      "scopeBranch": "Specific branches",
+      "scopeCommit": "Single commit (read-only)",
+      "branches": "Branch names (comma-separated)",
+      "branchesPlaceholder": "e.g. main, feature/x",
+      "commitSha": "Commit SHA",
+      "commitShaPlaceholder": "64-character commit SHA",
+      "permission": "Permission",
+      "permView": "View (read-only)",
+      "permWrite": "Write (draw & commit)",
+      "permBranchCreate": "Branch Create (editor)",
+      "permAdmin": "Admin",
+      "expiresIn": "Expires in hours (optional)",
+      "expiresPlaceholder": "e.g. 24 — leave blank for no expiry",
+      "maxUses": "Max uses (optional)",
+      "maxUsesPlaceholder": "e.g. 10 — leave blank for unlimited",
+      "create": "Create Link",
+      "cancel": "Close",
+      "copyLink": "Copy",
+      "copied": "✓ Copied",
+      "revoke": "Revoke",
+      "revokeAll": "Revoke All",
+      "loading": "Loading links…",
+      "existingLinks": "Active links",
+      "uses": "uses",
+      "noLinks": "No active share links yet."
     }
   },
   "collab": {
@@ -87,7 +120,8 @@
     "headBadge": "◉ HEAD",
     "view": "⤵ View this commit",
     "newBranch": "⎇ New branch from here",
-    "rollback": "⚠ Rollback branch to here"
+    "rollback": "⚠ Rollback branch to here",
+    "share": "🔗 Share this commit"
   },
   "objectTypes": {
     "rect": "▭ Rectangle",
@@ -164,6 +198,13 @@
     "INVALID_JSON": "The request body could not be parsed.",
     "EXPORT_FAILED": "Canvas export failed. Please try again.",
     "CANVAS_NOT_FOUND": "No canvas data found for this commit.",
-    "INTERNAL_ERROR": "An unexpected error occurred. Please try again."
+    "INTERNAL_ERROR": "An unexpected error occurred. Please try again.",
+    "INVITATION_EXPIRED": "This invitation has expired.",
+    "INVITATION_EXHAUSTED": "This invitation has reached its use limit.",
+    "INVITATION_INVALID": "This invitation link is invalid.",
+    "SHARE_LINK_EXPIRED": "This share link has expired.",
+    "SHARE_LINK_EXHAUSTED": "This share link has reached its use limit.",
+    "SHARE_LINK_INVALID": "This share link is invalid or has been revoked.",
+    "SHARE_LINK_FORBIDDEN": "Your share link does not grant permission for this action."
   }
 }
