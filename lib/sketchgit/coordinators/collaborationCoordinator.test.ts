@@ -15,17 +15,19 @@ import type { AppContext } from './appContext';
 vi.mock('../ui/modals', () => ({ openModal: vi.fn(), closeModal: vi.fn() }));
 vi.mock('../userPreferences', () => ({
   loadPreferences: vi.fn().mockReturnValue(null),
+  loadLastRoomId: vi.fn().mockReturnValue(''),
   savePreferences: vi.fn(),
   setBranchInUrl: vi.fn(),
 }));
 vi.mock('uuid', () => ({ v4: vi.fn().mockReturnValue('generated-uuid-1234') }));
 
 import { openModal, closeModal } from '../ui/modals';
-import { loadPreferences, savePreferences } from '../userPreferences';
+import { loadPreferences, loadLastRoomId, savePreferences } from '../userPreferences';
 import { v4 as uuidv4 } from 'uuid';
 
 const mockOpenModal = openModal as ReturnType<typeof vi.fn>;
 const mockLoadPreferences = loadPreferences as ReturnType<typeof vi.fn>;
+const mockLoadLastRoomId = loadLastRoomId as ReturnType<typeof vi.fn>;
 const mockSavePreferences = savePreferences as ReturnType<typeof vi.fn>;
 const mockUuidv4 = uuidv4 as ReturnType<typeof vi.fn>;
 
@@ -197,27 +199,42 @@ describe('CollaborationCoordinator', () => {
 
     it('passes the saved lastRoomId as fallback to getRoomFromUrl', () => {
       mockLoadPreferences.mockReturnValue({ name: 'Grace', color: '', lastRoomId: 'my-room', lastBranchName: '' });
+      mockLoadLastRoomId.mockReturnValue('my-room');
       coord.init();
       expect(ctx.collab.getRoomFromUrl).toHaveBeenCalledWith('my-room');
     });
 
     it('passes a generated UUID as fallback when lastRoomId is empty', () => {
       mockLoadPreferences.mockReturnValue({ name: 'Ivy', color: '', lastRoomId: '', lastBranchName: '' });
+      mockLoadLastRoomId.mockReturnValue('');
       coord.init();
       expect(ctx.collab.getRoomFromUrl).toHaveBeenCalledWith('generated-uuid-1234');
     });
 
     it('passes a generated UUID as fallback when no preferences are stored', () => {
       mockLoadPreferences.mockReturnValue(null);
+      mockLoadLastRoomId.mockReturnValue('');
       coord.init();
       expect(ctx.collab.getRoomFromUrl).toHaveBeenCalledWith('generated-uuid-1234');
     });
 
-    it('generates a new UUID on each first visit (uuidv4 called when no lastRoomId)', () => {
+    it('generates a distinct UUID for each independent first visit', () => {
       mockLoadPreferences.mockReturnValue(null);
-      mockUuidv4.mockReturnValueOnce('unique-uuid-visit-1');
+      mockLoadLastRoomId.mockReturnValue('');
+      mockUuidv4
+        .mockReturnValueOnce('unique-uuid-visit-1')
+        .mockReturnValueOnce('unique-uuid-visit-2');
+
       coord.init();
-      expect(ctx.collab.getRoomFromUrl).toHaveBeenCalledWith('unique-uuid-visit-1');
+      expect(ctx.collab.getRoomFromUrl).toHaveBeenLastCalledWith('unique-uuid-visit-1');
+
+      // Simulate a second independent session (re-initialise coordinator).
+      const ctx2 = makeCtx();
+      const coord2 = new CollaborationCoordinator(ctx2, vi.fn());
+      coord2.init();
+      expect(ctx2.collab.getRoomFromUrl).toHaveBeenLastCalledWith('unique-uuid-visit-2');
+
+      expect(mockUuidv4).toHaveBeenCalledTimes(2);
     });
 
     it('opens the modal when no preferences are stored (first visit)', () => {
