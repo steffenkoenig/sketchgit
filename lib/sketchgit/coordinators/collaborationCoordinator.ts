@@ -8,6 +8,7 @@
  *  - Delegate to CollaborationManager for peer-panel interactions.
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import { AppContext } from './appContext';
 import { BRANCH_COLORS } from '../types';
 import { openModal, closeModal } from '../ui/modals';
@@ -51,7 +52,11 @@ export class CollaborationCoordinator {
     this.refresh();
 
     // Fall back to the last-visited room when the URL carries no room param.
-    const initialRoom = collab.getRoomFromUrl(prefs?.lastRoomId ?? '');
+    // If there is no last-visited room either, generate a fresh UUID so that
+    // every new session starts in its own unique room instead of sharing the
+    // generic 'default' room with all other first-time visitors.
+    const roomFallback = prefs?.lastRoomId || uuidv4();
+    const initialRoom = collab.getRoomFromUrl(roomFallback);
     const inputEl = document.getElementById('remotePeerInput') as HTMLInputElement | null;
     if (inputEl) inputEl.value = initialRoom;
     const myPeerEl = document.getElementById('myPeerId');
