@@ -19,13 +19,15 @@
     "exportPdf": "Als PDF exportieren"
   },
   "topbar": {
-    "collab": "⟳ Zusammenarbeit",
-    "merge": "⇄ Zusammenführen",
-    "branch": "⎇ Branch",
-    "commit": "● Commit",
-    "share": "🔗 Teilen",
-    "signIn": "👤 Anmelden",
-    "signOut": "⤴ Abmelden",
+    "collab": "Zusammenarbeit",
+    "merge": "Zusammenführen",
+    "branch": "Branch",
+    "commit": "Commit",
+    "share": "Teilen",
+    "export": "Exportieren",
+    "language": "Sprache",
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
     "myDrawings": "Meine Zeichnungen",
     "switchToLight": "Zum hellen Design wechseln",
     "switchToDark": "Zum dunklen Design wechseln"

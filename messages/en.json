@@ -19,13 +19,15 @@
     "exportPdf": "Export as PDF"
   },
   "topbar": {
-    "collab": "⟳ Collab",
-    "merge": "⇄ Merge",
-    "branch": "⎇ Branch",
-    "commit": "● Commit",
-    "share": "🔗 Share",
-    "signIn": "👤 Sign in",
-    "signOut": "⤴ Sign out",
+    "collab": "Collab",
+    "merge": "Merge",
+    "branch": "Branch",
+    "commit": "Commit",
+    "share": "Share",
+    "export": "Export",
+    "language": "Language",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
     "myDrawings": "My Drawings",
     "switchToLight": "Switch to light theme",
     "switchToDark": "Switch to dark theme"
