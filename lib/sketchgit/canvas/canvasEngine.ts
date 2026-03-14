@@ -110,7 +110,7 @@ export class CanvasEngine {
     if (!FabricObject.customProperties.includes('_isArrow')) {
       FabricObject.customProperties.push('_isArrow');
     }
-    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern']) {
+    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom']) {
       if (!FabricObject.customProperties.includes(p)) {
         FabricObject.customProperties.push(p);
       }
@@ -133,6 +133,15 @@ export class CanvasEngine {
     this.canvas.on('object:modified', () => { this.pushHistory(); this.markDirty(); this.onBroadcastDraw(true); });
     this.canvas.on('object:added', (e: { target?: FabricObject }) => { if (e.target) ensureObjId(e.target); });
     this.canvas.on('mouse:wheel', (e: TPointerEventInfo<WheelEvent>) => this.onWheel(e));
+
+    this.canvas.on('mouse:dblclick', (e: { target?: FabricObject }) => {
+      const target = e.target;
+      if (!target) return;
+      const link = (target as FabricObject & { _link?: string })._link;
+      if (link) {
+        window.open(link, '_blank', 'noopener,noreferrer');
+      }
+    });
 
     // P067 – broadcast selection events so peers can show soft-lock indicator
     this.canvas.on('selection:created', (e: { selected?: FabricObject[] }) => {
@@ -298,7 +307,11 @@ export class CanvasEngine {
     // toObject(), so _id and _isArrow are included in the output.
     // NOTE: FabricObject.customProperties is also set in init() as a belt-and-suspenders
     // guard so that any call path (toJSON included) always serialises these fields.
-    return JSON.stringify(this.canvas.toObject(['_isArrow', '_id']));
+    return JSON.stringify(this.canvas.toObject([
+      '_isArrow', '_id', '_link', '_fillPattern',
+      '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
+      '_sloppiness', '_origGeom',
+    ]));
   }
 
   loadCanvasData(data: string): void {
@@ -542,60 +555,74 @@ export class CanvasEngine {
     if (!this.isDrawing) return;
     this.isDrawing = false;
 
-    if (this.currentTool === 'pen' && this.activeObj) {
-      // P022: Convert the temporary Polyline to a permanent Path.
-      const penPoints = this.currentPenPath ?? [];
-      this.canvas?.remove(this.activeObj);
-
-      if (penPoints.length > 1) {
-        const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
-        const d = penPoints
-          .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
-          .join(' ');
-        const finalPath = new Path(d, {
-          stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
-          selectable: true, evented: true,
-          strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
-          strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
-          opacity: this.opacityValue / 100,
-        });
-        ensureObjId(finalPath);
-        this.canvas?.add(finalPath);
-        this.canvas?.setActiveObject(finalPath);
-      }
-
-      this.currentPenPath = null;
-      this.activeObj = null;
-      this.markDirty();
-      if (this.canvas) this.canvas.selection = false; // pen tool stays in drawing mode
-      this.onBroadcastDraw(true);
-      return;
-    }
-
-    if (this.activeObj) {
-      // Fabric v7: scenePoint is supplied directly on the event info object
-      const p = e.scenePoint;
-      const dx = Math.abs(p.x - this.startX), dy = Math.abs(p.y - this.startY);
-      if (dx < 3 && dy < 3) {
+      if (this.currentTool === 'pen' && this.activeObj) {
+        // P022: Convert the temporary Polyline to a permanent Path.
+        const penPoints = this.currentPenPath ?? [];
         this.canvas?.remove(this.activeObj);
-      } else {
-        ensureObjId(this.activeObj);
-        this.activeObj.set({ selectable: true, evented: true });
-        if ((this.activeObj as FabricObject & { _isArrow?: boolean })._isArrow) {
-          const arrowObj = this.activeObj as Line & { _arrowHeadStart?: string; _arrowHeadEnd?: string; _arrowType?: string };
-          const headStart = (arrowObj._arrowHeadStart ?? this.arrowHeadStart) as 'none' | 'open' | 'triangle' | 'triangle-outline';
-          const headEnd = (arrowObj._arrowHeadEnd ?? this.arrowHeadEnd) as 'none' | 'open' | 'triangle' | 'triangle-outline';
-          const arrowType = (arrowObj._arrowType ?? this.arrowType) as 'sharp' | 'curved' | 'elbow';
-          this.buildArrowGroup(this.activeObj as Line, headStart, headEnd, arrowType);
-        } else {
-          // Snap line endpoints to nearby shape centers when near a shape.
-          this.snapLineAttachment(this.activeObj as Line);
-          this.canvas?.setActiveObject(this.activeObj);
+
+        if (penPoints.length > 1) {
+          const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
+          const d = penPoints
+            .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
+            .join(' ');
+          const finalPath = new Path(d, {
+            stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
+            selectable: true, evented: true,
+            strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
+            strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+            opacity: this.opacityValue / 100,
+          });
+          ensureObjId(finalPath);
+          Object.assign(finalPath, { _sloppiness: this.sloppiness });
+          this.canvas?.add(finalPath);
+          this.canvas?.setActiveObject(finalPath);
         }
+
+        this.currentPenPath = null;
+        this.activeObj = null;
         this.markDirty();
+        if (this.canvas) this.canvas.selection = false; // pen tool stays in drawing mode
+        this.onBroadcastDraw(true);
+        return;
       }
-      this.activeObj = null;
-    }
+
+      if (this.activeObj) {
+        // Fabric v7: scenePoint is supplied directly on the event info object
+        const p = e.scenePoint;
+        const dx = Math.abs(p.x - this.startX), dy = Math.abs(p.y - this.startY);
+        if (dx < 3 && dy < 3) {
+          this.canvas?.remove(this.activeObj);
+        } else {
+          ensureObjId(this.activeObj);
+          this.activeObj.set({ selectable: true, evented: true });
+          if ((this.activeObj as FabricObject & { _isArrow?: boolean })._isArrow) {
+            const arrowObj = this.activeObj as Line & { _arrowHeadStart?: string; _arrowHeadEnd?: string; _arrowType?: string };
+            const headStart = (arrowObj._arrowHeadStart ?? this.arrowHeadStart) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+            const headEnd = (arrowObj._arrowHeadEnd ?? this.arrowHeadEnd) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+            const arrowType = (arrowObj._arrowType ?? this.arrowType) as 'sharp' | 'curved' | 'elbow';
+            // Store sloppiness/origGeom on arrow line before building group
+            this.stampOrigGeomAndSloppiness(this.activeObj);
+            this.buildArrowGroup(this.activeObj as Line, headStart, headEnd, arrowType);
+          } else {
+            // For rect / ellipse / line: store origGeom, then convert to sketch path if needed.
+            this.stampOrigGeomAndSloppiness(this.activeObj);
+
+            if (this.sloppiness !== 'architect') {
+              const sketch = this.tryConvertToSketch(this.activeObj, this.sloppiness);
+              if (sketch) {
+                this.canvas?.remove(this.activeObj);
+                this.activeObj = sketch;
+                this.canvas?.add(this.activeObj);
+              }
+            }
+            // Snap line endpoints to nearby shape centers when near a shape.
+            this.snapLineAttachment(this.activeObj as Line);
+            this.canvas?.setActiveObject(this.activeObj);
+          }
+          this.markDirty();
+        }
+        this.activeObj = null;
+      }
 
     if (this.canvas) this.canvas.selection = this.currentTool === 'select';
     this.canvas?.requestRenderAll(); // P022: batch via rAF
@@ -978,13 +1005,21 @@ export class CanvasEngine {
     const el = document.getElementById(`sloppy-${type}`);
     el?.classList.add('on');
     el?.setAttribute('aria-pressed', 'true');
+
     const o = this.canvas?.getActiveObject();
-    if (o) {
+    if (!o) return;
+
+    // Attempt to regenerate the shape from its stored original geometry.
+    const replacement = this.tryConvertToSketch(o, type);
+    if (replacement) {
+      this.replaceActiveObject(o, replacement);
+    } else {
+      // Fallback for objects without stored geometry (e.g. pen paths, text)
       o.set(this.getSloppinessOptions(type));
-      this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
     }
+    this.canvas?.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
   }
 
   setFillPattern(type: 'filled' | 'striped' | 'crossed'): void {
@@ -999,13 +1034,19 @@ export class CanvasEngine {
     el?.classList.add('on');
     el?.setAttribute('aria-pressed', 'true');
     const o = this.canvas?.getActiveObject();
-    if (o && this.fillEnabled) {
-      const fill = this.createFill(type, this.fillColor);
-      o.set('fill', fill);
-      (o as FabricObject & { _fillPattern?: string })._fillPattern = type;
-      this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+    if (o) {
+      // Apply to the selected object if it currently has a fill (non-transparent),
+      // or if the fill-enabled toggle is on for new shapes.
+      const objFill = o.get('fill');
+      const objHasFill = objFill !== 'transparent' && objFill != null;
+      if (objHasFill || this.fillEnabled) {
+        const fill = this.createFill(type, this.fillColor);
+        o.set('fill', fill);
+        (o as FabricObject & { _fillPattern?: string })._fillPattern = type;
+        this.canvas?.requestRenderAll();
+        this.markDirty();
+        this.onBroadcastDraw(true);
+      }
     }
   }
 
@@ -1107,6 +1148,266 @@ export class CanvasEngine {
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────
+
+  // ── Sloppiness / sketch-path helpers ────────────────────────────────────────
+
+  /** Deterministic pseudo-random in range [-1, 1], seeded by id + index.
+   * Uses a variation of the "sin hash" technique: multiply the argument by a
+   * large constant (9301.7) to break integer periodicity, then use the
+   * fractional part of sin(…)·43758.5453 (a common LCG-like scrambler).
+   */
+  private static sketchRand(seed: number, i: number): number {
+    const x = Math.sin(Math.abs(seed) + i * 9301.7) * 43758.5453;
+    return (x - Math.floor(x)) * 2 - 1;
+  }
+
+  /** Convert a string _id to a stable numeric seed. */
+  private static seedFromId(id: string): number {
+    let h = 2166136261;
+    for (let c = 0; c < id.length; c++) {
+      h ^= id.charCodeAt(c);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0; // unsigned 32-bit
+  }
+
+  /** Maximum jitter in CSS pixels for the given sloppiness level. */
+  private static sloppinessAmplitude(
+    sloppiness: 'architect' | 'artist' | 'cartoonist',
+    strokeWidth: number,
+  ): number {
+    if (sloppiness === 'architect') return 0;
+    const base = sloppiness === 'cartoonist' ? 7 : 3.5;
+    return Math.max(base, strokeWidth * 1.2);
+  }
+
+  /**
+   * Geometry descriptor used to regenerate a shape at a different sloppiness level.
+   * Stored as JSON in the custom property `_origGeom`.
+   */
+  private static origGeomFromObj(obj: FabricObject): string | null {
+    const t = (obj as FabricObject & { type?: string }).type ?? '';
+    if (t === 'rect') {
+      const g = { type: 'rect',
+        left: (obj.get('left') as number) ?? 0,
+        top:  (obj.get('top')  as number) ?? 0,
+        width: (obj.get('width') as number) ?? 0,
+        height: (obj.get('height') as number) ?? 0,
+        rx: (obj.get('rx') as number) ?? 0 };
+      return JSON.stringify(g);
+    }
+    if (t === 'ellipse') {
+      const erx = (obj.get('rx') as number) ?? 0;
+      const ery = (obj.get('ry') as number) ?? 0;
+      const g = { type: 'ellipse',
+        cx: ((obj.get('left') as number) ?? 0) + erx,
+        cy: ((obj.get('top')  as number) ?? 0) + ery,
+        rx: erx, ry: ery };
+      return JSON.stringify(g);
+    }
+    if (t === 'line') {
+      const lo = obj as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
+      const g = { type: 'line', x1: lo.x1 ?? 0, y1: lo.y1 ?? 0, x2: lo.x2 ?? 0, y2: lo.y2 ?? 0 };
+      return JSON.stringify(g);
+    }
+    return null;
+  }
+
+  /**
+   * Generates a hand-drawn–style SVG path for the given original geometry.
+   * Wobble is deterministic (seed) so the shape looks the same every render.
+   */
+  private makeSketchyPath(
+    geom: Record<string, unknown>,
+    amplitude: number,
+    seed: number,
+  ): string {
+    const j = (i: number) => CanvasEngine.sketchRand(seed, i) * amplitude;
+    const t = geom.type as string;
+
+    if (t === 'line') {
+      const { x1, y1, x2, y2 } = geom as { x1: number; y1: number; x2: number; y2: number };
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      return `M ${x1.toFixed(1)} ${y1.toFixed(1)} `
+           + `Q ${(mx + j(0)).toFixed(1)} ${(my + j(1)).toFixed(1)} `
+           + `${x2.toFixed(1)} ${y2.toFixed(1)}`;
+    }
+
+    if (t === 'rect') {
+      const { left: l, top: to, width: w, height: h } =
+        geom as { left: number; top: number; width: number; height: number };
+      // Four corners, each slightly offset
+      const c: [number, number][] = [
+        [l + j(0),     to + j(1)],
+        [l + w + j(2), to + j(3)],
+        [l + w + j(4), to + h + j(5)],
+        [l + j(6),     to + h + j(7)],
+      ];
+      const cp = (a: [number, number], b: [number, number], i: number) =>
+        `${((a[0] + b[0]) / 2 + j(i)).toFixed(1)} ${((a[1] + b[1]) / 2 + j(i + 1)).toFixed(1)}`;
+      return `M ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} `
+           + `Q ${cp(c[0], c[1], 8)} ${c[1][0].toFixed(1)} ${c[1][1].toFixed(1)} `
+           + `Q ${cp(c[1], c[2], 10)} ${c[2][0].toFixed(1)} ${c[2][1].toFixed(1)} `
+           + `Q ${cp(c[2], c[3], 12)} ${c[3][0].toFixed(1)} ${c[3][1].toFixed(1)} `
+           + `Q ${cp(c[3], c[0], 14)} ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} Z`;
+    }
+
+    if (t === 'ellipse') {
+      const { cx, cy, rx, ry } = geom as { cx: number; cy: number; rx: number; ry: number };
+      const N = 12;
+      const pts: [number, number][] = [];
+      for (let i = 0; i < N; i++) {
+        const angle = (i / N) * Math.PI * 2;
+        const dr = j(i * 2) * 0.4;            // radial jitter
+        const dx = j(i * 2 + 1) * 0.3;        // tangential jitter
+        pts.push([
+          cx + (rx + dr) * Math.cos(angle) + dx,
+          cy + (ry + dr) * Math.sin(angle) + j(i * 2 + N + 1) * 0.3,
+        ]);
+      }
+      const parts: string[] = [`M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`];
+      for (let i = 1; i <= N; i++) {
+        const cur = pts[i % N];
+        const prv = pts[(i - 1 + N) % N];
+        const cpx = ((prv[0] + cur[0]) / 2 + j(N * 3 + i * 2)).toFixed(1);
+        const cpy = ((prv[1] + cur[1]) / 2 + j(N * 3 + i * 2 + 1)).toFixed(1);
+        parts.push(`Q ${cpx} ${cpy} ${cur[0].toFixed(1)} ${cur[1].toFixed(1)}`);
+      }
+      parts.push('Z');
+      return parts.join(' ');
+    }
+
+    return '';
+  }
+
+  /**
+   * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist),
+   * or restores it to its native Fabric shape (architect).
+   * Returns the replacement object, or `null` if conversion is not applicable
+   * (e.g. arrow groups, text, pen paths without _origGeom).
+   * The returned object copies the `_id` of the original so the merge engine
+   * continues to track it as the same object.
+   */
+  private tryConvertToSketch(
+    obj: FabricObject,
+    sloppiness: 'architect' | 'artist' | 'cartoonist',
+  ): FabricObject | null {
+    if (!this.canvas) return null;
+
+    type Ext = {
+      _id?: string; _sloppiness?: string; _origGeom?: string;
+      _fillPattern?: string; _link?: string; _isArrow?: boolean; type?: string;
+    };
+    const oa = obj as FabricObject & Ext;
+
+    // Don't convert arrow groups, text, or eraser placeholders
+    if (oa._isArrow) return null;
+    const t = oa.type ?? '';
+    if (t === 'i-text' || t === 'text' || t === 'group' || t === 'eraser') return null;
+
+    // Fetch stored origGeom, or try to build it from the current shape
+    let geomStr = oa._origGeom ?? null;
+    if (!geomStr) geomStr = CanvasEngine.origGeomFromObj(obj);
+    if (!geomStr) return null; // pen paths etc – nothing to do
+
+    let geom: Record<string, unknown>;
+    try { geom = JSON.parse(geomStr) as Record<string, unknown>; }
+    catch { return null; }
+
+    const seed = CanvasEngine.seedFromId(oa._id ?? '');
+    const sw   = (obj.get('strokeWidth') as number) ?? 1;
+    const stroke = obj.get('stroke') as string ?? this.strokeColor;
+    const fill   = obj.get('fill');
+    const opacity       = (obj.get('opacity') as number) ?? 1;
+    const strokeDashArr = obj.get('strokeDashArray') as number[] | undefined;
+
+    const copyCustom = (dst: FabricObject) => {
+      const d = dst as FabricObject & Ext;
+      d._id          = oa._id;
+      d._sloppiness  = sloppiness;
+      d._origGeom    = geomStr as string;
+      d._fillPattern = oa._fillPattern;
+      d._link        = oa._link;
+    };
+
+    if (sloppiness === 'architect') {
+      // Restore the native Fabric.js shape from origGeom
+      const archOpts = this.getSloppinessOptions('architect');
+      const gt = geom.type as string;
+      let newObj: FabricObject;
+      if (gt === 'line') {
+        const g = geom as { x1: number; y1: number; x2: number; y2: number };
+        newObj = new Line([g.x1, g.y1, g.x2, g.y2], {
+          stroke, strokeWidth: sw, fill: 'transparent',
+          ...archOpts,
+          strokeDashArray: strokeDashArr,
+          opacity, selectable: true, evented: true,
+        });
+      } else if (gt === 'rect') {
+        const g = geom as { left: number; top: number; width: number; height: number; rx: number };
+        newObj = new Rect({
+          left: g.left, top: g.top, width: g.width, height: g.height, rx: g.rx, ry: g.rx,
+          stroke, strokeWidth: sw, fill: fill as string,
+          ...archOpts,
+          strokeDashArray: strokeDashArr,
+          opacity, selectable: true, evented: true,
+        });
+      } else if (gt === 'ellipse') {
+        const g = geom as { cx: number; cy: number; rx: number; ry: number };
+        newObj = new Ellipse({
+          left: g.cx - g.rx, top: g.cy - g.ry, rx: g.rx, ry: g.ry,
+          stroke, strokeWidth: sw, fill: fill as string,
+          ...archOpts,
+          strokeDashArray: strokeDashArr,
+          opacity, selectable: true, evented: true,
+        });
+      } else {
+        return null;
+      }
+      copyCustom(newObj);
+      return newObj;
+    }
+
+    // artist / cartoonist → sketch path
+    const amp = CanvasEngine.sloppinessAmplitude(sloppiness, sw);
+    const d   = this.makeSketchyPath(geom, amp, seed);
+    if (!d) return null;
+
+    const newPath = new Path(d, {
+      stroke, strokeWidth: sw, fill: fill as string,
+      strokeLineCap: 'round', strokeLineJoin: 'round',
+      strokeDashArray: strokeDashArr,
+      opacity, selectable: true, evented: true,
+    });
+    copyCustom(newPath);
+    return newPath;
+  }
+
+  /**
+   * Replace the active canvas object with `replacement`, preserving selection.
+   * No-op if `canvas` is null.
+   */
+  private replaceActiveObject(old: FabricObject, replacement: FabricObject): void {
+    if (!this.canvas) return;
+    this.canvas.remove(old);
+    this.canvas.add(replacement);
+    this.canvas.setActiveObject(replacement);
+  }
+
+  /**
+   * Stamp `_origGeom` and `_sloppiness` onto a freshly-drawn object so the
+   * shape can be regenerated later when the sloppiness setting changes.
+   * Called for every shape type in onMouseUp.
+   */
+  private stampOrigGeomAndSloppiness(obj: FabricObject): void {
+    const ext = obj as FabricObject & { _sloppiness?: string; _origGeom?: string };
+    if (!ext._origGeom) {
+      const g = CanvasEngine.origGeomFromObj(obj);
+      if (g) ext._origGeom = g;
+    }
+    ext._sloppiness = this.sloppiness;
+  }
 
   private getDashArray(type: 'solid' | 'dashed' | 'dotted', width: number): number[] | undefined {
     if (type === 'dashed') return [Math.max(6, width * 3), Math.max(3, width * 1.5)];
@@ -1260,6 +1561,28 @@ export class CanvasEngine {
     const link = (o as FabricObject & { _link?: string })._link ?? '';
     const linkInput = document.getElementById('linkInput') as HTMLInputElement | null;
     if (linkInput) linkInput.value = link;
+
+    // Sync fill-enabled toggle from the object's actual fill state
+    const fillVal2 = o.get('fill');
+    const objHasFill = fillVal2 !== 'transparent' && fillVal2 != null;
+    this.fillEnabled = !!objHasFill;
+    const fillToggle = document.getElementById('tfillToggle');
+    if (fillToggle) {
+      fillToggle.textContent = this.fillEnabled ? '⊠' : '⊡';
+      fillToggle.setAttribute('aria-pressed', this.fillEnabled ? 'true' : 'false');
+    }
+
+    // Sync sloppiness buttons from the object's stored sloppiness
+    const objSloppiness = ((o as FabricObject & { _sloppiness?: string })._sloppiness
+      ?? 'architect') as 'architect' | 'artist' | 'cartoonist';
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    document.getElementById(`sloppy-${objSloppiness}`)?.classList.add('on');
+    document.getElementById(`sloppy-${objSloppiness}`)?.setAttribute('aria-pressed', 'true');
   }
 
   /**
@@ -1312,8 +1635,9 @@ export class CanvasEngine {
     // Border radius: rect only
     isRect ? show('pp-border-radius-section') : hide('pp-border-radius-section');
 
-    // Sloppiness: pen only
-    isPen ? show('pp-sloppiness-section') : hide('pp-sloppiness-section');
+    // Sloppiness: all shapes except text (and eraser, select)
+    const hasSloppiness = !isText && shapeType !== 'select' && shapeType !== 'eraser';
+    hasSloppiness ? show('pp-sloppiness-section') : hide('pp-sloppiness-section');
 
     // Arrow controls: arrow only
     isArrow ? show('pp-arrow-type-section')  : hide('pp-arrow-type-section');

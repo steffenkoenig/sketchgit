@@ -322,7 +322,11 @@ describe('CanvasEngine – serialisation', () => {
     const { engine } = makeEngine();
     engine.init();
     engine.getCanvasData();
-    expect(mockCanvasInstance.toObject).toHaveBeenCalledWith(['_isArrow', '_id']);
+    expect(mockCanvasInstance.toObject).toHaveBeenCalledWith([
+      '_isArrow', '_id', '_link', '_fillPattern',
+      '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
+      '_sloppiness', '_origGeom',
+    ]);
     expect(mockCanvasInstance.toJSON).not.toHaveBeenCalled();
   });
 
@@ -1290,7 +1294,7 @@ describe('CanvasEngine – showPropertiesPanelForShape', () => {
     expect(document.getElementById('pp-arrow-heads-section')!.classList.contains('hide')).toBe(false);
     expect(document.getElementById('pp-fill-pattern-section')!.classList.contains('hide')).toBe(true);
     expect(document.getElementById('pp-border-radius-section')!.classList.contains('hide')).toBe(true);
-    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(true);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(false); // sloppiness now shown for all non-text shapes
   });
 
   it('shows fill-pattern and border-radius sections for rect', () => {
@@ -1310,14 +1314,22 @@ describe('CanvasEngine – showPropertiesPanelForShape', () => {
     expect(document.getElementById('pp-border-radius-section')!.classList.contains('hide')).toBe(true);
   });
 
-  it('shows sloppiness section only for pen', () => {
+  it('shows sloppiness section for all shapes (pen, rect, line, arrow)', () => {
     const { engine } = makeEngine();
     engine.init();
     engine.showPropertiesPanelForShape('pen', false);
     expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(false);
-    // Other shape-specific sections hidden
+    engine.showPropertiesPanelForShape('rect', false);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(false);
+    engine.showPropertiesPanelForShape('line', false);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(false);
+    engine.showPropertiesPanelForShape('arrow', false);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(false);
+    // fill-pattern still hidden for arrow
     expect(document.getElementById('pp-fill-pattern-section')!.classList.contains('hide')).toBe(true);
-    expect(document.getElementById('pp-arrow-type-section')!.classList.contains('hide')).toBe(true);
+    // sloppiness hidden for text
+    engine.showPropertiesPanelForShape('text', false);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(true);
   });
 
   it('hides layer and link sections when isObjectSelected=false', () => {
@@ -1402,5 +1414,106 @@ describe('CanvasEngine – setArrowHeadStart / setArrowHeadEnd', () => {
     engine.setArrowHeadEnd('triangle');
     expect(engine.arrowHeadStart).toBe('open');
     expect(engine.arrowHeadEnd).toBe('triangle');
+  });
+});
+
+// ─── Bug-fix tests ─────────────────────────────────────────────────────────────
+
+describe('CanvasEngine – setFillPattern on existing shapes (bug fix)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('applies fill pattern when selected object has a non-transparent fill (fillEnabled=false)', () => {
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+    expect(engine.fillEnabled).toBe(false);
+    const obj = makeFabricObject({ fill: '#ff0000', _fillPattern: 'filled' });
+    mockCanvasInstance.getActiveObject.mockReturnValue(obj);
+    engine.setFillPattern('striped');
+    expect(obj.set).toHaveBeenCalledWith('fill', expect.anything());
+    expect(onBroadcastDraw).toHaveBeenCalled();
+  });
+
+  it('does NOT apply fill pattern when object has transparent fill and fillEnabled=false', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    const obj = makeFabricObject({ fill: 'transparent' });
+    mockCanvasInstance.getActiveObject.mockReturnValue(obj);
+    engine.setFillPattern('striped');
+    expect(obj.set).not.toHaveBeenCalledWith('fill', expect.anything());
+  });
+});
+
+describe('CanvasEngine – link double-click (bug fix)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('registers a mouse:dblclick handler during init()', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    expect(mockCanvasInstance.on).toHaveBeenCalledWith('mouse:dblclick', expect.any(Function));
+  });
+
+  it('setObjectLink stores _link on the active object', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    const obj = makeFabricObject({});
+    mockCanvasInstance.getActiveObject.mockReturnValue(obj);
+    engine.setObjectLink('https://example.com');
+    expect((obj as Record<string, unknown>)._link).toBe('https://example.com');
+  });
+
+  it('setObjectLink clears _link when empty string is passed', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    const obj = makeFabricObject({ _link: 'https://old.com' });
+    mockCanvasInstance.getActiveObject.mockReturnValue(obj);
+    engine.setObjectLink('');
+    expect((obj as Record<string, unknown>)._link).toBeUndefined();
+  });
+});
+
+describe('CanvasEngine – sloppiness for all shapes', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('sloppiness section visible for rect, ellipse, line, arrow, pen', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    for (const shape of ['rect', 'ellipse', 'line', 'arrow', 'pen']) {
+      engine.showPropertiesPanelForShape(shape, false);
+      expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(false);
+    }
+  });
+
+  it('sloppiness section hidden for text', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('text', false);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(true);
+  });
+
+  it('setSloppiness updates button states', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setSloppiness('artist');
+    expect(document.getElementById('sloppy-artist')!.classList.contains('on')).toBe(true);
+    expect(document.getElementById('sloppy-architect')!.classList.contains('on')).toBe(false);
+    engine.setSloppiness('architect');
+    expect(document.getElementById('sloppy-architect')!.classList.contains('on')).toBe(true);
+  });
+});
+
+describe('CanvasEngine – sketch path helpers', () => {
+  it('seedFromId returns a stable non-negative integer', () => {
+    const eng = (CanvasEngine as unknown as Record<string, unknown>);
+    const fn = eng.seedFromId as (id: string) => number;
+    expect(fn('obj_abc123')).toBe(fn('obj_abc123'));
+    expect(fn('obj_abc123')).toBeGreaterThanOrEqual(0);
+  });
+
+  it('sloppinessAmplitude: 0 for architect, positive for artist, larger for cartoonist', () => {
+    const eng = (CanvasEngine as unknown as Record<string, unknown>);
+    const fn = eng.sloppinessAmplitude as (s: string, sw: number) => number;
+    expect(fn('architect', 2)).toBe(0);
+    expect(fn('artist', 2)).toBeGreaterThan(0);
+    expect(fn('cartoonist', 2)).toBeGreaterThan(fn('artist', 2));
   });
 });
