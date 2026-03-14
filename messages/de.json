@@ -59,7 +59,9 @@
     "bringToFront": "In Vordergrund",
     "bringForward": "Eine Ebene nach vorne",
     "sendBackward": "Eine Ebene nach hinten",
-    "sendToBack": "In Hintergrund"
+    "sendToBack": "In Hintergrund",
+    "shapeProperties": "Formeigenschaften",
+    "linkPlaceholder": "https://…"
   },
   "topbar": {
     "collab": "Zusammenarbeit",

@@ -326,6 +326,8 @@ describe('CanvasEngine – serialisation', () => {
       '_isArrow', '_id', '_link', '_fillPattern',
       '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
       '_sloppiness', '_origGeom',
+      '_attachedFrom', '_attachedTo',
+      '_x1', '_y1', '_x2', '_y2',
     ]);
     expect(mockCanvasInstance.toJSON).not.toHaveBeenCalled();
   });

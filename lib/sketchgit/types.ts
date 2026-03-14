@@ -20,7 +20,7 @@ export const MERGE_PROPS: readonly string[] = [
   'fontSize', 'fontFamily', 'opacity', 'flipX', 'flipY',
   'strokeDashArray', 'strokeLineCap', 'strokeLineJoin',
   '_fillPattern', '_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
-  '_attachedFrom', '_attachedTo',
+  '_attachedFrom', '_attachedTo', '_sloppiness', '_origGeom',
 ];
 
 // ─── Git model ────────────────────────────────────────────────────────────────

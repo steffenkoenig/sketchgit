@@ -25,6 +25,15 @@ import type { TPointerEventInfo, XY } from 'fabric';
 import { ensureObjId } from '../git/objectIdTracker';
 import { logger } from '../logger';
 
+/** Shared type for arrow Group objects carrying endpoint + style metadata. */
+type ArrowGroupExt = FabricObject & {
+  _isArrow?: boolean;
+  _x1?: number; _y1?: number; _x2?: number; _y2?: number;
+  _arrowType?: string;
+  _arrowHeadStart?: string;
+  _arrowHeadEnd?: string;
+};
+
 export class CanvasEngine {
   // ── Fabric.js canvas instance (set by init()) ──────────────────────────────
   canvas: Canvas | null = null;
@@ -110,7 +119,7 @@ export class CanvasEngine {
     if (!FabricObject.customProperties.includes('_isArrow')) {
       FabricObject.customProperties.push('_isArrow');
     }
-    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom']) {
+    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_x1', '_y1', '_x2', '_y2']) {
       if (!FabricObject.customProperties.includes(p)) {
         FabricObject.customProperties.push(p);
       }
@@ -139,7 +148,15 @@ export class CanvasEngine {
       if (!target) return;
       const link = (target as FabricObject & { _link?: string })._link;
       if (link) {
-        window.open(link, '_blank', 'noopener,noreferrer');
+        // Only allow safe URL schemes to prevent javascript: injection.
+        try {
+          const url = new URL(link);
+          if (url.protocol === 'https:' || url.protocol === 'http:' || url.protocol === 'mailto:') {
+            window.open(link, '_blank', 'noopener,noreferrer');
+          }
+        } catch {
+          // Malformed URL — ignore silently.
+        }
       }
     });
 
@@ -311,6 +328,8 @@ export class CanvasEngine {
       '_isArrow', '_id', '_link', '_fillPattern',
       '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
       '_sloppiness', '_origGeom',
+      '_attachedFrom', '_attachedTo',
+      '_x1', '_y1', '_x2', '_y2',
     ]));
   }
 
@@ -697,7 +716,8 @@ export class CanvasEngine {
 
     const grp = Object.assign(
       new Group(shapes, { selectable: true, evented: true }),
-      { _isArrow: true, _arrowHeadStart: headStart, _arrowHeadEnd: headEnd, _arrowType: arrowType },
+      { _isArrow: true, _arrowHeadStart: headStart, _arrowHeadEnd: headEnd, _arrowType: arrowType,
+        _x1: x1, _y1: y1, _x2: x2, _y2: y2 },
     );
     ensureObjId(grp);
     this.canvas.add(grp);
@@ -1117,6 +1137,8 @@ export class CanvasEngine {
       eEl?.classList.toggle('on', t === end);
       eEl?.setAttribute('aria-pressed', t === end ? 'true' : 'false');
     });
+    // Rebuild the currently selected arrow group with the new heads
+    this.rebuildSelectedArrow({ headStart: start, headEnd: end });
   }
 
   /** Convenience: change only the start arrowhead while keeping the current end. */
@@ -1136,6 +1158,50 @@ export class CanvasEngine {
       el?.classList.toggle('on', t === type);
       el?.setAttribute('aria-pressed', t === type ? 'true' : 'false');
     });
+    // Rebuild the currently selected arrow group with the new type
+    this.rebuildSelectedArrow({ arrowType: type });
+  }
+
+  /**
+   * If an arrow Group is currently selected, rebuild it with the given overrides.
+   * Uses endpoint coordinates stored in `_x1/_y1/_x2/_y2` on the group.
+   * No-op when no object is selected or the selected object is not an arrow group.
+   */
+  private rebuildSelectedArrow(overrides: {
+    headStart?: 'none' | 'open' | 'triangle' | 'triangle-outline';
+    headEnd?: 'none' | 'open' | 'triangle' | 'triangle-outline';
+    arrowType?: 'sharp' | 'curved' | 'elbow';
+  }): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o || !this.canvas) return;
+    const ag = o as ArrowGroupExt;
+    if (!ag._isArrow) return; // no-op: not an arrow group
+
+    const x1 = ag._x1 ?? 0, y1 = ag._y1 ?? 0, x2 = ag._x2 ?? 0, y2 = ag._y2 ?? 0;
+    const headStart = (overrides.headStart ?? ag._arrowHeadStart ?? this.arrowHeadStart) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const headEnd   = (overrides.headEnd   ?? ag._arrowHeadEnd   ?? this.arrowHeadEnd) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const arrowType = (overrides.arrowType ?? ag._arrowType ?? this.arrowType) as 'sharp' | 'curved' | 'elbow';
+
+    // Read stroke/width/dash/opacity from the group's first child
+    const children = (o as Group).getObjects?.() ?? [];
+    const firstChild = children[0] as FabricObject | undefined;
+    const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
+    const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
+    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined) ?? undefined;
+    const opacity = (o.get('opacity') as number | undefined) ?? 1;
+
+    const tempLine = new Line([x1, y1, x2, y2], {
+      stroke, strokeWidth, strokeDashArray: strokeDashArray ?? undefined,
+      opacity, selectable: false, evented: false,
+    });
+    // Copy the original group's ID so the merge engine keeps tracking the same object
+    (tempLine as FabricObject & { _id?: string })._id =
+      (o as FabricObject & { _id?: string })._id;
+
+    this.canvas.remove(o);
+    this.buildArrowGroup(tempLine, headStart, headEnd, arrowType);
+    this.markDirty();
+    this.onBroadcastDraw(true);
   }
 
   zoomIn(): void { this.canvas?.setZoom(Math.min(this.canvas.getZoom() * 1.2, 10)); }
@@ -1318,9 +1384,24 @@ export class CanvasEngine {
     const seed = CanvasEngine.seedFromId(oa._id ?? '');
     const sw   = (obj.get('strokeWidth') as number) ?? 1;
     const stroke = obj.get('stroke') as string ?? this.strokeColor;
-    const fill   = obj.get('fill');
     const opacity       = (obj.get('opacity') as number) ?? 1;
     const strokeDashArr = obj.get('strokeDashArray') as number[] | undefined;
+
+    // Resolve fill: if the current fill is a Pattern, recreate it from stored metadata
+    // to avoid casting a Pattern object to string (which would yield "[object Object]").
+    const rawFill = obj.get('fill');
+    const fillIsPattern = rawFill instanceof Pattern ||
+      (rawFill !== null && typeof rawFill === 'object');
+    const fillArg: string | Pattern = fillIsPattern
+      ? this.createFill(
+          (oa._fillPattern as 'filled' | 'striped' | 'crossed' | undefined) ?? 'filled',
+          this.fillColor,
+        )
+      : (rawFill as string) ?? 'transparent';
+
+    // Capture source center BEFORE any canvas mutation so we can reposition the
+    // replacement at exactly the same visual location.
+    const srcCenter = obj.getCenterPoint();
 
     const copyCustom = (dst: FabricObject) => {
       const d = dst as FabricObject & Ext;
@@ -1331,37 +1412,46 @@ export class CanvasEngine {
       d._link        = oa._link;
     };
 
+    /** Position `newObj` so its visual center matches the source object's center. */
+    const applyCenter = (newObj: FabricObject) => {
+      newObj.set({ left: srcCenter.x, top: srcCenter.y, originX: 'center', originY: 'center' });
+      newObj.setCoords();
+    };
+
     if (sloppiness === 'architect') {
-      // Restore the native Fabric.js shape from origGeom
+      // Restore the native Fabric.js shape from origGeom.
+      // Use stored DIMENSIONS but position at current srcCenter for correct placement
+      // even when the shape has been moved since it was first drawn.
       const archOpts = this.getSloppinessOptions('architect');
       const gt = geom.type as string;
       let newObj: FabricObject;
       if (gt === 'line') {
+        // For lines, restore from stored dx/dy relative to current center
         const g = geom as { x1: number; y1: number; x2: number; y2: number };
-        newObj = new Line([g.x1, g.y1, g.x2, g.y2], {
-          stroke, strokeWidth: sw, fill: 'transparent',
-          ...archOpts,
-          strokeDashArray: strokeDashArr,
-          opacity, selectable: true, evented: true,
-        });
+        const dx = (g.x2 - g.x1) / 2, dy = (g.y2 - g.y1) / 2;
+        newObj = new Line(
+          [srcCenter.x - dx, srcCenter.y - dy, srcCenter.x + dx, srcCenter.y + dy],
+          { stroke, strokeWidth: sw, fill: 'transparent', ...archOpts,
+            strokeDashArray: strokeDashArr, opacity, selectable: true, evented: true },
+        );
       } else if (gt === 'rect') {
-        const g = geom as { left: number; top: number; width: number; height: number; rx: number };
+        const g = geom as { width: number; height: number; rx: number };
         newObj = new Rect({
-          left: g.left, top: g.top, width: g.width, height: g.height, rx: g.rx, ry: g.rx,
-          stroke, strokeWidth: sw, fill: fill as string,
-          ...archOpts,
-          strokeDashArray: strokeDashArr,
+          width: g.width, height: g.height, rx: g.rx, ry: g.rx,
+          stroke, strokeWidth: sw, fill: fillArg,
+          ...archOpts, strokeDashArray: strokeDashArr,
           opacity, selectable: true, evented: true,
         });
+        applyCenter(newObj);
       } else if (gt === 'ellipse') {
-        const g = geom as { cx: number; cy: number; rx: number; ry: number };
+        const g = geom as { rx: number; ry: number };
         newObj = new Ellipse({
-          left: g.cx - g.rx, top: g.cy - g.ry, rx: g.rx, ry: g.ry,
-          stroke, strokeWidth: sw, fill: fill as string,
-          ...archOpts,
-          strokeDashArray: strokeDashArr,
+          rx: g.rx, ry: g.ry,
+          stroke, strokeWidth: sw, fill: fillArg,
+          ...archOpts, strokeDashArray: strokeDashArr,
           opacity, selectable: true, evented: true,
         });
+        applyCenter(newObj);
       } else {
         return null;
       }
@@ -1375,11 +1465,16 @@ export class CanvasEngine {
     if (!d) return null;
 
     const newPath = new Path(d, {
-      stroke, strokeWidth: sw, fill: fill as string,
+      stroke, strokeWidth: sw, fill: fillArg,
       strokeLineCap: 'round', strokeLineJoin: 'round',
       strokeDashArray: strokeDashArr,
       opacity, selectable: true, evented: true,
     });
+    // Fabric auto-sets left/top to pathOffset (= center of path's bounding box).
+    // By switching to originX='center' and overriding left/top with the source
+    // center, we ensure the sketch path appears at the same position regardless of
+    // whether the shape was moved after it was drawn (fixes position-shift bug).
+    applyCenter(newPath);
     copyCustom(newPath);
     return newPath;
   }
@@ -1481,6 +1576,7 @@ export class CanvasEngine {
     const id = (movedObj as FabricObject & { _id?: string })._id;
     if (!id) return;
     const center = movedObj.getCenterPoint();
+    let changed = false;
 
     for (const obj of this.canvas.getObjects()) {
       if (!(obj instanceof Line)) continue;
@@ -1488,13 +1584,19 @@ export class CanvasEngine {
       if (attached._attachedFrom === id) {
         attached.set({ x1: center.x, y1: center.y });
         attached.setCoords();
+        changed = true;
       }
       if (attached._attachedTo === id) {
         attached.set({ x2: center.x, y2: center.y });
         attached.setCoords();
+        changed = true;
       }
     }
     this.canvas.requestRenderAll();
+    if (changed) {
+      this.markDirty();
+      this.onBroadcastDraw(false); // throttled — endpoint moves are frequent
+    }
   }
 
   /** Sync the toolbar and properties panel UI to the currently selected object. */
@@ -1524,13 +1626,6 @@ export class CanvasEngine {
     const stroke = (o.get('stroke') as string) ?? this.strokeColor;
     const strokeDot = document.getElementById('strokeDot');
     if (strokeDot) strokeDot.style.background = stroke;
-
-    // Sync fill dot
-    const fillVal = o.get('fill');
-    if (typeof fillVal === 'string') {
-      const fillDot = document.getElementById('fillDot');
-      if (fillDot) fillDot.style.background = fillVal;
-    }
 
     // Sync stroke width buttons
     const sw = (o.get('strokeWidth') as number) ?? 1.5;
@@ -1572,6 +1667,30 @@ export class CanvasEngine {
       fillToggle.setAttribute('aria-pressed', this.fillEnabled ? 'true' : 'false');
     }
 
+    // Sync fill dot — if fill is a Pattern, use a fallback colour so the dot reflects fill state
+    const fillDot = document.getElementById('fillDot');
+    if (fillDot) {
+      if (typeof fillVal2 === 'string') {
+        fillDot.style.background = fillVal2;
+      } else if (fillVal2 instanceof Pattern || (fillVal2 !== null && typeof fillVal2 === 'object')) {
+        // Object is Pattern: show the stored fill color as representative
+        fillDot.style.background = this.fillColor;
+      }
+    }
+
+    // Sync fill-pattern buttons from the object's stored _fillPattern
+    const objFillPattern = ((o as FabricObject & { _fillPattern?: string })._fillPattern
+      ?? 'filled') as 'filled' | 'striped' | 'crossed';
+    ['fp-filled', 'fp-striped', 'fp-crossed'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const fpActive = `fp-${objFillPattern}`;
+    document.getElementById(fpActive)?.classList.add('on');
+    document.getElementById(fpActive)?.setAttribute('aria-pressed', 'true');
+
     // Sync sloppiness buttons from the object's stored sloppiness
     const objSloppiness = ((o as FabricObject & { _sloppiness?: string })._sloppiness
       ?? 'architect') as 'architect' | 'artist' | 'cartoonist';
@@ -1583,6 +1702,25 @@ export class CanvasEngine {
     });
     document.getElementById(`sloppy-${objSloppiness}`)?.classList.add('on');
     document.getElementById(`sloppy-${objSloppiness}`)?.setAttribute('aria-pressed', 'true');
+
+    // Sync arrow type and arrowhead buttons from the selected arrow group
+    const oa = o as ArrowGroupExt;
+    if (oa._isArrow) {
+      const at = (oa._arrowType ?? 'sharp') as string;
+      (['sharp', 'curved', 'elbow'] as const).forEach((t) => {
+        document.getElementById(`at-${t}`)?.classList.toggle('on', t === at);
+        document.getElementById(`at-${t}`)?.setAttribute('aria-pressed', t === at ? 'true' : 'false');
+      });
+      const ahs = (oa._arrowHeadStart ?? 'none') as string;
+      const ahe = (oa._arrowHeadEnd ?? 'open') as string;
+      (['none', 'open', 'triangle', 'triangle-outline'] as const).forEach((t) => {
+        const suffix = t.replace(/-/g, '');
+        document.getElementById(`ahs-${suffix}`)?.classList.toggle('on', t === ahs);
+        document.getElementById(`ahs-${suffix}`)?.setAttribute('aria-pressed', t === ahs ? 'true' : 'false');
+        document.getElementById(`ahe-${suffix}`)?.classList.toggle('on', t === ahe);
+        document.getElementById(`ahe-${suffix}`)?.setAttribute('aria-pressed', t === ahe ? 'true' : 'false');
+      });
+    }
   }
 
   /**
