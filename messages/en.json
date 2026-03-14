@@ -16,7 +16,10 @@
     "skipToCanvas": "Skip to canvas",
     "exportPng": "Export as PNG",
     "exportSvg": "Export as SVG",
-    "exportPdf": "Export as PDF"
+    "exportPdf": "Export as PDF",
+    "opacity": "Opacity",
+    "addLink": "Add Link",
+    "arrowHeads": "Arrow Heads"
   },
   "topbar": {
     "collab": "Collab",

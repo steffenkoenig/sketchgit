@@ -133,6 +133,54 @@ export default function SketchGitApp() {
                 aria-haspopup="dialog"
               >{t("modal.commit.confirm")}</button>
             </div>
+
+            {/* Properties panel – shown when an object is selected */}
+            <div id="props-panel" className="hide" role="complementary" aria-label="Object properties">
+              <div className="pp-section">
+                <label className="pp-label" htmlFor="opacitySlider">{t("toolbar.opacity")}</label>
+                <div className="pp-row">
+                  <input
+                    id="opacitySlider"
+                    type="range"
+                    min="0"
+                    max="100"
+                    defaultValue="100"
+                    aria-label="Opacity"
+                    onInput={(e) => call("setOpacity", parseInt((e.currentTarget as HTMLInputElement).value, 10))}
+                    className="pp-slider"
+                  />
+                  <span id="opacityValue" className="pp-val">100%</span>
+                </div>
+              </div>
+
+              <div className="pp-section" id="arrow-props-section">
+                <span className="pp-label">{t("toolbar.arrowHeads")}</span>
+                <div className="pp-row" style={{ gap: "4px", flexWrap: "wrap" }}>
+                  <button className="sz-btn" id="ahs-none" onClick={() => call("setArrowHeads", "none", "open")} aria-label="No start head" aria-pressed="false" title="Start: none">○→</button>
+                  <button className="sz-btn on" id="ahs-open" onClick={() => call("setArrowHeads", "open", "open")} aria-label="Open start head" aria-pressed="false" title="Start: open">←→</button>
+                  <button className="sz-btn" id="ahs-triangle" onClick={() => call("setArrowHeads", "triangle", "open")} aria-label="Triangle start head" aria-pressed="false" title="Start: triangle">◀→</button>
+                </div>
+              </div>
+
+              <div className="pp-section">
+                <label className="pp-label" htmlFor="linkInput">{t("toolbar.addLink")}</label>
+                <div className="pp-row">
+                  <input
+                    id="linkInput"
+                    type="url"
+                    placeholder="https://..."
+                    aria-label="Link URL for selected object"
+                    className="pp-input"
+                    onBlur={(e) => call("setObjectLink", (e.currentTarget as HTMLInputElement).value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        call("setObjectLink", (e.currentTarget as HTMLInputElement).value);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
           </main>
         </div>
 

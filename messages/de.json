@@ -16,7 +16,10 @@
     "skipToCanvas": "Zur Zeichenfläche springen",
     "exportPng": "Als PNG exportieren",
     "exportSvg": "Als SVG exportieren",
-    "exportPdf": "Als PDF exportieren"
+    "exportPdf": "Als PDF exportieren",
+    "opacity": "Deckkraft",
+    "addLink": "Link hinzufügen",
+    "arrowHeads": "Pfeilspitzen"
   },
   "topbar": {
     "collab": "Zusammenarbeit",

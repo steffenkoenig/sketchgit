@@ -18,7 +18,7 @@
  */
 
 import {
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricObject, Point,
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricObject, Point, Pattern,
 } from 'fabric';
 import type { TPointerEventInfo, XY } from 'fabric';
 
@@ -35,6 +35,14 @@ export class CanvasEngine {
   fillColor = '#1a1a2e';
   fillEnabled = false;
   strokeWidth = 1.5;
+  strokeDashType: 'solid' | 'dashed' | 'dotted' = 'solid';
+  borderRadiusEnabled = false;
+  opacityValue = 100;
+  sloppiness: 'architect' | 'artist' | 'cartoonist' = 'architect';
+  fillPattern: 'filled' | 'striped' | 'crossed' = 'filled';
+  arrowHeadStart: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'none';
+  arrowHeadEnd: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'open';
+  arrowType: 'sharp' | 'curved' | 'elbow' = 'sharp';
 
   // ── Drawing interaction state ─────────────────────────────────────────────
   private isDrawing = false;
@@ -102,6 +110,11 @@ export class CanvasEngine {
     if (!FabricObject.customProperties.includes('_isArrow')) {
       FabricObject.customProperties.push('_isArrow');
     }
+    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern']) {
+      if (!FabricObject.customProperties.includes(p)) {
+        FabricObject.customProperties.push(p);
+      }
+    }
 
     const wrap = document.getElementById('canvas-wrap');
     if (!wrap) return;
@@ -127,15 +140,23 @@ export class CanvasEngine {
         .map((obj) => (obj as FabricObject & { _id?: string })._id ?? '')
         .filter(Boolean);
       if (ids.length > 0) this.onBroadcastLock?.(ids);
+      this.syncPropertiesPanelToSelection();
     });
     this.canvas.on('selection:updated', (e: { selected?: FabricObject[] }) => {
       const ids = (e.selected ?? [])
         .map((obj) => (obj as FabricObject & { _id?: string })._id ?? '')
         .filter(Boolean);
       if (ids.length > 0) this.onBroadcastLock?.(ids);
+      this.syncPropertiesPanelToSelection();
     });
     this.canvas.on('selection:cleared', () => {
       this.onBroadcastUnlock?.();
+      this.syncPropertiesPanelToSelection();
+    });
+
+    // Attachment tracking: when an object is moved, update any attached line endpoints.
+    this.canvas.on('object:moving', (e: { target?: FabricObject }) => {
+      if (e.target) this.updateAttachedLines(e.target);
     });
 
     // P020: store bound references so they can be removed in destroy()
@@ -380,10 +401,13 @@ export class CanvasEngine {
       // P022: Use a Polyline for the in-progress stroke so points can be
       // appended in-place during mousemove without creating a new object
       // on every event.  The polyline is converted to a Path on mouseup.
+      const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
       this.activeObj = new Polyline([{ x: p.x, y: p.y }], {
         stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
         selectable: false, evented: false,
-        strokeLineCap: 'round', strokeLineJoin: 'round',
+        strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
+        strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+        opacity: this.opacityValue / 100,
       });
       this.canvas?.add(this.activeObj);
       return;
@@ -397,6 +421,7 @@ export class CanvasEngine {
         fontSize: 18, fill: this.strokeColor,
         fontFamily: 'Fira Code',
         selectable: true, editable: true,
+        opacity: this.opacityValue / 100,
       });
       ensureObjId(t);
       this.canvas?.add(t);
@@ -408,30 +433,49 @@ export class CanvasEngine {
       return;
     }
 
+    const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
     const shapeOpts = {
       left: p.x, top: p.y, width: 0, height: 0,
       stroke: this.strokeColor, strokeWidth: this.strokeWidth,
-      fill: this.fillEnabled ? this.fillColor : 'transparent',
+      fill: this.fillEnabled ? this.createFill(this.fillPattern, this.fillColor) : 'transparent',
       selectable: false, evented: false,
       originX: 'left' as const, originY: 'top' as const,
+      strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+      opacity: this.opacityValue / 100,
+      ...sloppyOpts,
     };
 
     if (this.currentTool === 'rect') {
-      this.activeObj = new Rect({ ...shapeOpts, rx: 3, ry: 3 });
-    } else if (this.currentTool === 'ellipse') {
-      this.activeObj = new Ellipse({ ...shapeOpts, rx: 0, ry: 0 });
-    } else if (this.currentTool === 'line') {
-      this.activeObj = new Line([p.x, p.y, p.x, p.y], {
-        stroke: this.strokeColor, strokeWidth: this.strokeWidth,
-        selectable: false, evented: false, strokeLineCap: 'round',
-      });
-    } else if (this.currentTool === 'arrow') {
+      const r = this.borderRadiusEnabled ? 12 : 3;
       this.activeObj = Object.assign(
-        new Line([p.x, p.y, p.x, p.y], {
-          stroke: this.strokeColor, strokeWidth: this.strokeWidth,
-          selectable: false, evented: false, strokeLineCap: 'round',
-        }),
-        { _isArrow: true },
+        new Rect({ ...shapeOpts, rx: r, ry: r }),
+        { _fillPattern: this.fillPattern },
+      );
+    } else if (this.currentTool === 'ellipse') {
+      this.activeObj = Object.assign(
+        new Ellipse({ ...shapeOpts, rx: 0, ry: 0 }),
+        { _fillPattern: this.fillPattern },
+      );
+    } else if (this.currentTool === 'line') {
+      const lineOpts = {
+        stroke: this.strokeColor, strokeWidth: this.strokeWidth,
+        selectable: false, evented: false,
+        strokeLineCap: sloppyOpts.strokeLineCap,
+        strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+        opacity: this.opacityValue / 100,
+      };
+      this.activeObj = new Line([p.x, p.y, p.x, p.y], lineOpts);
+    } else if (this.currentTool === 'arrow') {
+      const lineOpts = {
+        stroke: this.strokeColor, strokeWidth: this.strokeWidth,
+        selectable: false, evented: false,
+        strokeLineCap: sloppyOpts.strokeLineCap,
+        strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+        opacity: this.opacityValue / 100,
+      };
+      this.activeObj = Object.assign(
+        new Line([p.x, p.y, p.x, p.y], lineOpts),
+        { _isArrow: true, _arrowHeadStart: this.arrowHeadStart, _arrowHeadEnd: this.arrowHeadEnd, _arrowType: this.arrowType },
       );
     }
 
@@ -504,13 +548,16 @@ export class CanvasEngine {
       this.canvas?.remove(this.activeObj);
 
       if (penPoints.length > 1) {
+        const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
         const d = penPoints
           .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
           .join(' ');
         const finalPath = new Path(d, {
           stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
           selectable: true, evented: true,
-          strokeLineCap: 'round', strokeLineJoin: 'round',
+          strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
+          strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+          opacity: this.opacityValue / 100,
         });
         ensureObjId(finalPath);
         this.canvas?.add(finalPath);
@@ -535,9 +582,16 @@ export class CanvasEngine {
         ensureObjId(this.activeObj);
         this.activeObj.set({ selectable: true, evented: true });
         if ((this.activeObj as FabricObject & { _isArrow?: boolean })._isArrow) {
-          this.drawArrowhead(this.activeObj as Line);
+          const arrowObj = this.activeObj as Line & { _arrowHeadStart?: string; _arrowHeadEnd?: string; _arrowType?: string };
+          const headStart = (arrowObj._arrowHeadStart ?? this.arrowHeadStart) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+          const headEnd = (arrowObj._arrowHeadEnd ?? this.arrowHeadEnd) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+          const arrowType = (arrowObj._arrowType ?? this.arrowType) as 'sharp' | 'curved' | 'elbow';
+          this.buildArrowGroup(this.activeObj as Line, headStart, headEnd, arrowType);
+        } else {
+          // Snap line endpoints to nearby shape centers when near a shape.
+          this.snapLineAttachment(this.activeObj as Line);
+          this.canvas?.setActiveObject(this.activeObj);
         }
-        this.canvas?.setActiveObject(this.activeObj);
         this.markDirty();
       }
       this.activeObj = null;
@@ -548,29 +602,122 @@ export class CanvasEngine {
     if (this.currentTool !== 'select') this.onBroadcastDraw(true);
   }
 
-  private drawArrowhead(line: Line): void {
-    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = line;
+  private buildArrowGroup(
+    line: Line,
+    headStart: 'none' | 'open' | 'triangle' | 'triangle-outline',
+    headEnd: 'none' | 'open' | 'triangle' | 'triangle-outline',
+    arrowType: 'sharp' | 'curved' | 'elbow',
+  ): void {
+    if (!this.canvas) return;
+    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = line as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
+    const stroke = line.stroke as string ?? this.strokeColor;
+    const strokeWidth = (line.get('strokeWidth') as number) ?? this.strokeWidth;
+
+    const shapes: FabricObject[] = [];
+
+    // For curved and elbow types, replace the line with a path
+    if (arrowType === 'curved' || arrowType === 'elbow') {
+      let pathD: string;
+      if (arrowType === 'curved') {
+        // Quadratic Bezier with midpoint perpendicular offset
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx, dy);
+        const curvature = Math.min(len * 0.3, 60);
+        const cx = mx - (dy / len) * curvature;
+        const cy = my + (dx / len) * curvature;
+        pathD = `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
+      } else {
+        // Elbow: right-angle connector (goes horizontal then vertical)
+        const midX = (x1 + x2) / 2;
+        pathD = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+      }
+      const pathLine = new Path(pathD, {
+        stroke, strokeWidth, fill: 'transparent',
+        selectable: false, evented: false,
+        strokeLineCap: 'round', strokeLineJoin: 'round',
+        strokeDashArray: line.get('strokeDashArray') as number[] | undefined,
+        opacity: line.get('opacity') as number | undefined,
+      });
+      ensureObjId(pathLine);
+      shapes.push(pathLine);
+      this.canvas.remove(line);
+    } else {
+      shapes.push(line);
+    }
+
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const len = 14, spread = 0.4;
-    const p1x = x2 - len * Math.cos(angle - spread);
-    const p1y = y2 - len * Math.sin(angle - spread);
-    const p2x = x2 - len * Math.cos(angle + spread);
-    const p2y = y2 - len * Math.sin(angle + spread);
 
-    const head = new Polygon(
-      [{ x: x2, y: y2 }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
-      { fill: line.stroke, stroke: line.stroke, strokeWidth: 1, selectable: false, evented: false },
+    // End arrowhead
+    if (headEnd !== 'none') {
+      const head = this.makeArrowhead(x2, y2, angle, len, spread, stroke, strokeWidth, headEnd);
+      if (head) { ensureObjId(head); shapes.push(head); }
+    }
+
+    // Start arrowhead (reversed angle)
+    if (headStart !== 'none') {
+      const head = this.makeArrowhead(x1, y1, angle + Math.PI, len, spread, stroke, strokeWidth, headStart);
+      if (head) { ensureObjId(head); shapes.push(head); }
+    }
+
+    // Remove individual shapes from canvas before grouping
+    for (const s of shapes) {
+      if (s !== line) this.canvas.add(s);
+      this.canvas.remove(s);
+    }
+
+    const grp = Object.assign(
+      new Group(shapes, { selectable: true, evented: true }),
+      { _isArrow: true, _arrowHeadStart: headStart, _arrowHeadEnd: headEnd, _arrowType: arrowType },
     );
-    ensureObjId(head);
-    this.canvas?.add(head);
-
-    const grp = new Group([line, head], { selectable: true, evented: true });
     ensureObjId(grp);
-    this.canvas?.remove(line);
-    this.canvas?.remove(head);
-    this.canvas?.add(grp);
-    this.canvas?.setActiveObject(grp);
+    this.canvas.add(grp);
+    this.canvas.setActiveObject(grp);
     this.activeObj = null;
+  }
+
+  private makeArrowhead(
+    tipX: number, tipY: number,
+    angle: number, len: number, spread: number,
+    stroke: string, strokeWidth: number,
+    type: 'open' | 'triangle' | 'triangle-outline',
+  ): FabricObject | null {
+    const p1x = tipX - len * Math.cos(angle - spread);
+    const p1y = tipY - len * Math.sin(angle - spread);
+    const p2x = tipX - len * Math.cos(angle + spread);
+    const p2y = tipY - len * Math.sin(angle + spread);
+
+    if (type === 'open') {
+      // Open arrow: two-line chevron using a Polyline (no fill)
+      const pts = [{ x: p1x, y: p1y }, { x: tipX, y: tipY }, { x: p2x, y: p2y }] as XY[];
+      return new Polyline(pts, {
+        stroke, strokeWidth, fill: 'transparent',
+        selectable: false, evented: false,
+        strokeLineCap: 'round', strokeLineJoin: 'round',
+      });
+    }
+    if (type === 'triangle') {
+      // Filled triangle
+      return new Polygon(
+        [{ x: tipX, y: tipY }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
+        { fill: stroke, stroke, strokeWidth: 1, selectable: false, evented: false },
+      );
+    }
+    if (type === 'triangle-outline') {
+      // Outlined triangle (unfilled)
+      return new Polygon(
+        [{ x: tipX, y: tipY }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
+        { fill: 'transparent', stroke, strokeWidth, selectable: false, evented: false },
+      );
+    }
+    return null;
+  }
+
+  /** @deprecated Use buildArrowGroup instead. Kept for backward compatibility. */
+  private drawArrowhead(line: Line): void {
+    this.buildArrowGroup(line, 'none', 'open', 'sharp');
   }
 
   // ── P085: Pinch-to-zoom touch handlers ────────────────────────────────────
@@ -715,7 +862,9 @@ export class CanvasEngine {
     if (dot) dot.style.background = v;
     const o = this.canvas?.getActiveObject();
     if (o) {
-      o.set('fill', v);
+      // Re-apply pattern fill with the new color, or use plain fill
+      const pattern = (o as FabricObject & { _fillPattern?: string })._fillPattern as 'filled' | 'striped' | 'crossed' | undefined;
+      o.set('fill', this.createFill(pattern ?? 'filled', v));
       this.canvas?.requestRenderAll();
       // BUG-010 – same fix: mark dirty and broadcast so peers see the change.
       this.markDirty();
@@ -747,6 +896,195 @@ export class CanvasEngine {
       el?.classList.add('on');
       el?.setAttribute('aria-pressed', 'true');
     }
+    // Also apply to the currently selected object
+    const o = this.canvas?.getActiveObject();
+    if (o) {
+      o.set('strokeWidth', w);
+      // Re-apply dash array so the dash scale matches the new width
+      if (this.strokeDashType !== 'solid') {
+        o.set('strokeDashArray', this.getDashArray(this.strokeDashType, w));
+      }
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
+
+  setStrokeDash(type: 'solid' | 'dashed' | 'dotted'): void {
+    this.strokeDashType = type;
+    ['dash-solid', 'dash-dashed', 'dash-dotted'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const el = document.getElementById(`dash-${type}`);
+    el?.classList.add('on');
+    el?.setAttribute('aria-pressed', 'true');
+    const o = this.canvas?.getActiveObject();
+    if (o) {
+      const w = (o.get('strokeWidth') as number) || this.strokeWidth;
+      const dashArray = this.getDashArray(type, w);
+      o.set('strokeDashArray', dashArray ?? null);
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
+
+  setBorderRadius(type: 'sharp' | 'rounded'): void {
+    this.borderRadiusEnabled = type === 'rounded';
+    ['br-sharp', 'br-rounded'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const el = document.getElementById(`br-${type}`);
+    el?.classList.add('on');
+    el?.setAttribute('aria-pressed', 'true');
+    const o = this.canvas?.getActiveObject();
+    if (o && o.isType('rect')) {
+      const r = type === 'rounded' ? 12 : 0;
+      (o as Rect).set({ rx: r, ry: r });
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
+
+  setOpacity(value: number): void {
+    this.opacityValue = Math.min(100, Math.max(0, Math.round(value)));
+    const slider = document.getElementById('opacitySlider') as HTMLInputElement | null;
+    if (slider) slider.value = String(this.opacityValue);
+    const label = document.getElementById('opacityValue');
+    if (label) label.textContent = `${this.opacityValue}%`;
+    const o = this.canvas?.getActiveObject();
+    if (o) {
+      o.set('opacity', this.opacityValue / 100);
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
+
+  setSloppiness(type: 'architect' | 'artist' | 'cartoonist'): void {
+    this.sloppiness = type;
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const el = document.getElementById(`sloppy-${type}`);
+    el?.classList.add('on');
+    el?.setAttribute('aria-pressed', 'true');
+    const o = this.canvas?.getActiveObject();
+    if (o) {
+      o.set(this.getSloppinessOptions(type));
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
+
+  setFillPattern(type: 'filled' | 'striped' | 'crossed'): void {
+    this.fillPattern = type;
+    ['fp-filled', 'fp-striped', 'fp-crossed'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const el = document.getElementById(`fp-${type}`);
+    el?.classList.add('on');
+    el?.setAttribute('aria-pressed', 'true');
+    const o = this.canvas?.getActiveObject();
+    if (o && this.fillEnabled) {
+      const fill = this.createFill(type, this.fillColor);
+      o.set('fill', fill);
+      (o as FabricObject & { _fillPattern?: string })._fillPattern = type;
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
+
+  bringToFront(): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o || !this.canvas) return;
+    this.pushHistory();
+    this.canvas.bringObjectToFront(o);
+    this.canvas.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  bringForward(): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o || !this.canvas) return;
+    this.pushHistory();
+    this.canvas.bringObjectForward(o);
+    this.canvas.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  sendBackward(): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o || !this.canvas) return;
+    this.pushHistory();
+    this.canvas.sendObjectBackwards(o);
+    this.canvas.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  sendToBack(): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o || !this.canvas) return;
+    this.pushHistory();
+    this.canvas.sendObjectToBack(o);
+    this.canvas.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  setObjectLink(url: string): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o) return;
+    (o as FabricObject & { _link?: string })._link = url.trim() || undefined;
+    this.markDirty();
+    this.onBroadcastDraw(true);
+    // Visual feedback: update the link input in the properties panel
+    const input = document.getElementById('linkInput') as HTMLInputElement | null;
+    if (input) input.value = url.trim();
+  }
+
+  setArrowHeads(
+    start: 'none' | 'open' | 'triangle' | 'triangle-outline',
+    end: 'none' | 'open' | 'triangle' | 'triangle-outline',
+  ): void {
+    this.arrowHeadStart = start;
+    this.arrowHeadEnd = end;
+    // Update UI button states for head-start
+    (['none', 'open', 'triangle', 'triangle-outline'] as const).forEach((t) => {
+      const sEl = document.getElementById(`ahs-${t.replace('-', '')}`);
+      const eEl = document.getElementById(`ahe-${t.replace('-', '')}`);
+      sEl?.classList.toggle('on', t === start);
+      sEl?.setAttribute('aria-pressed', t === start ? 'true' : 'false');
+      eEl?.classList.toggle('on', t === end);
+      eEl?.setAttribute('aria-pressed', t === end ? 'true' : 'false');
+    });
+  }
+
+  setArrowType(type: 'sharp' | 'curved' | 'elbow'): void {
+    this.arrowType = type;
+    (['sharp', 'curved', 'elbow'] as const).forEach((t) => {
+      const el = document.getElementById(`at-${t}`);
+      el?.classList.toggle('on', t === type);
+      el?.setAttribute('aria-pressed', t === type ? 'true' : 'false');
+    });
   }
 
   zoomIn(): void { this.canvas?.setZoom(Math.min(this.canvas.getZoom() * 1.2, 10)); }
@@ -756,5 +1094,120 @@ export class CanvasEngine {
     this.canvas.setZoom(1);
     this.canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
     this.canvas.requestRenderAll(); // P022: batch via rAF
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────────
+
+  private getDashArray(type: 'solid' | 'dashed' | 'dotted', width: number): number[] | undefined {
+    if (type === 'dashed') return [Math.max(6, width * 3), Math.max(3, width * 1.5)];
+    if (type === 'dotted') return [Math.max(1, width), Math.max(3, width * 2)];
+    return undefined;
+  }
+
+  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
+    if (type === 'architect') return { strokeLineCap: 'butt', strokeLineJoin: 'miter' };
+    // Both artist and cartoonist use rounded joins; cartoonist uses a slightly thicker effective stroke (handled by opacity)
+    return { strokeLineCap: 'round', strokeLineJoin: 'round' };
+  }
+
+  private createFill(type: 'filled' | 'striped' | 'crossed', color: string): string | Pattern {
+    if (type === 'filled') return color;
+    // Create a small canvas as the pattern tile
+    if (typeof document === 'undefined') return color; // SSR guard
+    const size = 10;
+    const patternCanvas = document.createElement('canvas');
+    patternCanvas.width = size;
+    patternCanvas.height = size;
+    const ctx = patternCanvas.getContext('2d');
+    if (!ctx) return color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    if (type === 'striped') {
+      ctx.beginPath(); ctx.moveTo(0, size); ctx.lineTo(size, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-size, size); ctx.lineTo(0, 2 * size); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(size, 2 * size); ctx.lineTo(2 * size, size); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(0, size); ctx.lineTo(size, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(size, size); ctx.stroke();
+    }
+    return new Pattern({ source: patternCanvas, repeat: 'repeat' });
+  }
+
+  /** Snap a line's endpoints to nearby shape centers and store attachment IDs. */
+  private snapLineAttachment(line: FabricObject): void {
+    if (!this.canvas) return;
+    if (!(line instanceof Line)) return;
+    const SNAP_RADIUS = 30;
+    const objs = this.canvas.getObjects().filter((o) => o !== line && !(o instanceof Line));
+    const typedLine = line as Line & { _attachedFrom?: string; _attachedTo?: string };
+    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = typedLine as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
+
+    for (const obj of objs) {
+      const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+      const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+      const id = (obj as FabricObject & { _id?: string })._id;
+      if (!id) continue;
+      if (Math.hypot(cx - x1, cy - y1) < SNAP_RADIUS) {
+        typedLine._attachedFrom = id;
+        typedLine.set({ x1: cx, y1: cy });
+      }
+      if (Math.hypot(cx - x2, cy - y2) < SNAP_RADIUS) {
+        typedLine._attachedTo = id;
+        typedLine.set({ x2: cx, y2: cy });
+      }
+    }
+  }
+
+  /** When a shape is moved, update the endpoints of any Line attached to it. */
+  private updateAttachedLines(movedObj: FabricObject): void {
+    if (!this.canvas) return;
+    const id = (movedObj as FabricObject & { _id?: string })._id;
+    if (!id) return;
+    const cx = (movedObj.left ?? 0) + (movedObj.width ?? 0) * ((movedObj.scaleX ?? 1)) / 2;
+    const cy = (movedObj.top ?? 0) + (movedObj.height ?? 0) * ((movedObj.scaleY ?? 1)) / 2;
+
+    for (const obj of this.canvas.getObjects()) {
+      if (!(obj instanceof Line)) continue;
+      const attached = obj as Line & { _attachedFrom?: string; _attachedTo?: string };
+      if (attached._attachedFrom === id) {
+        attached.set({ x1: cx, y1: cy });
+        attached.setCoords();
+      }
+      if (attached._attachedTo === id) {
+        attached.set({ x2: cx, y2: cy });
+        attached.setCoords();
+      }
+    }
+    this.canvas.requestRenderAll();
+  }
+
+  /** Sync the toolbar and properties panel UI to the currently selected object. */
+  private syncPropertiesPanelToSelection(): void {
+    const o = this.canvas?.getActiveObject();
+    // Show/hide the properties panel
+    const panel = document.getElementById('props-panel');
+    if (!panel) return;
+    if (!o) {
+      panel.classList.add('hide');
+      return;
+    }
+    panel.classList.remove('hide');
+
+    // Sync opacity slider
+    const opacity = ((o.get('opacity') as number) ?? 1) * 100;
+    const slider = document.getElementById('opacitySlider') as HTMLInputElement | null;
+    if (slider) slider.value = String(Math.round(opacity));
+    const label = document.getElementById('opacityValue');
+    if (label) label.textContent = `${Math.round(opacity)}%`;
+
+    // Sync link input
+    const link = (o as FabricObject & { _link?: string })._link ?? '';
+    const linkInput = document.getElementById('linkInput') as HTMLInputElement | null;
+    if (linkInput) linkInput.value = link;
+
+    // Show/hide arrow-specific section
+    const arrowSection = document.getElementById('arrow-props-section');
+    const isArrow = !!(o as FabricObject & { _isArrow?: boolean })._isArrow;
+    if (arrowSection) arrowSection.classList.toggle('hide', !isArrow);
   }
 }

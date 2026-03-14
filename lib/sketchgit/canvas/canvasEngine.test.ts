@@ -22,9 +22,13 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
         if (typeof key === 'object') { Object.assign(this, key); } else { this[key] = val; }
         return this;
       }),
+      get: vi.fn(function (this: Record<string, unknown>, key: string) {
+        return this[key];
+      }),
       containsPoint: vi.fn().mockReturnValue(false),
       enterEditing: vi.fn(),
       selectAll: vi.fn(),
+      isType: vi.fn().mockReturnValue(false),
     };
     return obj;
   }
@@ -53,6 +57,11 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
     selection: true,
     defaultCursor: 'default',
     viewportTransform: [1, 0, 0, 1, 0, 0] as number[],
+    // Layer order methods
+    bringObjectToFront: vi.fn(),
+    bringObjectForward: vi.fn(),
+    sendObjectBackwards: vi.fn(),
+    sendObjectToBack: vi.fn(),
   };
 
   return { mockCanvasInstance, canvasEventHandlers, makeFabricObject };
@@ -101,6 +110,31 @@ function setupDom() {
     <button id="tarrow" class="tbtn"></button>
     <button id="ttext" class="tbtn"></button>
     <button id="teraser" class="tbtn"></button>
+    <button id="dash-solid" class="on"></button>
+    <button id="dash-dashed"></button>
+    <button id="dash-dotted"></button>
+    <button id="br-sharp" class="on"></button>
+    <button id="br-rounded"></button>
+    <input id="opacitySlider" type="range" value="100" />
+    <span id="opacityValue">100%</span>
+    <button id="sloppy-architect" class="on"></button>
+    <button id="sloppy-artist"></button>
+    <button id="sloppy-cartoonist"></button>
+    <button id="fp-filled" class="on"></button>
+    <button id="fp-striped"></button>
+    <button id="fp-crossed"></button>
+    <button id="at-sharp" class="on"></button>
+    <button id="at-curved"></button>
+    <button id="at-elbow"></button>
+    <button id="ahs-none"></button>
+    <button id="ahs-open" class="on"></button>
+    <button id="ahs-triangle"></button>
+    <button id="ahe-none"></button>
+    <button id="ahe-open" class="on"></button>
+    <button id="ahe-triangle"></button>
+    <input id="linkInput" type="url" />
+    <div id="props-panel" class="hide"></div>
+    <div id="arrow-props-section" class="hide"></div>
   `;
 }
 
@@ -131,6 +165,10 @@ function resetMocks() {
   mockCanvasInstance.setZoom.mockClear();
   mockCanvasInstance.zoomToPoint.mockClear();
   mockCanvasInstance.setDimensions.mockClear();
+  mockCanvasInstance.bringObjectToFront.mockClear();
+  mockCanvasInstance.bringObjectForward.mockClear();
+  mockCanvasInstance.sendObjectBackwards.mockClear();
+  mockCanvasInstance.sendObjectToBack.mockClear();
 
   mockCanvasInstance.on.mockClear();
   mockCanvasInstance.on.mockImplementation((event: string, handler: (e: unknown) => void) => {
@@ -971,5 +1009,250 @@ describe('CanvasEngine – pinch-to-zoom (P085)', () => {
     const [pointArg] = mockCanvasInstance.zoomToPoint.mock.calls[0] as [{ x: number; y: number }, number];
     expect(pointArg.x).toBeCloseTo(200);
     expect(pointArg.y).toBeCloseTo(0);
+  });
+});
+
+// ─── New style controls ────────────────────────────────────────────────────────
+
+describe('CanvasEngine – stroke dash', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setStrokeDash("solid") sets strokeDashType and activates #dash-solid', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setStrokeDash('solid');
+    expect(engine.strokeDashType).toBe('solid');
+    expect(document.getElementById('dash-solid')!.classList.contains('on')).toBe(true);
+    expect(document.getElementById('dash-dashed')!.classList.contains('on')).toBe(false);
+  });
+
+  it('setStrokeDash("dashed") applies strokeDashArray to active object', () => {
+    const activeObj = makeFabricObject({ strokeWidth: 2 });
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setStrokeDash('dashed');
+    expect(activeObj.set).toHaveBeenCalledWith('strokeDashArray', expect.arrayContaining([expect.any(Number)]));
+  });
+
+  it('setStrokeDash("dotted") applies dotted dash array to active object', () => {
+    const activeObj = makeFabricObject({ strokeWidth: 2 });
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setStrokeDash('dotted');
+    expect(activeObj.set).toHaveBeenCalledWith('strokeDashArray', expect.arrayContaining([expect.any(Number)]));
+  });
+
+  it('setStrokeDash("solid") passes null (clears) dash array on active object', () => {
+    const activeObj = makeFabricObject({ strokeWidth: 2 });
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setStrokeDash('solid');
+    expect(activeObj.set).toHaveBeenCalledWith('strokeDashArray', null);
+  });
+});
+
+describe('CanvasEngine – border radius', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setBorderRadius("rounded") sets borderRadiusEnabled=true and activates #br-rounded', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setBorderRadius('rounded');
+    expect(engine.borderRadiusEnabled).toBe(true);
+    expect(document.getElementById('br-rounded')!.classList.contains('on')).toBe(true);
+    expect(document.getElementById('br-sharp')!.classList.contains('on')).toBe(false);
+  });
+
+  it('setBorderRadius("sharp") sets borderRadiusEnabled=false', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setBorderRadius('rounded');
+    engine.setBorderRadius('sharp');
+    expect(engine.borderRadiusEnabled).toBe(false);
+  });
+});
+
+describe('CanvasEngine – opacity', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setOpacity(50) sets opacityValue=50 and updates slider/label', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setOpacity(50);
+    expect(engine.opacityValue).toBe(50);
+    expect((document.getElementById('opacitySlider') as HTMLInputElement).value).toBe('50');
+    expect(document.getElementById('opacityValue')!.textContent).toBe('50%');
+  });
+
+  it('setOpacity applies opacity to active object', () => {
+    const activeObj = makeFabricObject();
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setOpacity(75);
+    expect(activeObj.set).toHaveBeenCalledWith('opacity', 0.75);
+  });
+
+  it('setOpacity clamps to 0..100', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setOpacity(-10);
+    expect(engine.opacityValue).toBe(0);
+    engine.setOpacity(200);
+    expect(engine.opacityValue).toBe(100);
+  });
+});
+
+describe('CanvasEngine – sloppiness', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setSloppiness("architect") sets sloppiness and activates button', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setSloppiness('artist');
+    engine.setSloppiness('architect');
+    expect(engine.sloppiness).toBe('architect');
+    expect(document.getElementById('sloppy-architect')!.classList.contains('on')).toBe(true);
+    expect(document.getElementById('sloppy-artist')!.classList.contains('on')).toBe(false);
+  });
+
+  it('setSloppiness("cartoonist") applies rounded strokeLineCap to active object', () => {
+    const activeObj = makeFabricObject();
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setSloppiness('cartoonist');
+    expect(activeObj.set).toHaveBeenCalledWith(expect.objectContaining({ strokeLineCap: 'round' }));
+  });
+});
+
+describe('CanvasEngine – layer controls', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('bringToFront() calls canvas.bringObjectToFront with active object', () => {
+    const activeObj = makeFabricObject();
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.bringToFront();
+    expect(mockCanvasInstance.bringObjectToFront).toHaveBeenCalledWith(activeObj);
+  });
+
+  it('bringForward() calls canvas.bringObjectForward with active object', () => {
+    const activeObj = makeFabricObject();
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.bringForward();
+    expect(mockCanvasInstance.bringObjectForward).toHaveBeenCalledWith(activeObj);
+  });
+
+  it('sendBackward() calls canvas.sendObjectBackwards with active object', () => {
+    const activeObj = makeFabricObject();
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.sendBackward();
+    expect(mockCanvasInstance.sendObjectBackwards).toHaveBeenCalledWith(activeObj);
+  });
+
+  it('sendToBack() calls canvas.sendObjectToBack with active object', () => {
+    const activeObj = makeFabricObject();
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.sendToBack();
+    expect(mockCanvasInstance.sendObjectToBack).toHaveBeenCalledWith(activeObj);
+  });
+
+  it('bringToFront() is a no-op when no active object', () => {
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    const { engine } = makeEngine();
+    engine.init();
+    expect(() => engine.bringToFront()).not.toThrow();
+    expect(mockCanvasInstance.bringObjectToFront).not.toHaveBeenCalled();
+  });
+});
+
+describe('CanvasEngine – object link', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setObjectLink stores URL on active object', () => {
+    const activeObj = makeFabricObject();
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setObjectLink('https://example.com');
+    expect((activeObj as Record<string, unknown>)._link).toBe('https://example.com');
+  });
+
+  it('setObjectLink clears link when empty string passed', () => {
+    const activeObj = makeFabricObject();
+    (activeObj as Record<string, unknown>)._link = 'https://old.com';
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setObjectLink('');
+    expect((activeObj as Record<string, unknown>)._link).toBeUndefined();
+  });
+
+  it('setObjectLink is a no-op when no active object', () => {
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    const { engine } = makeEngine();
+    engine.init();
+    expect(() => engine.setObjectLink('https://example.com')).not.toThrow();
+  });
+});
+
+describe('CanvasEngine – arrow type & heads', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setArrowType("curved") updates arrowType and button state', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setArrowType('curved');
+    expect(engine.arrowType).toBe('curved');
+    expect(document.getElementById('at-curved')!.classList.contains('on')).toBe(true);
+    expect(document.getElementById('at-sharp')!.classList.contains('on')).toBe(false);
+  });
+
+  it('setArrowHeads("open", "triangle") updates both head state fields', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setArrowHeads('open', 'triangle');
+    expect(engine.arrowHeadStart).toBe('open');
+    expect(engine.arrowHeadEnd).toBe('triangle');
+  });
+});
+
+describe('CanvasEngine – setStrokeWidth applies to selected object', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setStrokeWidth applies to the active canvas object', () => {
+    const activeObj = makeFabricObject({ strokeWidth: 1.5 });
+    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setStrokeWidth(5);
+    expect(activeObj.set).toHaveBeenCalledWith('strokeWidth', 5);
+  });
+});
+
+describe('CanvasEngine – new custom properties serialisation', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('init() registers _link, _arrowHeadStart, _arrowHeadEnd, _arrowType, _fillPattern', () => {
+    const { engine } = makeEngine();
+    (FabricObject as unknown as { customProperties: string[] }).customProperties = [];
+    engine.init();
+    const props = (FabricObject as unknown as { customProperties: string[] }).customProperties;
+    expect(props).toContain('_link');
+    expect(props).toContain('_arrowHeadStart');
+    expect(props).toContain('_arrowHeadEnd');
+    expect(props).toContain('_arrowType');
+    expect(props).toContain('_fillPattern');
   });
 });

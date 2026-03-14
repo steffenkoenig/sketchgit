@@ -90,9 +90,128 @@ export const LeftToolbar = React.memo(function LeftToolbar({ call }: LeftToolbar
       </button>
 
       <div className="tsep" role="separator"></div>
+
+      {/* Stroke width */}
       <button className="sz-btn on" id="sz1" onClick={() => call("setStrokeWidth", 1.5)} aria-label="Thin stroke (1.5px)" aria-pressed="true"><div className="sz-line" style={{ height: "1.5px" }} aria-hidden="true"></div></button>
       <button className="sz-btn" id="sz3" onClick={() => call("setStrokeWidth", 3)} aria-label="Medium stroke (3px)" aria-pressed="false"><div className="sz-line" style={{ height: "3px" }} aria-hidden="true"></div></button>
       <button className="sz-btn" id="sz5" onClick={() => call("setStrokeWidth", 5)} aria-label="Thick stroke (5px)" aria-pressed="false"><div className="sz-line" style={{ height: "5px" }} aria-hidden="true"></div></button>
+
+      <div className="tsep" role="separator"></div>
+
+      {/* Stroke dash type */}
+      <button className="sz-btn on" id="dash-solid" onClick={() => call("setStrokeDash", "solid")} aria-label="Solid stroke" aria-pressed="true">
+        <div className="sz-line" style={{ height: "2px" }} aria-hidden="true"></div>
+        <span className="tt" aria-hidden="true">Solid</span>
+      </button>
+      <button className="sz-btn" id="dash-dashed" onClick={() => call("setStrokeDash", "dashed")} aria-label="Dashed stroke" aria-pressed="false">
+        <div className="sz-line dashed" aria-hidden="true"></div>
+        <span className="tt" aria-hidden="true">Dashed</span>
+      </button>
+      <button className="sz-btn" id="dash-dotted" onClick={() => call("setStrokeDash", "dotted")} aria-label="Dotted stroke" aria-pressed="false">
+        <div className="sz-line dotted" aria-hidden="true"></div>
+        <span className="tt" aria-hidden="true">Dotted</span>
+      </button>
+
+      <div className="tsep" role="separator"></div>
+
+      {/* Border radius */}
+      <button className="sz-btn on" id="br-sharp" onClick={() => call("setBorderRadius", "sharp")} aria-label="Sharp corners" aria-pressed="true">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6 }}><rect x="3" y="3" width="12" height="12" rx="0"/></svg>
+        <span className="tt" aria-hidden="true">Sharp</span>
+      </button>
+      <button className="sz-btn" id="br-rounded" onClick={() => call("setBorderRadius", "rounded")} aria-label="Rounded corners" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6 }}><rect x="3" y="3" width="12" height="12" rx="4"/></svg>
+        <span className="tt" aria-hidden="true">Rounded</span>
+      </button>
+
+      <div className="tsep" role="separator"></div>
+
+      {/* Fill pattern */}
+      <button className="sz-btn on" id="fp-filled" onClick={() => call("setFillPattern", "filled")} aria-label="Solid fill" aria-pressed="true">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false"><rect x="3" y="3" width="12" height="12" rx="1" fill="currentColor" opacity="0.7"/></svg>
+        <span className="tt" aria-hidden="true">Filled</span>
+      </button>
+      <button className="sz-btn" id="fp-striped" onClick={() => call("setFillPattern", "striped")} aria-label="Striped fill" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.2 }}><rect x="3" y="3" width="12" height="12" rx="1"/><line x1="3" y1="9" x2="9" y2="3"/><line x1="6" y1="15" x2="15" y2="6"/><line x1="9" y1="15" x2="15" y2="9"/></svg>
+        <span className="tt" aria-hidden="true">Striped</span>
+      </button>
+      <button className="sz-btn" id="fp-crossed" onClick={() => call("setFillPattern", "crossed")} aria-label="Crossed fill" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.2 }}><rect x="3" y="3" width="12" height="12" rx="1"/><line x1="3" y1="9" x2="9" y2="3"/><line x1="6" y1="15" x2="15" y2="6"/><line x1="9" y1="15" x2="15" y2="9"/><line x1="3" y1="9" x2="9" y2="15"/><line x1="6" y1="3" x2="15" y2="12"/></svg>
+        <span className="tt" aria-hidden="true">Crossed</span>
+      </button>
+
+      <div className="tsep" role="separator"></div>
+
+      {/* Sloppiness / stroke type */}
+      <button className="sz-btn on" id="sloppy-architect" onClick={() => call("setSloppiness", "architect")} aria-label="Architect style (clean)" aria-pressed="true">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.8, strokeLinecap: "butt" }}><line x1="4" y1="14" x2="14" y2="4"/></svg>
+        <span className="tt" aria-hidden="true">Architect</span>
+      </button>
+      <button className="sz-btn" id="sloppy-artist" onClick={() => call("setSloppiness", "artist")} aria-label="Artist style (slightly rough)" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.8, strokeLinecap: "round" }}><path d="M4 14 Q7 5 14 4"/></svg>
+        <span className="tt" aria-hidden="true">Artist</span>
+      </button>
+      <button className="sz-btn" id="sloppy-cartoonist" onClick={() => call("setSloppiness", "cartoonist")} aria-label="Cartoonist style (rough)" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 2.5, strokeLinecap: "round" }}><path d="M4 14 Q9 3 14 4"/></svg>
+        <span className="tt" aria-hidden="true">Cartoonist</span>
+      </button>
+
+      <div className="tsep" role="separator"></div>
+
+      {/* Arrow type & heads (always shown; most relevant when arrow tool active) */}
+      <button className="sz-btn on" id="at-sharp" onClick={() => call("setArrowType", "sharp")} aria-label="Sharp arrow" aria-pressed="true">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6, strokeLinecap: "round" }}><line x1="4" y1="14" x2="14" y2="4"/><polyline points="8 4 14 4 14 10"/></svg>
+        <span className="tt" aria-hidden="true">Sharp Arrow</span>
+      </button>
+      <button className="sz-btn" id="at-curved" onClick={() => call("setArrowType", "curved")} aria-label="Curved arrow" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6, strokeLinecap: "round" }}><path d="M4 14 Q4 4 14 4"/><polyline points="10 4 14 4 14 8"/></svg>
+        <span className="tt" aria-hidden="true">Curved Arrow</span>
+      </button>
+      <button className="sz-btn" id="at-elbow" onClick={() => call("setArrowType", "elbow")} aria-label="Elbow arrow" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6, strokeLinecap: "round" }}><polyline points="4 14 4 4 14 4"/><polyline points="10 4 14 4 14 8"/></svg>
+        <span className="tt" aria-hidden="true">Elbow Arrow</span>
+      </button>
+
+      <div className="tsep" role="separator"></div>
+
+      {/* Arrow head end type */}
+      <button className="sz-btn" id="ahe-none" onClick={() => call("setArrowHeads", "none", "none")} aria-label="No arrowhead" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6 }}><line x1="4" y1="9" x2="14" y2="9"/></svg>
+        <span className="tt" aria-hidden="true">No Head</span>
+      </button>
+      <button className="sz-btn on" id="ahe-open" onClick={() => call("setArrowHeads", "none", "open")} aria-label="Open arrow head" aria-pressed="true">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6, strokeLinecap: "round" }}><line x1="4" y1="9" x2="14" y2="9"/><polyline points="10 5 14 9 10 13"/></svg>
+        <span className="tt" aria-hidden="true">Open Head</span>
+      </button>
+      <button className="sz-btn" id="ahe-triangle" onClick={() => call("setArrowHeads", "none", "triangle")} aria-label="Triangle arrowhead" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ strokeLinecap: "round" }}><line x1="4" y1="9" x2="11" y2="9" stroke="currentColor" strokeWidth="1.6" fill="none"/><polygon points="11,5 15,9 11,13" fill="currentColor"/></svg>
+        <span className="tt" aria-hidden="true">Triangle Head</span>
+      </button>
+      <button className="sz-btn" id="ahe-triangleoutline" onClick={() => call("setArrowHeads", "none", "triangle-outline")} aria-label="Triangle outline arrowhead" aria-pressed="false">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.6, strokeLinecap: "round" }}><line x1="4" y1="9" x2="11" y2="9"/><polygon points="11,5 15,9 11,13"/></svg>
+        <span className="tt" aria-hidden="true">Triangle Outline</span>
+      </button>
+
+      <div className="tsep" role="separator"></div>
+
+      {/* Layer depth controls */}
+      <button className="tbtn" onClick={() => call("bringToFront")} aria-label="Bring to front">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="10" width="12" height="12" rx="1"/><rect x="10" y="2" width="12" height="12" rx="1" fill="none"/></svg>
+        <span className="tt" aria-hidden="true">Bring to Front</span>
+      </button>
+      <button className="tbtn" onClick={() => call("bringForward")} aria-label="Bring forward">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="8" width="12" height="12" rx="1"/><rect x="8" y="4" width="12" height="12" rx="1" fill="none"/></svg>
+        <span className="tt" aria-hidden="true">Bring Forward</span>
+      </button>
+      <button className="tbtn" onClick={() => call("sendBackward")} aria-label="Send backward">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="4" width="12" height="12" rx="1"/><rect x="4" y="8" width="12" height="12" rx="1" fill="none"/></svg>
+        <span className="tt" aria-hidden="true">Send Backward</span>
+      </button>
+      <button className="tbtn" onClick={() => call("sendToBack")} aria-label="Send to back">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="10" y="2" width="12" height="12" rx="1"/><rect x="2" y="10" width="12" height="12" rx="1" fill="none"/></svg>
+        <span className="tt" aria-hidden="true">Send to Back</span>
+      </button>
+
       <div className="tsep" role="separator"></div>
       <button className="tbtn" onClick={() => call("zoomIn")} aria-label="Zoom in (+)">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
