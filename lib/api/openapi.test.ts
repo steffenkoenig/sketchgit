@@ -21,7 +21,7 @@ vi.mock('@/app/api/rooms/[roomId]/route', () => ({
 vi.mock('@/app/api/rooms/[roomId]/commits/route', () => ({
   CommitsQuerySchema: z.object({ cursor: z.string().optional(), take: z.number().default(50) }),
 }));
-vi.mock('@/app/api/rooms/[roomId]/export/route', () => ({
+vi.mock('@/lib/api/exportSchema', () => ({
   ExportQuerySchema: z.object({ format: z.enum(['png', 'svg']).default('png'), sha: z.string().optional() }),
 }));
 

@@ -15,9 +15,13 @@ const nextConfig = {
 	// required at runtime plus a trimmed node_modules copy.
 	output: 'standalone',
 
-	// P018 – Fabric.js 5.x ships CommonJS; Next.js needs to transpile it so
-	// the ESM bundle can import it without module-resolution errors.
-	transpilePackages: ['fabric'],
+	// fabric/node (used by the canvas export renderer) pulls in jsdom and
+	// the native node-canvas bindings at import time.  Marking them as server
+	// externals tells Next.js / Turbopack NOT to bundle them; they are loaded
+	// from node_modules at request time instead of at build / bundle-eval time.
+	// This prevents "Failed to collect page data" build errors on routes that
+	// transitively depend on canvasRenderer (e.g. the OpenAPI spec route).
+	serverExternalPackages: ['canvas', 'jsdom'],
 
 	// P056 – nonce-based CSP is now set per-request in proxy.ts.
 	// The static Content-Security-Policy header with 'unsafe-inline' is removed
