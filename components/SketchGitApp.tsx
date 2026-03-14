@@ -22,7 +22,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppTopbar } from "./sketchgit/AppTopbar";
 import { LeftToolbar } from "./sketchgit/LeftToolbar";
@@ -40,12 +39,16 @@ export default function SketchGitApp() {
   // popup "Share this commit" action (commitSha pre-filled).
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCommitSha, setShareCommitSha] = useState<string | null>(null);
+  // Read from window.location.search when the modal opens so the value is
+  // always current even after the canvas engine calls history.replaceState().
+  const [shareRoomId, setShareRoomId] = useState('default');
 
   // Listen for the canvas-side custom event that requests the share modal to open.
   useEffect(() => {
     function handleOpenShareModal(e: Event) {
       const detail = (e as CustomEvent<{ commitSha?: string }>).detail;
       setShareCommitSha(detail.commitSha ?? null);
+      setShareRoomId(new URLSearchParams(window.location.search).get('room') ?? 'default');
       setShareOpen(true);
     }
     document.addEventListener('sketchgit:openShareModal', handleOpenShareModal);
@@ -84,6 +87,13 @@ export default function SketchGitApp() {
     (app[method] as (...a: unknown[]) => void)(...args);
   }, []);
 
+  // Stable getter for the live canvas JSON — used by ExportDropdown to POST
+  // the canvas state directly and bypass the DB-based GET export endpoint.
+  // appRef is stable (useRef), so the empty dependency array is correct.
+  const getCanvasJson = useCallback((): string | null => {
+    return appRef.current?.getCanvasJson?.() ?? null;
+  }, []);
+
   // P021: useMemo for session-derived display value so AppTopbar re-renders
   // only when the session user actually changes (not on every re-render).
   // The dependency array intentionally uses the nested fields directly – the
@@ -94,10 +104,6 @@ export default function SketchGitApp() {
     [session?.user?.name, session?.user?.email, session?.user?.image], // eslint-disable-line
   );
 
-  // Derive the current room ID from the URL — mirrors AppTopbar's own resolution.
-  const searchParams = useSearchParams();
-  const roomId = searchParams.get("room") ?? "default";
-
   return (
     <>
       {/* P025: Skip navigation – lets keyboard users bypass the toolbar */}
@@ -107,7 +113,7 @@ export default function SketchGitApp() {
       >
         {t("toolbar.skipToCanvas")}
       </a>
-      <AppTopbar call={call} session={sessionForTopbar} sessionStatus={status} />
+      <AppTopbar call={call} session={sessionForTopbar} sessionStatus={status} getCanvasJson={getCanvasJson} />
 
       <div id="wrap">
         <div id="mid">
@@ -328,7 +334,7 @@ export default function SketchGitApp() {
       <ShareModal
         isOpen={shareOpen}
         onClose={() => setShareOpen(false)}
-        roomId={roomId}
+        roomId={shareRoomId}
         prefilledCommitSha={shareCommitSha}
       />
     </>
