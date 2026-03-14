@@ -6,6 +6,25 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.3.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.2.0...sketchgit-next-v0.3.0) (2026-03-14)
+
+
+### Features
+
+* **collab:** generate random UUID room ID for first-time visitors ([fe3964d](https://github.com/steffenkoenig/sketchgit/commit/fe3964deee505f47d4945a1943d79c17586a3697))
+* export dropdown, locale dropdown, topbar SVG icons ([fee444a](https://github.com/steffenkoenig/sketchgit/commit/fee444ad1a094f2037d04c8da48ebb9ea2c352db))
+* generate random UUID room ID for first-time visitors + fix TS build ([413a701](https://github.com/steffenkoenig/sketchgit/commit/413a7018ca02cd4f7236f4f03d3e405f48a5883a))
+* Topbar export dropdown, language dropdown, and SVG icons — with portal fix for canvas overlap ([27082ef](https://github.com/steffenkoenig/sketchgit/commit/27082efca0133fcbca2647aa96066ae1c25c8806))
+
+
+### Bug Fixes
+
+* add loadLastRoomId to userPreferences mock in app.test.ts ([f0171f5](https://github.com/steffenkoenig/sketchgit/commit/f0171f5f6f82ff2a76c364beb0061bffe4ee8199))
+* address PR review - uuid in deps, loadLastRoomId helper, test fixes ([25056ed](https://github.com/steffenkoenig/sketchgit/commit/25056edfae6d06cb8b8f30cc3b0f570bc7d4dae0))
+* **deps:** add @types/uuid to resolve TypeScript build error ([f9f5f66](https://github.com/steffenkoenig/sketchgit/commit/f9f5f66abd39164269684870cc3544da34ccdbd1))
+* localeDropdown ARIA + keyboard nav + localize all auth pages ([b0d3d22](https://github.com/steffenkoenig/sketchgit/commit/b0d3d225716ec1f172df40a72a7f97901e5d5eab))
+* render topbar dropdowns via React portal so they appear above canvas ([0301268](https://github.com/steffenkoenig/sketchgit/commit/0301268bb1cf5211618a0c61dd1a3c1c75865e72))
+
 ## [0.2.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v1.1.0...sketchgit-next-v1.2.0) (2026-03-13)
 
 
