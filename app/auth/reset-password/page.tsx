@@ -8,8 +8,10 @@
 import { Suspense, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 function ResetPasswordForm() {
+  const t = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
@@ -23,7 +25,7 @@ function ResetPasswordForm() {
     e.preventDefault();
     setError(null);
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      setError(t("auth.resetPassword.passwordMismatch"));
       return;
     }
     setLoading(true);
@@ -35,7 +37,7 @@ function ResetPasswordForm() {
     const data = await res.json() as { error?: string };
     setLoading(false);
     if (!res.ok) {
-      setError(data.error ?? "Failed to reset password.");
+      setError(data.error ?? t("auth.resetPassword.resetFailed"));
       return;
     }
     router.push("/auth/signin?reset=1");
@@ -45,9 +47,9 @@ function ResetPasswordForm() {
     return (
       <div className="auth-page">
         <div className="auth-card" style={{ textAlign: "center" }}>
-          <p style={{ color: "var(--tx2)" }}>Invalid or missing reset token.</p>
+          <p style={{ color: "var(--tx2)" }}>{t("auth.resetPassword.invalidToken")}</p>
           <Link href="/auth/forgot-password" className="auth-link" style={{ fontSize: "13px" }}>
-            Request a new reset link
+            {t("auth.resetPassword.requestNewLink")}
           </Link>
         </div>
       </div>
@@ -57,15 +59,15 @@ function ResetPasswordForm() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>Choose a new password</h1>
+        <h1>{t("auth.resetPassword.title")}</h1>
         {error && (
           <p role="alert" className="auth-error">{error}</p>
         )}
         <form onSubmit={(e) => { void handleSubmit(e); }} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <div>
             <label className="auth-label" htmlFor="new-password">
-              New password{" "}
-              <span style={{ color: "var(--tx3)" }}>(min 12 characters)</span>
+              {t("auth.resetPassword.newPasswordLabel")}{" "}
+              <span style={{ color: "var(--tx3)" }}>{t("auth.resetPassword.passwordHint")}</span>
             </label>
             <input
               id="new-password"
@@ -75,11 +77,11 @@ function ResetPasswordForm() {
               required
               minLength={12}
               className="auth-input"
-              aria-label="New password"
+              aria-label={t("auth.resetPassword.newPasswordLabel")}
             />
           </div>
           <div>
-            <label className="auth-label" htmlFor="confirm-password">Confirm password</label>
+            <label className="auth-label" htmlFor="confirm-password">{t("auth.resetPassword.confirmPasswordLabel")}</label>
             <input
               id="confirm-password"
               type="password"
@@ -87,7 +89,7 @@ function ResetPasswordForm() {
               onChange={(e) => setConfirm(e.target.value)}
               required
               className="auth-input"
-              aria-label="Confirm new password"
+              aria-label={t("auth.resetPassword.confirmPasswordLabel")}
             />
           </div>
           <button
@@ -95,7 +97,7 @@ function ResetPasswordForm() {
             disabled={loading}
             className="auth-btn"
           >
-            {loading ? "Saving…" : "Set new password"}
+            {loading ? t("auth.resetPassword.saving") : t("auth.resetPassword.submit")}
           </button>
         </form>
       </div>

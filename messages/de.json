@@ -208,5 +208,59 @@
     "SHARE_LINK_EXHAUSTED": "Dieser Freigabe-Link hat sein Nutzungslimit erreicht.",
     "SHARE_LINK_INVALID": "Dieser Freigabe-Link ist ungültig oder wurde widerrufen.",
     "SHARE_LINK_FORBIDDEN": "Ihr Freigabe-Link erlaubt diese Aktion nicht."
+  },
+  "auth": {
+    "orContinueAnonymously": "anonym fortfahren",
+    "continueWithGithub": "Mit GitHub fortfahren",
+    "or": "oder",
+    "emailLabel": "E-Mail",
+    "emailPlaceholder": "sie@beispiel.de",
+    "passwordPlaceholder": "••••••••",
+    "signIn": {
+      "title": "Bei SketchGit anmelden",
+      "orPrefix": "Oder",
+      "passwordLabel": "Passwort",
+      "signingIn": "Anmelden…",
+      "submit": "Anmelden",
+      "forgotPassword": "Passwort vergessen?",
+      "noAccount": "Noch kein Konto?",
+      "createOne": "Konto erstellen",
+      "invalidCredentials": "Ungültige E-Mail-Adresse oder Passwort."
+    },
+    "register": {
+      "title": "Konto erstellen",
+      "orPrefix": "Oder",
+      "displayNameLabel": "Anzeigename",
+      "displayNamePlaceholder": "Alice",
+      "passwordLabel": "Passwort",
+      "passwordHint": "(min. 12 Zeichen)",
+      "creating": "Konto wird erstellt…",
+      "submit": "Konto erstellen",
+      "alreadyHaveAccount": "Bereits ein Konto?",
+      "signIn": "Anmelden",
+      "registrationFailed": "Registrierung fehlgeschlagen.",
+      "autoSignInFailed": "Konto erstellt, aber Anmeldung fehlgeschlagen. Bitte manuell anmelden."
+    },
+    "forgotPassword": {
+      "title": "Passwort zurücksetzen",
+      "instructions": "Gib deine E-Mail-Adresse ein und wir senden dir einen Link zum Zurücksetzen deines Passworts.",
+      "sending": "Wird gesendet…",
+      "submit": "Reset-Link senden",
+      "successMessage": "Falls diese E-Mail registriert ist, erhältst du in Kürze einen Reset-Link. Bitte überprüfe deinen Posteingang und Spam-Ordner.",
+      "rememberPassword": "Passwort noch bekannt?",
+      "signIn": "Anmelden"
+    },
+    "resetPassword": {
+      "title": "Neues Passwort wählen",
+      "newPasswordLabel": "Neues Passwort",
+      "passwordHint": "(min. 12 Zeichen)",
+      "confirmPasswordLabel": "Passwort bestätigen",
+      "saving": "Wird gespeichert…",
+      "submit": "Neues Passwort setzen",
+      "passwordMismatch": "Passwörter stimmen nicht überein.",
+      "resetFailed": "Passwort zurücksetzen fehlgeschlagen.",
+      "invalidToken": "Ungültiger oder fehlender Reset-Token.",
+      "requestNewLink": "Neuen Reset-Link anfordern"
+    }
   }
 }

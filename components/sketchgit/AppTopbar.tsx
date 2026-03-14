@@ -254,13 +254,32 @@ function LocaleDropdown() {
     window.location.reload();
   }
 
+  function handleMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const items = menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']");
+    if (!items || items.length === 0) return;
+    const focused = document.activeElement as HTMLButtonElement;
+    const idx = Array.from(items).indexOf(focused);
+
+    if (e.key === "Escape") {
+      setOpen(false);
+      triggerRef.current?.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[idx === -1 ? 0 : (idx + 1) % items.length].focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (idx === -1) return;
+      items[(idx - 1 + items.length) % items.length].focus();
+    }
+  }
+
   return (
     <div className="tb-dropdown" aria-label={t("topbar.language")}>
       <button
         ref={triggerRef}
         className="topbtn xs"
         onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
+        aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${t("topbar.language")}: ${current.label}`}
       >
@@ -269,12 +288,19 @@ function LocaleDropdown() {
         <IconChevronDown />
       </button>
       {open && createPortal(
-        <div ref={menuRef} className="tb-dropdown-menu open" style={menuStyle} role="listbox" aria-label={t("topbar.language")}>
+        <div
+          ref={menuRef}
+          className="tb-dropdown-menu open"
+          style={menuStyle}
+          role="menu"
+          aria-label={t("topbar.language")}
+          onKeyDown={handleMenuKeyDown}
+        >
           {LOCALES.map(({ code, flag, label }) => (
             <button
               key={code}
-              role="option"
-              aria-selected={code === locale}
+              role="menuitemradio"
+              aria-checked={code === locale}
               className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
               onClick={() => switchLocale(code)}
             >

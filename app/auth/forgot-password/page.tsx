@@ -7,8 +7,10 @@
  */
 import { Suspense, useState, FormEvent } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 function ForgotPasswordForm() {
+  const t = useTranslations();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -28,19 +30,18 @@ function ForgotPasswordForm() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>Reset your password</h1>
+        <h1>{t("auth.forgotPassword.title")}</h1>
         {submitted ? (
           <p className="auth-subtitle" style={{ textAlign: "left" }}>
-            If that email is registered, you&#39;ll receive a reset link shortly.
-            Check your inbox and spam folder.
+            {t("auth.forgotPassword.successMessage")}
           </p>
         ) : (
           <form onSubmit={(e) => { void handleSubmit(e); }} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <p className="auth-subtitle" style={{ textAlign: "left", marginBottom: "4px" }}>
-              Enter your email address and we&#39;ll send you a link to reset your password.
+              {t("auth.forgotPassword.instructions")}
             </p>
             <div>
-              <label className="auth-label" htmlFor="email">Email</label>
+              <label className="auth-label" htmlFor="email">{t("auth.emailLabel")}</label>
               <input
                 id="email"
                 type="email"
@@ -48,8 +49,8 @@ function ForgotPasswordForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="auth-input"
-                placeholder="you@example.com"
-                aria-label="Email address"
+                placeholder={t("auth.emailPlaceholder")}
+                aria-label={t("auth.emailLabel")}
               />
             </div>
             <button
@@ -57,14 +58,14 @@ function ForgotPasswordForm() {
               disabled={loading}
               className="auth-btn"
             >
-              {loading ? "Sending…" : "Send reset link"}
+              {loading ? t("auth.forgotPassword.sending") : t("auth.forgotPassword.submit")}
             </button>
           </form>
         )}
         <p className="auth-footer">
-          Remember your password?{" "}
+          {t("auth.forgotPassword.rememberPassword")}{" "}
           <Link href="/auth/signin" className="auth-link">
-            Sign in
+            {t("auth.forgotPassword.signIn")}
           </Link>
         </p>
       </div>
