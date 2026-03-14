@@ -19,7 +19,7 @@ export const MERGE_PROPS: readonly string[] = [
   'scaleX', 'scaleY', 'angle', 'rx', 'ry', 'x1', 'y1', 'x2', 'y2', 'path', 'text',
   'fontSize', 'fontFamily', 'opacity', 'flipX', 'flipY',
   'strokeDashArray', 'strokeLineCap', 'strokeLineJoin',
-  '_fillPattern', '_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
+  '_fillPattern', '_fillColor', '_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
   '_attachedFrom', '_attachedTo', '_sloppiness', '_origGeom',
 ];
 

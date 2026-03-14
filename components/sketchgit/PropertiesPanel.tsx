@@ -37,7 +37,7 @@ export const PropertiesPanel = React.memo(function PropertiesPanel({ call }: Pro
               onInput={(e) => call("updateStrokeColor", (e.currentTarget as HTMLInputElement).value)}
             />
           </div>
-          {/* fill dot – shown/hidden per section visibility */}
+          {/* fill dot – visible only for shapes that support fill (same sections as pp-fill-pattern-section) */}
           <div className="color-dot" id="fillDot" style={{ background: "transparent", borderStyle: "dashed" }} title={t("fillColor")}>
             <label htmlFor="fillColorInput" className="sr-only">{t("fillColor")}</label>
             <input

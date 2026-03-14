@@ -119,7 +119,7 @@ export class CanvasEngine {
     if (!FabricObject.customProperties.includes('_isArrow')) {
       FabricObject.customProperties.push('_isArrow');
     }
-    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_x1', '_y1', '_x2', '_y2']) {
+    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_x1', '_y1', '_x2', '_y2', '_fillColor']) {
       if (!FabricObject.customProperties.includes(p)) {
         FabricObject.customProperties.push(p);
       }
@@ -325,7 +325,7 @@ export class CanvasEngine {
     // NOTE: FabricObject.customProperties is also set in init() as a belt-and-suspenders
     // guard so that any call path (toJSON included) always serialises these fields.
     return JSON.stringify(this.canvas.toObject([
-      '_isArrow', '_id', '_link', '_fillPattern',
+      '_isArrow', '_id', '_link', '_fillPattern', '_fillColor',
       '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
       '_sloppiness', '_origGeom',
       '_attachedFrom', '_attachedTo',
@@ -481,12 +481,12 @@ export class CanvasEngine {
       const r = this.borderRadiusEnabled ? 12 : 3;
       this.activeObj = Object.assign(
         new Rect({ ...shapeOpts, rx: r, ry: r }),
-        { _fillPattern: this.fillPattern },
+        { _fillPattern: this.fillPattern, _fillColor: this.fillColor },
       );
     } else if (this.currentTool === 'ellipse') {
       this.activeObj = Object.assign(
         new Ellipse({ ...shapeOpts, rx: 0, ry: 0 }),
-        { _fillPattern: this.fillPattern },
+        { _fillPattern: this.fillPattern, _fillColor: this.fillColor },
       );
     } else if (this.currentTool === 'line') {
       const lineOpts = {
@@ -695,16 +695,17 @@ export class CanvasEngine {
 
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const len = 14, spread = 0.4;
+    const lineOpacity = (line.get('opacity') as number | undefined) ?? 1;
 
     // End arrowhead
     if (headEnd !== 'none') {
-      const head = this.makeArrowhead(x2, y2, angle, len, spread, stroke, strokeWidth, headEnd);
+      const head = this.makeArrowhead(x2, y2, angle, len, spread, stroke, strokeWidth, headEnd, lineOpacity);
       if (head) { ensureObjId(head); shapes.push(head); }
     }
 
     // Start arrowhead (reversed angle)
     if (headStart !== 'none') {
-      const head = this.makeArrowhead(x1, y1, angle + Math.PI, len, spread, stroke, strokeWidth, headStart);
+      const head = this.makeArrowhead(x1, y1, angle + Math.PI, len, spread, stroke, strokeWidth, headStart, lineOpacity);
       if (head) { ensureObjId(head); shapes.push(head); }
     }
 
@@ -730,6 +731,7 @@ export class CanvasEngine {
     angle: number, len: number, spread: number,
     stroke: string, strokeWidth: number,
     type: 'open' | 'triangle' | 'triangle-outline',
+    opacity = 1,
   ): FabricObject | null {
     const p1x = tipX - len * Math.cos(angle - spread);
     const p1y = tipY - len * Math.sin(angle - spread);
@@ -743,20 +745,21 @@ export class CanvasEngine {
         stroke, strokeWidth, fill: 'transparent',
         selectable: false, evented: false,
         strokeLineCap: 'round', strokeLineJoin: 'round',
+        opacity,
       });
     }
     if (type === 'triangle') {
       // Filled triangle
       return new Polygon(
         [{ x: tipX, y: tipY }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
-        { fill: stroke, stroke, strokeWidth: 1, selectable: false, evented: false },
+        { fill: stroke, stroke, strokeWidth: 1, selectable: false, evented: false, opacity },
       );
     }
     if (type === 'triangle-outline') {
       // Outlined triangle (unfilled)
       return new Polygon(
         [{ x: tipX, y: tipY }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
-        { fill: 'transparent', stroke, strokeWidth, selectable: false, evented: false },
+        { fill: 'transparent', stroke, strokeWidth, selectable: false, evented: false, opacity },
       );
     }
     return null;
@@ -906,11 +909,19 @@ export class CanvasEngine {
     this.fillColor = v;
     const dot = document.getElementById('fillDot');
     if (dot) dot.style.background = v;
+    const fillColorInput = document.getElementById('fillColorInput') as HTMLInputElement | null;
+    if (fillColorInput) fillColorInput.value = v;
     const o = this.canvas?.getActiveObject();
     if (o) {
+      const objFill = o.get('fill');
+      const objHasFill = objFill !== 'transparent' && objFill != null;
+      // Only apply when the object already has a fill or fill is explicitly enabled,
+      // to avoid unintentionally adding fill to a transparent object.
+      if (!objHasFill && !this.fillEnabled) return;
       // Re-apply pattern fill with the new color, or use plain fill
       const pattern = (o as FabricObject & { _fillPattern?: string })._fillPattern as 'filled' | 'striped' | 'crossed' | undefined;
       o.set('fill', this.createFill(pattern ?? 'filled', v));
+      (o as FabricObject & { _fillColor?: string })._fillColor = v;
       this.canvas?.requestRenderAll();
       // BUG-010 – same fix: mark dirty and broadcast so peers see the change.
       this.markDirty();
@@ -991,7 +1002,7 @@ export class CanvasEngine {
     el?.setAttribute('aria-pressed', 'true');
     const o = this.canvas?.getActiveObject();
     if (o && o.isType('rect')) {
-      const r = type === 'rounded' ? 12 : 0;
+      const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
       (o as Rect).set({ rx: r, ry: r });
       this.canvas?.requestRenderAll();
       this.markDirty();
@@ -1062,7 +1073,9 @@ export class CanvasEngine {
       if (objHasFill || this.fillEnabled) {
         const fill = this.createFill(type, this.fillColor);
         o.set('fill', fill);
-        (o as FabricObject & { _fillPattern?: string })._fillPattern = type;
+        const ext = o as FabricObject & { _fillPattern?: string; _fillColor?: string };
+        ext._fillPattern = type;
+        ext._fillColor = this.fillColor;
         this.canvas?.requestRenderAll();
         this.markDirty();
         this.onBroadcastDraw(true);
@@ -1389,13 +1402,16 @@ export class CanvasEngine {
 
     // Resolve fill: if the current fill is a Pattern, recreate it from stored metadata
     // to avoid casting a Pattern object to string (which would yield "[object Object]").
+    // Use the object's stored _fillColor (not the engine's current fillColor) so that
+    // switching sloppiness does not silently change the object's fill appearance.
     const rawFill = obj.get('fill');
     const fillIsPattern = rawFill instanceof Pattern ||
       (rawFill !== null && typeof rawFill === 'object');
+    const objFillColor = (oa as FabricObject & { _fillColor?: string })._fillColor ?? this.fillColor;
     const fillArg: string | Pattern = fillIsPattern
       ? this.createFill(
           (oa._fillPattern as 'filled' | 'striped' | 'crossed' | undefined) ?? 'filled',
-          this.fillColor,
+          objFillColor,
         )
       : (rawFill as string) ?? 'transparent';
 
@@ -1404,11 +1420,12 @@ export class CanvasEngine {
     const srcCenter = obj.getCenterPoint();
 
     const copyCustom = (dst: FabricObject) => {
-      const d = dst as FabricObject & Ext;
+      const d = dst as FabricObject & Ext & { _fillColor?: string };
       d._id          = oa._id;
       d._sloppiness  = sloppiness;
       d._origGeom    = geomStr as string;
       d._fillPattern = oa._fillPattern;
+      d._fillColor   = objFillColor;
       d._link        = oa._link;
     };
 
@@ -1592,8 +1609,8 @@ export class CanvasEngine {
         changed = true;
       }
     }
-    this.canvas.requestRenderAll();
     if (changed) {
+      this.canvas.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(false); // throttled — endpoint moves are frequent
     }
@@ -1622,13 +1639,17 @@ export class CanvasEngine {
     const opLabel = document.getElementById('opacityValue');
     if (opLabel) opLabel.textContent = `${Math.round(opacity)}%`;
 
-    // Sync stroke color dot
+    // Sync stroke color dot AND the underlying color input value
     const stroke = (o.get('stroke') as string) ?? this.strokeColor;
+    this.strokeColor = stroke; // keep engine state in sync
     const strokeDot = document.getElementById('strokeDot');
     if (strokeDot) strokeDot.style.background = stroke;
+    const strokeColorInput = document.getElementById('strokeColorInput') as HTMLInputElement | null;
+    if (strokeColorInput) strokeColorInput.value = stroke;
 
-    // Sync stroke width buttons
+    // Sync stroke width engine state + buttons
     const sw = (o.get('strokeWidth') as number) ?? 1.5;
+    this.strokeWidth = sw; // keep engine state in sync
     ['sz1', 'sz3', 'sz5'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -1640,9 +1661,10 @@ export class CanvasEngine {
     swEl?.classList.add('on');
     swEl?.setAttribute('aria-pressed', 'true');
 
-    // Sync dash type buttons
+    // Sync dash type buttons AND engine state so setStrokeWidth() rescales dashes correctly
     const da = o.get('strokeDashArray') as number[] | null;
     const dashType = this.getDashTypeFromArray(da);
+    this.strokeDashType = dashType; // keep engine state in sync
     ['dash-solid', 'dash-dashed', 'dash-dotted'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -1667,16 +1689,23 @@ export class CanvasEngine {
       fillToggle.setAttribute('aria-pressed', this.fillEnabled ? 'true' : 'false');
     }
 
-    // Sync fill dot — if fill is a Pattern, use a fallback colour so the dot reflects fill state
+    // Sync fill dot and fill color input — use the object's stored _fillColor for correct
+    // representation even when the fill is a Pattern.
+    const objFillColorStored = (o as FabricObject & { _fillColor?: string })._fillColor ?? this.fillColor;
     const fillDot = document.getElementById('fillDot');
     if (fillDot) {
-      if (typeof fillVal2 === 'string') {
+      if (typeof fillVal2 === 'string' && fillVal2 !== 'transparent') {
         fillDot.style.background = fillVal2;
       } else if (fillVal2 instanceof Pattern || (fillVal2 !== null && typeof fillVal2 === 'object')) {
-        // Object is Pattern: show the stored fill color as representative
-        fillDot.style.background = this.fillColor;
+        fillDot.style.background = objFillColorStored;
+      } else {
+        // transparent or null fill
+        fillDot.style.background = 'transparent';
       }
     }
+    const fillColorInput = document.getElementById('fillColorInput') as HTMLInputElement | null;
+    if (fillColorInput) fillColorInput.value = objFillColorStored;
+    this.fillColor = objFillColorStored; // keep engine state in sync
 
     // Sync fill-pattern buttons from the object's stored _fillPattern
     const objFillPattern = ((o as FabricObject & { _fillPattern?: string })._fillPattern

@@ -323,7 +323,7 @@ describe('CanvasEngine – serialisation', () => {
     engine.init();
     engine.getCanvasData();
     expect(mockCanvasInstance.toObject).toHaveBeenCalledWith([
-      '_isArrow', '_id', '_link', '_fillPattern',
+      '_isArrow', '_id', '_link', '_fillPattern', '_fillColor',
       '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
       '_sloppiness', '_origGeom',
       '_attachedFrom', '_attachedTo',
