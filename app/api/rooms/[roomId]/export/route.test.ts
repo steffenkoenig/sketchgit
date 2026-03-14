@@ -30,6 +30,7 @@ vi.mock('@/lib/authTypes', () => ({
 vi.mock('@/lib/export/canvasRenderer', () => ({
   renderToSVG: vi.fn().mockResolvedValue('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
   renderToPNG: vi.fn().mockResolvedValue(Buffer.from('PNG_BYTES')),
+  renderToPDF: vi.fn().mockResolvedValue(new Uint8Array([0x25, 0x50, 0x44, 0x46])), // %PDF
 }));
 
 vi.mock('@/lib/sketchgit/git/canvasDelta', () => ({
@@ -113,6 +114,16 @@ describe('GET /api/rooms/[roomId]/export', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/svg+xml');
     expect(res.headers.get('content-disposition')).toContain('.svg');
+  });
+
+  it('returns PDF response with correct Content-Type when format=pdf', async () => {
+    mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA, format: 'pdf' });
+    const res = await GET(req, { params });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-disposition')).toContain('.pdf');
   });
 
   it('resolves HEAD commit when no sha is provided', async () => {
