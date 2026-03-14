@@ -37,7 +37,7 @@ vi.mock('@/lib/sketchgit/git/canvasDelta', () => ({
   replayCanvasDelta: vi.fn().mockReturnValue('{"objects":[]}'),
 }));
 
-import { GET } from './route';
+import { GET, POST } from './route';
 import { prisma } from '@/lib/db/prisma';
 import { NextRequest } from 'next/server';
 import { CommitStorageType } from '@prisma/client';
@@ -57,8 +57,18 @@ function makeRequest(roomId: string, query: Record<string, string> = {}) {
   return new NextRequest(url.toString());
 }
 
+function makePostRequest(roomId: string, body: unknown) {
+  const url = new URL(`http://localhost/api/rooms/${roomId}/export`);
+  return new NextRequest(url.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 const ROOM_ID = 'room_abc';
 const COMMIT_SHA = 'sha_001';
+const CANVAS_JSON = { version: '5.3.1', objects: [], background: '#0a0a0f' };
 const SNAPSHOT_COMMIT = {
   sha: COMMIT_SHA,
   roomId: ROOM_ID,
@@ -187,5 +197,106 @@ describe('GET /api/rooms/[roomId]/export', () => {
     req.headers.set('if-none-match', `"${COMMIT_SHA}"`);
     const res = await GET(req, { params });
     expect(res.status).toBe(304);
+  });
+});
+
+// ── POST /api/rooms/[roomId]/export ─────────────────────────────────────────
+
+describe('POST /api/rooms/[roomId]/export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const params = Promise.resolve({ roomId: ROOM_ID });
+
+  it('returns PNG when format=png (default)', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'png' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('content-disposition')).toContain('.png');
+    expect(renderToPNG).toHaveBeenCalledOnce();
+    expect(renderToPNG).toHaveBeenCalledWith(CANVAS_JSON, 'dark');
+  });
+
+  it('returns SVG when format=svg', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'svg' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/svg+xml');
+    expect(res.headers.get('content-disposition')).toContain('.svg');
+    expect(renderToSVG).toHaveBeenCalledOnce();
+    expect(renderToSVG).toHaveBeenCalledWith(CANVAS_JSON, 'dark');
+  });
+
+  it('returns PDF when format=pdf', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'pdf' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-disposition')).toContain('.pdf');
+    expect(renderToPDF).toHaveBeenCalledOnce();
+    expect(renderToPDF).toHaveBeenCalledWith(CANVAS_JSON, 'dark');
+  });
+
+  it('passes theme to renderer', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'svg', theme: 'light' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(200);
+    expect(renderToSVG).toHaveBeenCalledWith(CANVAS_JSON, 'light');
+  });
+
+  it('returns no-store Cache-Control (POST responses are never immutable)', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'png' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('no-store');
+  });
+
+  it('returns 400 for invalid JSON body', async () => {
+    const url = new URL(`http://localhost/api/rooms/${ROOM_ID}/export`);
+    const req = new NextRequest(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not-json',
+    });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 422 for missing canvasJson field', async () => {
+    const req = makePostRequest(ROOM_ID, { format: 'png' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(422);
+  });
+
+  it('returns 422 for invalid format value', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'bmp' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(422);
+  });
+
+  it('returns 422 when canvasJson lacks the objects array', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: { version: '5.3.1' }, format: 'png' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(422);
+  });
+
+  it('succeeds even when room does not exist in database (no DB lookup performed)', async () => {
+    // Deliberately leave all prisma mocks returning null/undefined — if the
+    // POST handler accidentally queries the DB it would fail or return wrong data.
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'png' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(200);
+    expect(mock.roomFindFirst).not.toHaveBeenCalled();
+    expect(mock.roomFindUnique).not.toHaveBeenCalled();
+    expect(mock.commitFindUnique).not.toHaveBeenCalled();
+    expect(mock.roomStateFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('uses the roomId from the URL path in the Content-Disposition filename', async () => {
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'png' });
+    const res = await POST(req, { params });
+    expect(res.headers.get('content-disposition')).toContain(`canvas-${ROOM_ID}`);
   });
 });
