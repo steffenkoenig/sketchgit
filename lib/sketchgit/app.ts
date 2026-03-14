@@ -212,6 +212,12 @@ export function createSketchGitApp() {
       start as 'none' | 'open' | 'triangle' | 'triangle-outline',
       end as 'none' | 'open' | 'triangle' | 'triangle-outline',
     ),
+    setArrowHeadStart: (start: string) => canvas.setArrowHeadStart(
+      start as 'none' | 'open' | 'triangle' | 'triangle-outline',
+    ),
+    setArrowHeadEnd: (end: string) => canvas.setArrowHeadEnd(
+      end as 'none' | 'open' | 'triangle' | 'triangle-outline',
+    ),
     setArrowType: (type: string) => canvas.setArrowType(type as 'sharp' | 'curved' | 'elbow'),
     zoomIn: () => canvas.zoomIn(),
     zoomOut: () => canvas.zoomOut(),

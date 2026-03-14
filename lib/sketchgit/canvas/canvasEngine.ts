@@ -715,20 +715,7 @@ export class CanvasEngine {
     return null;
   }
 
-  /** @deprecated – kept only for the backward-compatible test path; new code uses buildArrowGroup directly. */
-  private drawArrowhead(line: Line): void {
-    this.buildArrowGroup(line, this.arrowHeadStart, this.arrowHeadEnd, this.arrowType);
-  }
-
   // ── P085: Pinch-to-zoom touch handlers ────────────────────────────────────
-
-  /**
-   * Record the initial finger distance and current zoom level when a two-finger
-   * gesture begins.  Single-touch events are ignored so normal drawing still works.
-   *
-   * A minimum start-distance of 10 px is required to avoid division-by-zero or
-   * enormous scale factors when fingers are placed nearly on top of each other.
-   */
   private onTouchStart(e: TouchEvent): void {
     if (e.touches.length === 2) {
       // Prevent the browser from initiating its own pinch-to-zoom gesture on the
@@ -838,6 +825,18 @@ export class CanvasEngine {
       this.canvas.isDrawingMode = false;
       this.canvas.selection = t === 'select';
       this.canvas.defaultCursor = t === 'eraser' || t === 'pen' ? 'crosshair' : 'default';
+    }
+    // Show/hide the properties panel based on the selected tool.
+    if (t === 'eraser') {
+      document.getElementById('props-panel')?.classList.add('hide');
+    } else if (t === 'select') {
+      // Keep current panel state; selection events will update it.
+      if (!this.canvas?.getActiveObject()) {
+        document.getElementById('props-panel')?.classList.add('hide');
+      }
+    } else {
+      // Drawing tool selected – show panel with relevant sections for that tool.
+      this.showPropertiesPanelForShape(t, false);
     }
   }
 
@@ -1079,6 +1078,16 @@ export class CanvasEngine {
     });
   }
 
+  /** Convenience: change only the start arrowhead while keeping the current end. */
+  setArrowHeadStart(start: 'none' | 'open' | 'triangle' | 'triangle-outline'): void {
+    this.setArrowHeads(start, this.arrowHeadEnd);
+  }
+
+  /** Convenience: change only the end arrowhead while keeping the current start. */
+  setArrowHeadEnd(end: 'none' | 'open' | 'triangle' | 'triangle-outline'): void {
+    this.setArrowHeads(this.arrowHeadStart, end);
+  }
+
   setArrowType(type: 'sharp' | 'curved' | 'elbow'): void {
     this.arrowType = type;
     (['sharp', 'curved', 'elbow'] as const).forEach((t) => {
@@ -1103,6 +1112,13 @@ export class CanvasEngine {
     if (type === 'dashed') return [Math.max(6, width * 3), Math.max(3, width * 1.5)];
     if (type === 'dotted') return [Math.max(1, width), Math.max(3, width * 2)];
     return undefined;
+  }
+
+  /** Reverse of getDashArray: infer the dash type from a stored strokeDashArray. */
+  private getDashTypeFromArray(da: number[] | null | undefined): 'solid' | 'dashed' | 'dotted' {
+    if (!da || da.length === 0) return 'solid';
+    // dotted: first value (dot) ≤ second value (gap), dashed: first > second
+    return da[0] <= (da[1] ?? 0) ? 'dotted' : 'dashed';
   }
 
   private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
@@ -1183,30 +1199,131 @@ export class CanvasEngine {
   /** Sync the toolbar and properties panel UI to the currently selected object. */
   private syncPropertiesPanelToSelection(): void {
     const o = this.canvas?.getActiveObject();
-    // Show/hide the properties panel
     const panel = document.getElementById('props-panel');
     if (!panel) return;
+
     if (!o) {
-      panel.classList.add('hide');
+      // Nothing selected: if on the select tool, hide panel; drawing tools keep their own view.
+      if (this.currentTool === 'select') panel.classList.add('hide');
       return;
     }
-    panel.classList.remove('hide');
+
+    // Determine shape type from the selected object and show matching sections.
+    const shapeType = this.getObjectShapeType(o);
+    this.showPropertiesPanelForShape(shapeType, true);
 
     // Sync opacity slider
     const opacity = ((o.get('opacity') as number) ?? 1) * 100;
     const slider = document.getElementById('opacitySlider') as HTMLInputElement | null;
     if (slider) slider.value = String(Math.round(opacity));
-    const label = document.getElementById('opacityValue');
-    if (label) label.textContent = `${Math.round(opacity)}%`;
+    const opLabel = document.getElementById('opacityValue');
+    if (opLabel) opLabel.textContent = `${Math.round(opacity)}%`;
+
+    // Sync stroke color dot
+    const stroke = (o.get('stroke') as string) ?? this.strokeColor;
+    const strokeDot = document.getElementById('strokeDot');
+    if (strokeDot) strokeDot.style.background = stroke;
+
+    // Sync fill dot
+    const fillVal = o.get('fill');
+    if (typeof fillVal === 'string') {
+      const fillDot = document.getElementById('fillDot');
+      if (fillDot) fillDot.style.background = fillVal;
+    }
+
+    // Sync stroke width buttons
+    const sw = (o.get('strokeWidth') as number) ?? 1.5;
+    ['sz1', 'sz3', 'sz5'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    const swId = sw <= 2 ? 'sz1' : sw <= 4 ? 'sz3' : 'sz5';
+    const swEl = document.getElementById(swId);
+    swEl?.classList.add('on');
+    swEl?.setAttribute('aria-pressed', 'true');
+
+    // Sync dash type buttons
+    const da = o.get('strokeDashArray') as number[] | null;
+    const dashType = this.getDashTypeFromArray(da);
+    ['dash-solid', 'dash-dashed', 'dash-dotted'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', 'false');
+    });
+    document.getElementById(`dash-${dashType}`)?.classList.add('on');
+    document.getElementById(`dash-${dashType}`)?.setAttribute('aria-pressed', 'true');
 
     // Sync link input
     const link = (o as FabricObject & { _link?: string })._link ?? '';
     const linkInput = document.getElementById('linkInput') as HTMLInputElement | null;
     if (linkInput) linkInput.value = link;
+  }
 
-    // Show/hide arrow-specific section
-    const arrowSection = document.getElementById('arrow-props-section');
-    const isArrow = !!(o as FabricObject & { _isArrow?: boolean })._isArrow;
-    if (arrowSection) arrowSection.classList.toggle('hide', !isArrow);
+  /**
+   * Returns a canonical shape-type string for a Fabric object.
+   * This is used to determine which properties-panel sections to show.
+   */
+  private getObjectShapeType(o: FabricObject): string {
+    const oa = o as FabricObject & { _isArrow?: boolean; type?: string };
+    if (oa._isArrow) return 'arrow';
+    const t = (oa.type as string | undefined) ?? '';
+    if (t === 'rect') return 'rect';
+    if (t === 'ellipse') return 'ellipse';
+    if (t === 'line') return 'line';
+    if (t === 'path' || t === 'polyline') return 'pen';
+    if (t === 'i-text' || t === 'text') return 'text';
+    return 'unknown';
+  }
+
+  /**
+   * Show the properties panel and toggle the visibility of each section
+   * based on the shape type.  Called both when a drawing tool is activated
+   * (isObjectSelected=false) and when a canvas object is selected (=true).
+   */
+  showPropertiesPanelForShape(shapeType: string, isObjectSelected: boolean): void {
+    const panel = document.getElementById('props-panel');
+    if (!panel) return;
+    panel.classList.remove('hide');
+
+    const show = (id: string) => document.getElementById(id)?.classList.remove('hide');
+    const hide = (id: string) => document.getElementById(id)?.classList.add('hide');
+
+    const isRect    = shapeType === 'rect';
+    const isEllipse = shapeType === 'ellipse';
+    const isArrow   = shapeType === 'arrow';
+    const isPen     = shapeType === 'pen';
+    const isText    = shapeType === 'text';
+    const hasFill   = isRect || isEllipse;
+    const hasStroke = !isText;
+
+    // Colors: always visible
+    show('pp-color-section');
+
+    // Stroke width / dash: all shapes with a stroke (not text)
+    hasStroke ? show('pp-stroke-width-section') : hide('pp-stroke-width-section');
+    hasStroke ? show('pp-stroke-dash-section')  : hide('pp-stroke-dash-section');
+
+    // Fill: rect and ellipse only
+    hasFill ? show('pp-fill-pattern-section') : hide('pp-fill-pattern-section');
+
+    // Border radius: rect only
+    isRect ? show('pp-border-radius-section') : hide('pp-border-radius-section');
+
+    // Sloppiness: pen only
+    isPen ? show('pp-sloppiness-section') : hide('pp-sloppiness-section');
+
+    // Arrow controls: arrow only
+    isArrow ? show('pp-arrow-type-section')  : hide('pp-arrow-type-section');
+    isArrow ? show('pp-arrow-heads-section') : hide('pp-arrow-heads-section');
+
+    // Opacity: always visible
+    show('pp-opacity-section');
+
+    // Layer + link: only when an existing object is selected
+    isObjectSelected ? show('pp-layer-section') : hide('pp-layer-section');
+    isObjectSelected ? show('pp-link-section')  : hide('pp-link-section');
   }
 }

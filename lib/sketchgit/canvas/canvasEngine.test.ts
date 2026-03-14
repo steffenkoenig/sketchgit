@@ -87,6 +87,7 @@ vi.mock('fabric', () => ({
   Point: vi.fn(function MockPoint(this: { x: number; y: number }, x: number, y: number) {
     this.x = x; this.y = y;
   }),
+  Pattern: vi.fn(function MockPattern() { return {}; }),
 }));
 
 import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group, FabricObject } from 'fabric';
@@ -138,8 +139,19 @@ function setupDom() {
     <button id="ahe-triangle"></button>
     <button id="ahe-triangleoutline"></button>
     <input id="linkInput" type="url" />
-    <div id="props-panel" class="hide"></div>
-    <div id="arrow-props-section" class="hide"></div>
+    <div id="props-panel" class="hide">
+      <div id="pp-color-section" class="pp-section"></div>
+      <div id="pp-stroke-width-section" class="pp-section"></div>
+      <div id="pp-stroke-dash-section" class="pp-section"></div>
+      <div id="pp-fill-pattern-section" class="pp-section hide"></div>
+      <div id="pp-border-radius-section" class="pp-section hide"></div>
+      <div id="pp-sloppiness-section" class="pp-section hide"></div>
+      <div id="pp-arrow-type-section" class="pp-section hide"></div>
+      <div id="pp-arrow-heads-section" class="pp-section hide"></div>
+      <div id="pp-opacity-section" class="pp-section"></div>
+      <div id="pp-layer-section" class="pp-section hide"></div>
+      <div id="pp-link-section" class="pp-section hide"></div>
+    </div>
   `;
 }
 
@@ -1259,5 +1271,136 @@ describe('CanvasEngine – new custom properties serialisation', () => {
     expect(props).toContain('_arrowHeadEnd');
     expect(props).toContain('_arrowType');
     expect(props).toContain('_fillPattern');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contextual properties panel: showPropertiesPanelForShape + setTool behavior
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CanvasEngine – showPropertiesPanelForShape', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('reveals the panel and shows arrow sections only for arrow shape', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('arrow', false);
+    expect(document.getElementById('props-panel')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-arrow-type-section')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-arrow-heads-section')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-fill-pattern-section')!.classList.contains('hide')).toBe(true);
+    expect(document.getElementById('pp-border-radius-section')!.classList.contains('hide')).toBe(true);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(true);
+  });
+
+  it('shows fill-pattern and border-radius sections for rect', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('rect', false);
+    expect(document.getElementById('pp-fill-pattern-section')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-border-radius-section')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-arrow-type-section')!.classList.contains('hide')).toBe(true);
+  });
+
+  it('shows fill-pattern but not border-radius for ellipse', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('ellipse', false);
+    expect(document.getElementById('pp-fill-pattern-section')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-border-radius-section')!.classList.contains('hide')).toBe(true);
+  });
+
+  it('shows sloppiness section only for pen', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('pen', false);
+    expect(document.getElementById('pp-sloppiness-section')!.classList.contains('hide')).toBe(false);
+    // Other shape-specific sections hidden
+    expect(document.getElementById('pp-fill-pattern-section')!.classList.contains('hide')).toBe(true);
+    expect(document.getElementById('pp-arrow-type-section')!.classList.contains('hide')).toBe(true);
+  });
+
+  it('hides layer and link sections when isObjectSelected=false', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('rect', false);
+    expect(document.getElementById('pp-layer-section')!.classList.contains('hide')).toBe(true);
+    expect(document.getElementById('pp-link-section')!.classList.contains('hide')).toBe(true);
+  });
+
+  it('shows layer and link sections when isObjectSelected=true', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('rect', true);
+    expect(document.getElementById('pp-layer-section')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-link-section')!.classList.contains('hide')).toBe(false);
+  });
+
+  it('hides stroke-width and stroke-dash for text', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.showPropertiesPanelForShape('text', false);
+    expect(document.getElementById('pp-stroke-width-section')!.classList.contains('hide')).toBe(true);
+    expect(document.getElementById('pp-stroke-dash-section')!.classList.contains('hide')).toBe(true);
+  });
+});
+
+describe('CanvasEngine – setTool panel behavior', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setTool("rect") shows the properties panel', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    // Make sure panel starts hidden
+    document.getElementById('props-panel')!.classList.add('hide');
+    engine.setTool('rect');
+    expect(document.getElementById('props-panel')!.classList.contains('hide')).toBe(false);
+  });
+
+  it('setTool("eraser") hides the properties panel', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    document.getElementById('props-panel')!.classList.remove('hide');
+    engine.setTool('eraser');
+    expect(document.getElementById('props-panel')!.classList.contains('hide')).toBe(true);
+  });
+
+  it('setTool("arrow") reveals arrow-specific sections', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('arrow');
+    expect(document.getElementById('pp-arrow-type-section')!.classList.contains('hide')).toBe(false);
+    expect(document.getElementById('pp-arrow-heads-section')!.classList.contains('hide')).toBe(false);
+  });
+
+  it('setTool("select") with no active object hides the panel', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    document.getElementById('props-panel')!.classList.remove('hide');
+    engine.setTool('select');
+    expect(document.getElementById('props-panel')!.classList.contains('hide')).toBe(true);
+  });
+});
+
+describe('CanvasEngine – setArrowHeadStart / setArrowHeadEnd', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('setArrowHeadStart changes only start head, keeps end unchanged', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setArrowHeads('none', 'open');
+    engine.setArrowHeadStart('triangle');
+    expect(engine.arrowHeadStart).toBe('triangle');
+    expect(engine.arrowHeadEnd).toBe('open');
+  });
+
+  it('setArrowHeadEnd changes only end head, keeps start unchanged', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setArrowHeads('open', 'none');
+    engine.setArrowHeadEnd('triangle');
+    expect(engine.arrowHeadStart).toBe('open');
+    expect(engine.arrowHeadEnd).toBe('triangle');
   });
 });
