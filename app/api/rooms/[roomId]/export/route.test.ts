@@ -41,6 +41,7 @@ import { GET } from './route';
 import { prisma } from '@/lib/db/prisma';
 import { NextRequest } from 'next/server';
 import { CommitStorageType } from '@prisma/client';
+import { renderToPDF, renderToPNG, renderToSVG } from '@/lib/export/canvasRenderer';
 
 const mock = {
   roomFindUnique: prisma.room.findUnique as ReturnType<typeof vi.fn>,
@@ -124,6 +125,9 @@ describe('GET /api/rooms/[roomId]/export', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
     expect(res.headers.get('content-disposition')).toContain('.pdf');
+    expect(renderToPDF).toHaveBeenCalledOnce();
+    expect(renderToPNG).not.toHaveBeenCalled();
+    expect(renderToSVG).not.toHaveBeenCalled();
   });
 
   it('resolves HEAD commit when no sha is provided', async () => {

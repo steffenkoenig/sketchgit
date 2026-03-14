@@ -10,7 +10,6 @@
  * Delta commits (P033) are reconstructed by replaying the delta chain.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
@@ -25,12 +24,9 @@ import {
   getRoomHeadSha,
   resolveCommitCanvas,
 } from "@/lib/db/roomRepository";
+import { ExportQuerySchema } from "@/lib/api/exportSchema";
 
-export const ExportQuerySchema = z.object({
-  format: z.enum(["png", "svg", "pdf"]).default("png"),
-  sha: z.string().max(64).optional(),
-  theme: z.enum(["dark", "light"]).default("dark"),
-});
+export { ExportQuerySchema };
 
 export async function GET(
   req: NextRequest,
