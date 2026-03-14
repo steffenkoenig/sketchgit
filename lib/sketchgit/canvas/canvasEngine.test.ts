@@ -25,6 +25,9 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
       get: vi.fn(function (this: Record<string, unknown>, key: string) {
         return this[key];
       }),
+      getCenterPoint: vi.fn(function (this: Record<string, unknown>) {
+        return { x: ((this.left as number) ?? 0) + ((this.width as number) ?? 0) / 2, y: ((this.top as number) ?? 0) + ((this.height as number) ?? 0) / 2 };
+      }),
       containsPoint: vi.fn().mockReturnValue(false),
       enterEditing: vi.fn(),
       selectAll: vi.fn(),
@@ -129,9 +132,11 @@ function setupDom() {
     <button id="ahs-none"></button>
     <button id="ahs-open" class="on"></button>
     <button id="ahs-triangle"></button>
+    <button id="ahs-triangleoutline"></button>
     <button id="ahe-none"></button>
     <button id="ahe-open" class="on"></button>
     <button id="ahe-triangle"></button>
+    <button id="ahe-triangleoutline"></button>
     <input id="linkInput" type="url" />
     <div id="props-panel" class="hide"></div>
     <div id="arrow-props-section" class="hide"></div>

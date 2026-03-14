@@ -715,9 +715,9 @@ export class CanvasEngine {
     return null;
   }
 
-  /** @deprecated Use buildArrowGroup instead. Kept for backward compatibility. */
+  /** @deprecated – kept only for the backward-compatible test path; new code uses buildArrowGroup directly. */
   private drawArrowhead(line: Line): void {
-    this.buildArrowGroup(line, 'none', 'open', 'sharp');
+    this.buildArrowGroup(line, this.arrowHeadStart, this.arrowHeadEnd, this.arrowType);
   }
 
   // ── P085: Pinch-to-zoom touch handlers ────────────────────────────────────
@@ -1067,10 +1067,11 @@ export class CanvasEngine {
   ): void {
     this.arrowHeadStart = start;
     this.arrowHeadEnd = end;
-    // Update UI button states for head-start
+    // Update UI button states for head-start and head-end
     (['none', 'open', 'triangle', 'triangle-outline'] as const).forEach((t) => {
-      const sEl = document.getElementById(`ahs-${t.replace('-', '')}`);
-      const eEl = document.getElementById(`ahe-${t.replace('-', '')}`);
+      const idSuffix = t.replace(/-/g, '');
+      const sEl = document.getElementById(`ahs-${idSuffix}`);
+      const eEl = document.getElementById(`ahe-${idSuffix}`);
       sEl?.classList.toggle('on', t === start);
       sEl?.setAttribute('aria-pressed', t === start ? 'true' : 'false');
       eEl?.classList.toggle('on', t === end);
@@ -1143,17 +1144,16 @@ export class CanvasEngine {
     const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = typedLine as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
 
     for (const obj of objs) {
-      const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
-      const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+      const center = obj.getCenterPoint();
       const id = (obj as FabricObject & { _id?: string })._id;
       if (!id) continue;
-      if (Math.hypot(cx - x1, cy - y1) < SNAP_RADIUS) {
+      if (Math.hypot(center.x - x1, center.y - y1) < SNAP_RADIUS) {
         typedLine._attachedFrom = id;
-        typedLine.set({ x1: cx, y1: cy });
+        typedLine.set({ x1: center.x, y1: center.y });
       }
-      if (Math.hypot(cx - x2, cy - y2) < SNAP_RADIUS) {
+      if (Math.hypot(center.x - x2, center.y - y2) < SNAP_RADIUS) {
         typedLine._attachedTo = id;
-        typedLine.set({ x2: cx, y2: cy });
+        typedLine.set({ x2: center.x, y2: center.y });
       }
     }
   }
@@ -1163,18 +1163,17 @@ export class CanvasEngine {
     if (!this.canvas) return;
     const id = (movedObj as FabricObject & { _id?: string })._id;
     if (!id) return;
-    const cx = (movedObj.left ?? 0) + (movedObj.width ?? 0) * ((movedObj.scaleX ?? 1)) / 2;
-    const cy = (movedObj.top ?? 0) + (movedObj.height ?? 0) * ((movedObj.scaleY ?? 1)) / 2;
+    const center = movedObj.getCenterPoint();
 
     for (const obj of this.canvas.getObjects()) {
       if (!(obj instanceof Line)) continue;
       const attached = obj as Line & { _attachedFrom?: string; _attachedTo?: string };
       if (attached._attachedFrom === id) {
-        attached.set({ x1: cx, y1: cy });
+        attached.set({ x1: center.x, y1: center.y });
         attached.setCoords();
       }
       if (attached._attachedTo === id) {
-        attached.set({ x2: cx, y2: cy });
+        attached.set({ x2: center.x, y2: center.y });
         attached.setCoords();
       }
     }
