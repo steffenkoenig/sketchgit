@@ -64,6 +64,15 @@ export function loadPreferences(): UserPreferences | null {
 }
 
 /**
+ * Read the stored `lastRoomId` without requiring a valid `name`.
+ * This ensures returning visitors are sent back to their previous room even
+ * when the name modal has not been dismissed yet (i.e. name is still unset).
+ */
+export function loadLastRoomId(): string {
+  return _loadRaw().lastRoomId ?? '';
+}
+
+/**
  * Update the `?branch=` URL parameter without triggering a navigation.
  * Safe to call in non-browser environments (no-ops when `window` is absent).
  */

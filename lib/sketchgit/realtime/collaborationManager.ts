@@ -595,8 +595,9 @@ export class CollaborationManager {
    * Extract the room ID from the `?room=` URL parameter.
    *
    * @param fallback – Used when the URL carries no `room` param (e.g. the
-   *   last-visited room restored from localStorage by the caller).  Falls
-   *   back to `'default'` when the fallback is also empty.
+   *   last-visited room restored from localStorage, or a freshly-generated
+   *   UUID for first-time visitors).  Falls back to `'default'` when the
+   *   fallback is also empty.
    */
   getRoomFromUrl(fallback = 'default'): string {
     const params = new URLSearchParams(window.location.search);
