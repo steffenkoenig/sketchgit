@@ -26,60 +26,44 @@ function ForgotPasswordForm() {
   }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "var(--bg0, #0a0a0f)",
-    }}>
-      <div style={{
-        width: "100%",
-        maxWidth: "360px",
-        background: "var(--bg1, #12121a)",
-        border: "1px solid var(--bdr1, #2a2a3f)",
-        borderRadius: "12px",
-        padding: "32px",
-      }}>
-        <h1 style={{ color: "var(--tx1, #e2e2ef)", fontSize: "18px", fontWeight: 600, marginBottom: "6px" }}>
-          Reset your password
-        </h1>
+    <div className="auth-page">
+      <div className="auth-card">
+        <h1>Reset your password</h1>
         {submitted ? (
-          <p style={{ color: "var(--tx2, #8888a8)", fontSize: "14px", lineHeight: "1.5" }}>
+          <p className="auth-subtitle" style={{ textAlign: "left" }}>
             If that email is registered, you&#39;ll receive a reset link shortly.
             Check your inbox and spam folder.
           </p>
         ) : (
-          <form onSubmit={(e) => { void handleSubmit(e); }}>
-            <p style={{ color: "var(--tx2, #8888a8)", fontSize: "13px", marginBottom: "20px" }}>
+          <form onSubmit={(e) => { void handleSubmit(e); }} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <p className="auth-subtitle" style={{ textAlign: "left", marginBottom: "4px" }}>
               Enter your email address and we&#39;ll send you a link to reset your password.
             </p>
-            <label style={{ display: "block", marginBottom: "14px" }}>
-              <span style={{ display: "block", fontSize: "12px", color: "var(--tx2, #8888a8)", marginBottom: "4px" }}>
-                Email
-              </span>
+            <div>
+              <label className="auth-label" htmlFor="email">Email</label>
               <input
+                id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-sm focus:outline-none focus:border-violet-500"
+                className="auth-input"
                 placeholder="you@example.com"
                 aria-label="Email address"
               />
-            </label>
+            </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+              className="auth-btn"
             >
               {loading ? "Sending…" : "Send reset link"}
             </button>
           </form>
         )}
-        <p className="text-center text-xs text-slate-500 mt-4">
+        <p className="auth-footer">
           Remember your password?{" "}
-          <Link href="/auth/signin" className="text-violet-400 hover:underline">
+          <Link href="/auth/signin" className="auth-link">
             Sign in
           </Link>
         </p>

@@ -17,7 +17,6 @@ import type { Session } from "next-auth";
 import { signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
-import { Button } from "@/components/ui/button";
 import type { SketchGitCall } from "@/components/sketchgit/types";
 
 type AppTopbarProps = {
@@ -45,11 +44,7 @@ function LocaleSwitcher() {
         <button
           key={l}
           onClick={() => switchLocale(l)}
-          className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-            l === locale
-              ? "bg-violet-600 text-white"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
+          className={`topbtn xs${l === locale ? " active" : ""}`}
           aria-label={`Switch to ${l === "en" ? "English" : "German"}`}
           aria-pressed={l === locale}
         >
@@ -86,7 +81,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="text-[16px] px-1.5 transition-colors text-slate-400 hover:text-slate-200"
+      className="topbtn xs"
       aria-label={isDark ? t("topbar.switchToLight") : t("topbar.switchToDark")}
       aria-pressed={!isDark}
       title={isDark ? t("topbar.switchToLight") : t("topbar.switchToDark")}
@@ -106,7 +101,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
   const t = useTranslations();
 
   return (
-    <header id="topbar" className="border-b border-slate-800" role="banner" aria-label="Application toolbar">
+    <header id="topbar" role="banner" aria-label="Application toolbar">
       <div className="logo" aria-label="SketchGit application logo">
         <div className="logo-badge" aria-hidden="true">⌥</div>
         SketchGit
@@ -135,69 +130,64 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
       <div className="avatar-row" id="avatarRow" aria-label="Connected peers" role="list"></div>
       <div className="live-ind" id="liveInd" style={{ display: "none" }} aria-label="Live collaboration active" aria-live="polite"></div>
 
-      <Button
-        variant="outline" size="sm"
-        className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-violet-500 hover:bg-slate-800"
+      <button
+        className="topbtn"
         onClick={() => call("toggleCollabPanel")}
         aria-label="Toggle collaboration panel"
         aria-haspopup="dialog"
-      >{t("topbar.collab")}</Button>
+      >{t("topbar.collab")}</button>
 
-      <Button
-        variant="outline" size="sm"
-        className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-rose-500 hover:bg-slate-800"
+      <button
+        className="topbtn danger"
         onClick={() => call("openMergeModal")}
         id="mergeBtn"
         aria-label="Open merge branch dialog"
         aria-haspopup="dialog"
-      >{t("topbar.merge")}</Button>
+      >{t("topbar.merge")}</button>
 
-      <Button
-        variant="outline" size="sm"
-        className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-violet-500 hover:bg-slate-800"
+      <button
+        className="topbtn"
         onClick={() => call("openBranchCreate")}
         aria-label="Create a new branch"
         aria-haspopup="dialog"
-      >{t("topbar.branch")}</Button>
+      >{t("topbar.branch")}</button>
 
-      <Button
-        size="sm"
-        className="h-7 bg-violet-600 text-white hover:bg-violet-500"
+      <button
+        className="topbtn primary"
         onClick={() => call("openCommitModal")}
         id="commitBtn"
         aria-label="Commit current drawing changes"
         aria-haspopup="dialog"
-      >{t("topbar.commit")}</Button>
+      >{t("topbar.commit")}</button>
 
       {/* P091: Share button – only meaningful for authenticated users (API enforces OWNER) */}
       {session?.user && (
-        <Button
-          variant="outline" size="sm"
-          className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-sky-500 hover:bg-slate-800"
+        <button
+          className="topbtn"
           onClick={() => call("openShareModal")}
           aria-label="Open share links dialog"
           aria-haspopup="dialog"
-        >{t("topbar.share")}</Button>
+        >{t("topbar.share")}</button>
       )}
 
       {/* P039: Canvas export download links */}
       <a
         href={`${exportBase}?format=png`}
         download={`canvas-${roomId}.png`}
-        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
+        className="topbtn"
         aria-label="Export canvas as PNG image"
       >{t("toolbar.exportPng")}</a>
       <a
         href={`${exportBase}?format=svg`}
         download={`canvas-${roomId}.svg`}
-        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
+        className="topbtn"
         aria-label="Export canvas as SVG vector file"
       >{t("toolbar.exportSvg")}</a>
       {/* P076 – PDF export link */}
       <a
         href={`${exportBase}?format=pdf`}
         download={`canvas-${roomId}.pdf`}
-        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
+        className="topbtn"
         aria-label="Export canvas as PDF document"
       >{t("toolbar.exportPdf")}</a>
 
@@ -218,9 +208,9 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
             href="/dashboard"
             style={{
               display: "flex", alignItems: "center", gap: "6px",
-              background: "var(--bg2)", border: "1px solid var(--bdr1)",
+              background: "var(--s2)", border: "1px solid var(--bdr)",
               borderRadius: "6px", padding: "3px 10px",
-              fontSize: "12px", color: "var(--tx1)", textDecoration: "none",
+              fontSize: "12px", color: "var(--tx)", textDecoration: "none",
               cursor: "pointer",
             }}
             aria-label={`Go to My Drawings (signed in as ${session.user.name ?? session.user.email})`}
@@ -230,20 +220,18 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
               {session.user.name ?? session.user.email}
             </span>
           </Link>
-          <Button
-            variant="outline" size="sm"
-            className="h-7"
+          <button
+            className="topbtn"
             onClick={() => signOut({ callbackUrl: "/" })}
             aria-label="Sign out of SketchGit"
-          >{t("topbar.signOut")}</Button>
+          >{t("topbar.signOut")}</button>
         </div>
       ) : (
-        <Button
-          variant="outline" size="sm"
-          className="h-7"
+        <button
+          className="topbtn"
           onClick={() => signIn()}
           aria-label="Sign in or create a SketchGit account"
-        >{t("topbar.signIn")}</Button>
+        >{t("topbar.signIn")}</button>
       )}
     </header>
   );
