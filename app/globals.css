@@ -41,8 +41,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-
 .topbtn.active{background:var(--a1);border-color:var(--a1);color:white}
 /* Topbar dropdown menus */
 .tb-dropdown{position:relative;display:inline-flex}
-.tb-dropdown-menu{position:absolute;top:calc(100% + 6px);left:0;background:var(--s2);border:1px solid var(--bdr2);border-radius:10px;padding:4px;min-width:170px;z-index:400;box-shadow:0 8px 24px rgba(0,0,0,.45);opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .15s,transform .15s}
-.tb-dropdown-menu.right{left:auto;right:0}
+.tb-dropdown-menu{position:fixed;background:var(--s2);border:1px solid var(--bdr2);border-radius:10px;padding:4px;min-width:170px;z-index:1200;box-shadow:0 8px 24px rgba(0,0,0,.45);opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .15s,transform .15s}
 .tb-dropdown-menu.open{opacity:1;pointer-events:all;transform:translateY(0)}
 .tb-dropdown-item{display:flex;align-items:center;gap:9px;padding:7px 10px;font-size:12px;color:var(--tx2);border-radius:7px;cursor:pointer;text-decoration:none;background:transparent;border:none;font-family:inherit;width:100%;white-space:nowrap;transition:all .1s}
 .tb-dropdown-item:hover{background:var(--s3);color:var(--tx)}

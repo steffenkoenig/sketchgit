@@ -12,6 +12,7 @@
  */
 
 import React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Session } from "next-auth";
 import { signIn, signOut } from "next-auth/react";
@@ -147,26 +148,50 @@ const LOCALES: { code: string; flag: string; label: string }[] = [
   { code: "de", flag: "🇩🇪", label: "Deutsch" },
 ];
 
-/* ── useClickOutside helper ──────────────────────────────────────────────── */
+/* ── usePortalDropdown ───────────────────────────────────────────────────── */
+/**
+ * Manages dropdown open state and positions the menu via `getBoundingClientRect`
+ * so it can be rendered in a React portal outside the overflow-clipped `#topbar`.
+ */
+function usePortalDropdown(align: "left" | "right" = "left") {
+  const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>({});
 
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
   React.useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    if (!open) return;
+
+    // Position the floating menu relative to the trigger button.
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setMenuStyle(
+        align === "left"
+          ? { top: r.bottom + 6, left: r.left }
+          : { top: r.bottom + 6, right: window.innerWidth - r.right }
+      );
     }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [ref, onClose]);
+
+    function onMouseDown(e: MouseEvent) {
+      if (
+        !triggerRef.current?.contains(e.target as Node) &&
+        !menuRef.current?.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [open, align]);
+
+  return { open, setOpen, triggerRef, menuRef, menuStyle };
 }
 
 /* ── ExportDropdown ──────────────────────────────────────────────────────── */
 
 function ExportDropdown({ exportBase, roomId }: { exportBase: string; roomId: string }) {
   const t = useTranslations();
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-  const close = React.useCallback(() => setOpen(false), []);
-  useClickOutside(ref, close);
+  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("left");
 
   const items = [
     { format: "png", label: t("toolbar.exportPng"), icon: <IconPng /> },
@@ -175,8 +200,9 @@ function ExportDropdown({ exportBase, roomId }: { exportBase: string; roomId: st
   ];
 
   return (
-    <div className="tb-dropdown" ref={ref}>
+    <div className="tb-dropdown">
       <button
+        ref={triggerRef}
         className="topbtn"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
@@ -187,22 +213,25 @@ function ExportDropdown({ exportBase, roomId }: { exportBase: string; roomId: st
         {t("topbar.export")}
         <IconChevronDown />
       </button>
-      <div className={`tb-dropdown-menu${open ? " open" : ""}`} role="menu">
-        {items.map(({ format, label, icon }) => (
-          <a
-            key={format}
-            href={`${exportBase}?format=${format}`}
-            download={`canvas-${roomId}.${format}`}
-            className="tb-dropdown-item"
-            role="menuitem"
-            aria-label={label}
-            onClick={() => setOpen(false)}
-          >
-            {icon}
-            {label}
-          </a>
-        ))}
-      </div>
+      {open && createPortal(
+        <div ref={menuRef} className="tb-dropdown-menu open" style={menuStyle} role="menu">
+          {items.map(({ format, label, icon }) => (
+            <a
+              key={format}
+              href={`${exportBase}?format=${format}`}
+              download={`canvas-${roomId}.${format}`}
+              className="tb-dropdown-item"
+              role="menuitem"
+              aria-label={label}
+              onClick={() => setOpen(false)}
+            >
+              {icon}
+              {label}
+            </a>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -212,10 +241,7 @@ function ExportDropdown({ exportBase, roomId }: { exportBase: string; roomId: st
 function LocaleDropdown() {
   const t = useTranslations();
   const locale = useLocale();
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-  const close = React.useCallback(() => setOpen(false), []);
-  useClickOutside(ref, close);
+  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("right");
 
   const current = LOCALES.find((l) => l.code === locale) ?? LOCALES[0];
 
@@ -229,8 +255,9 @@ function LocaleDropdown() {
   }
 
   return (
-    <div className="tb-dropdown" ref={ref} aria-label={t("topbar.language")}>
+    <div className="tb-dropdown" aria-label={t("topbar.language")}>
       <button
+        ref={triggerRef}
         className="topbtn xs"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
@@ -241,20 +268,23 @@ function LocaleDropdown() {
         <span>{current.flag} {current.code.toUpperCase()}</span>
         <IconChevronDown />
       </button>
-      <div className={`tb-dropdown-menu right${open ? " open" : ""}`} role="listbox" aria-label={t("topbar.language")}>
-        {LOCALES.map(({ code, flag, label }) => (
-          <button
-            key={code}
-            role="option"
-            aria-selected={code === locale}
-            className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
-            onClick={() => switchLocale(code)}
-          >
-            <span className="tb-locale-flag" aria-hidden="true">{flag}</span>
-            {label}
-          </button>
-        ))}
-      </div>
+      {open && createPortal(
+        <div ref={menuRef} className="tb-dropdown-menu open" style={menuStyle} role="listbox" aria-label={t("topbar.language")}>
+          {LOCALES.map(({ code, flag, label }) => (
+            <button
+              key={code}
+              role="option"
+              aria-selected={code === locale}
+              className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
+              onClick={() => switchLocale(code)}
+            >
+              <span className="tb-locale-flag" aria-hidden="true">{flag}</span>
+              {label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
