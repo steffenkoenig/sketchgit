@@ -16,11 +16,11 @@ const nextConfig = {
 	output: 'standalone',
 
 	// fabric/node (used by the canvas export renderer) pulls in jsdom and
-	// the native node-canvas bindings at import time.  Marking them as server
-	// externals tells Next.js / Turbopack NOT to bundle them; they are loaded
-	// from node_modules at request time instead of at build / bundle-eval time.
-	// This prevents "Failed to collect page data" build errors on routes that
-	// transitively depend on canvasRenderer (e.g. the OpenAPI spec route).
+	// the native node-canvas bindings.  Marking them as server externals tells
+	// Next.js / Turbopack NOT to bundle them; they are loaded from node_modules
+	// at request time.  The export route uses a dynamic import() to keep
+	// canvasRenderer out of the static module graph entirely, so fabric/node is
+	// never evaluated during build-time page-data collection.
 	serverExternalPackages: ['canvas', 'jsdom'],
 
 	// P056 – nonce-based CSP is now set per-request in proxy.ts.

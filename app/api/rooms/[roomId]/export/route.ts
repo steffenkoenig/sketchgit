@@ -13,7 +13,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
-import { renderToSVG, renderToPNG, renderToPDF } from "@/lib/export/canvasRenderer";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import {
@@ -26,6 +25,9 @@ import {
 } from "@/lib/db/roomRepository";
 import { ExportQuerySchema } from "@/lib/api/exportSchema";
 
+// Re-export so that lib/api/openapi.ts can import only the schema without
+// pulling in the canvasRenderer dependency (P062 convention: schemas live in
+// or are re-exported from the route file that uses them).
 export { ExportQuerySchema };
 
 export async function GET(
@@ -90,6 +92,11 @@ export async function GET(
   if (!canvasJson) {
     return apiError(ApiErrorCode.CANVAS_NOT_FOUND, "Failed to resolve canvas state", 404);
   }
+
+  // Dynamic import keeps fabric/node (and its jsdom/canvas native deps) out of
+  // the static module graph, preventing build-time "Failed to collect page data"
+  // errors while keeping full functionality at request time.
+  const { renderToSVG, renderToPNG, renderToPDF } = await import("@/lib/export/canvasRenderer");
 
   const filename = `canvas-${roomId}`;
   // P070 – SHA-addressed exports are immutable; use long-lived cache headers.
