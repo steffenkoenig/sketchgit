@@ -23,12 +23,13 @@ import {
   getRoomHeadSha,
   resolveCommitCanvas,
 } from "@/lib/db/roomRepository";
-import { ExportQuerySchema } from "@/lib/api/exportSchema";
+import { ExportQuerySchema, ExportBodySchema } from "@/lib/api/exportSchema";
 
-// Re-export so that lib/api/openapi.ts can import only the schema without
-// pulling in the canvasRenderer dependency (P062 convention: schemas live in
-// or are re-exported from the route file that uses them).
-export { ExportQuerySchema };
+// Re-export schemas so that lib/api/openapi.ts can import them without
+// transitively pulling in canvasRenderer (→ fabric/node → jsdom/canvas native
+// modules).  Schemas live in lib/api/exportSchema.ts; this re-export keeps the
+// public import surface at the route file (P062 convention).
+export { ExportQuerySchema, ExportBodySchema };
 
 export async function GET(
   req: NextRequest,
@@ -131,6 +132,69 @@ export async function GET(
       "Content-Type": "image/png",
       "Content-Disposition": `attachment; filename="${filename}.png"`,
       ...cacheHdrs,
+    },
+  });
+}
+
+/**
+ * POST /api/rooms/[roomId]/export
+ *
+ * Accepts the canvas JSON directly from the browser so that the export works
+ * even when the room has not yet been persisted to the database (e.g. when
+ * dbEnsureRoom failed transiently on the WebSocket server side).
+ *
+ * No room or commit database lookup is performed — the caller supplies the
+ * canvas state they are already viewing.
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ roomId: string }> },
+) {
+  const { roomId } = await params;
+
+  const body: unknown = await req.json().catch(() => null);
+  if (body === null) {
+    return apiError(ApiErrorCode.INVALID_JSON, "Invalid JSON", 400);
+  }
+  const v = validate(ExportBodySchema, body);
+  if (!v.success) return v.response;
+
+  const { canvasJson, format, theme } = v.data;
+
+  // Dynamic import — same reason as in the GET handler (keep fabric/node out of
+  // the static module graph to prevent build-time "Failed to collect page data").
+  const { renderToSVG, renderToPNG, renderToPDF } = await import("@/lib/export/canvasRenderer");
+
+  const filename = `canvas-${roomId}`;
+
+  if (format === "svg") {
+    const svg = await renderToSVG(canvasJson, theme);
+    return new NextResponse(svg, {
+      headers: {
+        "Content-Type": "image/svg+xml",
+        "Content-Disposition": `attachment; filename="${filename}.svg"`,
+        ...mutableHeaders(),
+      },
+    });
+  }
+
+  if (format === "pdf") {
+    const pdf = await renderToPDF(canvasJson, theme);
+    return new NextResponse(Buffer.from(pdf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}.pdf"`,
+        ...mutableHeaders(),
+      },
+    });
+  }
+
+  const png = await renderToPNG(canvasJson, theme);
+  return new NextResponse(new Uint8Array(png), {
+    headers: {
+      "Content-Type": "image/png",
+      "Content-Disposition": `attachment; filename="${filename}.png"`,
+      ...mutableHeaders(),
     },
   });
 }
