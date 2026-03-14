@@ -39,12 +39,16 @@ export default function SketchGitApp() {
   // popup "Share this commit" action (commitSha pre-filled).
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCommitSha, setShareCommitSha] = useState<string | null>(null);
+  // Read from window.location.search when the modal opens so the value is
+  // always current even after the canvas engine calls history.replaceState().
+  const [shareRoomId, setShareRoomId] = useState('default');
 
   // Listen for the canvas-side custom event that requests the share modal to open.
   useEffect(() => {
     function handleOpenShareModal(e: Event) {
       const detail = (e as CustomEvent<{ commitSha?: string }>).detail;
       setShareCommitSha(detail.commitSha ?? null);
+      setShareRoomId(new URLSearchParams(window.location.search).get('room') ?? 'default');
       setShareOpen(true);
     }
     document.addEventListener('sketchgit:openShareModal', handleOpenShareModal);
@@ -330,7 +334,7 @@ export default function SketchGitApp() {
       <ShareModal
         isOpen={shareOpen}
         onClose={() => setShareOpen(false)}
-        roomId={roomId}
+        roomId={shareRoomId}
         prefilledCommitSha={shareCommitSha}
       />
     </>
