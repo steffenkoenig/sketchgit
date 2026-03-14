@@ -19,13 +19,15 @@
     "exportPdf": "Export as PDF"
   },
   "topbar": {
-    "collab": "⟳ Collab",
-    "merge": "⇄ Merge",
-    "branch": "⎇ Branch",
-    "commit": "● Commit",
-    "share": "🔗 Share",
-    "signIn": "👤 Sign in",
-    "signOut": "⤴ Sign out",
+    "collab": "Collab",
+    "merge": "Merge",
+    "branch": "Branch",
+    "commit": "Commit",
+    "share": "Share",
+    "export": "Export",
+    "language": "Language",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
     "myDrawings": "My Drawings",
     "switchToLight": "Switch to light theme",
     "switchToDark": "Switch to dark theme"
@@ -206,5 +208,59 @@
     "SHARE_LINK_EXHAUSTED": "This share link has reached its use limit.",
     "SHARE_LINK_INVALID": "This share link is invalid or has been revoked.",
     "SHARE_LINK_FORBIDDEN": "Your share link does not grant permission for this action."
+  },
+  "auth": {
+    "orContinueAnonymously": "continue anonymously",
+    "continueWithGithub": "Continue with GitHub",
+    "or": "or",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "passwordPlaceholder": "••••••••",
+    "signIn": {
+      "title": "Sign in to SketchGit",
+      "orPrefix": "Or",
+      "passwordLabel": "Password",
+      "signingIn": "Signing in…",
+      "submit": "Sign in",
+      "forgotPassword": "Forgot password?",
+      "noAccount": "Don't have an account?",
+      "createOne": "Create one",
+      "invalidCredentials": "Invalid email or password."
+    },
+    "register": {
+      "title": "Create your account",
+      "orPrefix": "Or",
+      "displayNameLabel": "Display name",
+      "displayNamePlaceholder": "Alice",
+      "passwordLabel": "Password",
+      "passwordHint": "(min. 12 characters)",
+      "creating": "Creating account…",
+      "submit": "Create account",
+      "alreadyHaveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "registrationFailed": "Registration failed.",
+      "autoSignInFailed": "Account created but sign-in failed. Please sign in manually."
+    },
+    "forgotPassword": {
+      "title": "Reset your password",
+      "instructions": "Enter your email address and we'll send you a link to reset your password.",
+      "sending": "Sending…",
+      "submit": "Send reset link",
+      "successMessage": "If that email is registered, you'll receive a reset link shortly. Check your inbox and spam folder.",
+      "rememberPassword": "Remember your password?",
+      "signIn": "Sign in"
+    },
+    "resetPassword": {
+      "title": "Choose a new password",
+      "newPasswordLabel": "New password",
+      "passwordHint": "(min 12 characters)",
+      "confirmPasswordLabel": "Confirm password",
+      "saving": "Saving…",
+      "submit": "Set new password",
+      "passwordMismatch": "Passwords do not match.",
+      "resetFailed": "Failed to reset password.",
+      "invalidToken": "Invalid or missing reset token.",
+      "requestNewLink": "Request a new reset link"
+    }
   }
 }

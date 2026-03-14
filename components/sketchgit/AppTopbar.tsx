@@ -7,18 +7,21 @@
  * component only re-renders when auth state actually changes.
  *
  * P025: Landmarks and accessible labels added to all controls.
- * P039: Export PNG/SVG download links for the current room's canvas.
- * P050: All visible strings replaced with useTranslations calls; EN/DE switcher added.
+ * P039: Export PNG/SVG/PDF grouped into a dropdown menu.
+ * P050: All visible strings replaced with useTranslations calls.
  */
 
 import React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Session } from "next-auth";
 import { signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
-import { Button } from "@/components/ui/button";
 import type { SketchGitCall } from "@/components/sketchgit/types";
+// Note: native <button> elements with .topbtn CSS class are used throughout instead of the
+// shadcn/ui <Button> component because shadcn requires its own CSS variable definitions
+// (--primary, --border, etc.) which are not part of this app's CSS variable system.
 
 type AppTopbarProps = {
   call: SketchGitCall;
@@ -26,45 +29,298 @@ type AppTopbarProps = {
   sessionStatus: "loading" | "authenticated" | "unauthenticated";
 };
 
-/**
- * P050 – Locale switcher button that stores the user's preference in a cookie
- * and reloads the page so next-intl picks up the new locale.
- */
-function LocaleSwitcher() {
-  const locale = useLocale();
+/* ── Inline SVG icon helpers ─────────────────────────────────────────────── */
 
-  function switchLocale(target: "en" | "de") {
-    if (target === locale) return;
-    document.cookie = `NEXT_LOCALE=${target}; path=/; max-age=31536000; SameSite=Lax`;
-    window.location.reload();
-  }
+function IconCollab() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="5" cy="5" r="2.5"/>
+      <circle cx="11" cy="5" r="2.5"/>
+      <path d="M1 13c0-2.2 1.8-4 4-4h6c2.2 0 4 1.8 4 4"/>
+    </svg>
+  );
+}
+
+function IconMerge() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="4" cy="4" r="1.5"/>
+      <circle cx="4" cy="12" r="1.5"/>
+      <circle cx="12" cy="8" r="1.5"/>
+      <path d="M4 5.5v5M4 5.5C4 8 12 8 12 8"/>
+    </svg>
+  );
+}
+
+function IconBranch() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="4" cy="4" r="1.5"/>
+      <circle cx="4" cy="12" r="1.5"/>
+      <circle cx="12" cy="4" r="1.5"/>
+      <path d="M4 5.5v5M4 5.5C4 8 12 8 12 5.5"/>
+    </svg>
+  );
+}
+
+function IconCommit() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="3"/>
+      <line x1="1" y1="8" x2="5" y2="8"/>
+      <line x1="11" y1="8" x2="15" y2="8"/>
+    </svg>
+  );
+}
+
+function IconShare() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 2l3 3-3 3"/>
+      <path d="M14 5H5.5A3.5 3.5 0 0 0 2 8.5V9"/>
+      <path d="M5 14l-3-3 3-3"/>
+      <path d="M2 11h8.5a3.5 3.5 0 0 0 3.5-3.5V7"/>
+    </svg>
+  );
+}
+
+function IconExport() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 2v8M5 7l3 3 3-3"/>
+      <path d="M3 11v2h10v-2"/>
+    </svg>
+  );
+}
+
+function IconPng() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="2" width="12" height="12" rx="2"/>
+      <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/>
+      <path d="M2 10l3-3 2.5 2.5L10 7l4 4"/>
+    </svg>
+  );
+}
+
+function IconSvg() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 3L4 8l4 5M8 3l4 5-4 5"/>
+      <path d="M3 8h10"/>
+    </svg>
+  );
+}
+
+function IconPdf() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z"/>
+      <polyline points="10,2 10,6 14,6"/>
+      <line x1="5" y1="9" x2="11" y2="9"/>
+      <line x1="5" y1="11" x2="9" y2="11"/>
+    </svg>
+  );
+}
+
+function IconGlobe() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="6"/>
+      <path d="M8 2c-1.7 2-2.5 4-2.5 6s.8 4 2.5 6M8 2c1.7 2 2.5 4 2.5 6S9.7 14 8 14"/>
+      <line x1="2" y1="8" x2="14" y2="8"/>
+    </svg>
+  );
+}
+
+function IconChevronDown() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="2,3 5,7 8,3"/>
+    </svg>
+  );
+}
+
+/* ── Available locales ───────────────────────────────────────────────────── */
+
+const LOCALES: { code: string; flag: string; label: string }[] = [
+  { code: "en", flag: "🇬🇧", label: "English" },
+  { code: "de", flag: "🇩🇪", label: "Deutsch" },
+];
+
+/* ── usePortalDropdown ───────────────────────────────────────────────────── */
+/**
+ * Manages dropdown open state and positions the menu via `getBoundingClientRect`
+ * so it can be rendered in a React portal outside the overflow-clipped `#topbar`.
+ */
+function usePortalDropdown(align: "left" | "right" = "left") {
+  const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>({});
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    // Position the floating menu relative to the trigger button.
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setMenuStyle(
+        align === "left"
+          ? { top: r.bottom + 6, left: r.left }
+          : { top: r.bottom + 6, right: window.innerWidth - r.right }
+      );
+    }
+
+    function onMouseDown(e: MouseEvent) {
+      if (
+        !triggerRef.current?.contains(e.target as Node) &&
+        !menuRef.current?.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [open, align]);
+
+  return { open, setOpen, triggerRef, menuRef, menuStyle };
+}
+
+/* ── ExportDropdown ──────────────────────────────────────────────────────── */
+
+function ExportDropdown({ exportBase, roomId }: { exportBase: string; roomId: string }) {
+  const t = useTranslations();
+  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("left");
+
+  const items = [
+    { format: "png", label: t("toolbar.exportPng"), icon: <IconPng /> },
+    { format: "svg", label: t("toolbar.exportSvg"), icon: <IconSvg /> },
+    { format: "pdf", label: t("toolbar.exportPdf"), icon: <IconPdf /> },
+  ];
 
   return (
-    <div className="flex items-center gap-1" aria-label="Language switcher">
-      {(["en", "de"] as const).map((l) => (
-        <button
-          key={l}
-          onClick={() => switchLocale(l)}
-          className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-            l === locale
-              ? "bg-violet-600 text-white"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-          aria-label={`Switch to ${l === "en" ? "English" : "German"}`}
-          aria-pressed={l === locale}
-        >
-          {l.toUpperCase()}
-        </button>
-      ))}
+    <div className="tb-dropdown">
+      <button
+        ref={triggerRef}
+        className="topbtn"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t("topbar.export")}
+      >
+        <IconExport />
+        {t("topbar.export")}
+        <IconChevronDown />
+      </button>
+      {open && createPortal(
+        <div ref={menuRef} className="tb-dropdown-menu open" style={menuStyle} role="menu">
+          {items.map(({ format, label, icon }) => (
+            <a
+              key={format}
+              href={`${exportBase}?format=${format}`}
+              download={`canvas-${roomId}.${format}`}
+              className="tb-dropdown-item"
+              role="menuitem"
+              aria-label={label}
+              onClick={() => setOpen(false)}
+            >
+              {icon}
+              {label}
+            </a>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
 
+/* ── LocaleDropdown ──────────────────────────────────────────────────────── */
+
+function LocaleDropdown() {
+  const t = useTranslations();
+  const locale = useLocale();
+  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("right");
+
+  const current = LOCALES.find((l) => l.code === locale) ?? LOCALES[0];
+
+  function switchLocale(code: string) {
+    if (code === locale) {
+      setOpen(false);
+      return;
+    }
+    document.cookie = `NEXT_LOCALE=${code}; path=/; max-age=31536000; SameSite=Lax`;
+    window.location.reload();
+  }
+
+  function handleMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const items = menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']");
+    if (!items || items.length === 0) return;
+    const focused = document.activeElement as HTMLButtonElement;
+    const idx = Array.from(items).indexOf(focused);
+
+    if (e.key === "Escape") {
+      setOpen(false);
+      triggerRef.current?.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[idx === -1 ? 0 : (idx + 1) % items.length].focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (idx === -1) return;
+      items[(idx - 1 + items.length) % items.length].focus();
+    }
+  }
+
+  return (
+    <div className="tb-dropdown" aria-label={t("topbar.language")}>
+      <button
+        ref={triggerRef}
+        className="topbtn xs"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${t("topbar.language")}: ${current.label}`}
+      >
+        <IconGlobe />
+        <span>{current.flag} {current.code.toUpperCase()}</span>
+        <IconChevronDown />
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="tb-dropdown-menu open"
+          style={menuStyle}
+          role="menu"
+          aria-label={t("topbar.language")}
+          onKeyDown={handleMenuKeyDown}
+        >
+          {LOCALES.map(({ code, flag, label }) => (
+            <button
+              key={code}
+              role="menuitemradio"
+              aria-checked={code === locale}
+              className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
+              onClick={() => switchLocale(code)}
+            >
+              <span className="tb-locale-flag" aria-hidden="true">{flag}</span>
+              {label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+/* ── ThemeToggle ─────────────────────────────────────────────────────────── */
+
 /**
  * P078 – Theme toggle button.
- * Stores the user's choice in a `THEME` cookie (same pattern as LocaleSwitcher).
- * Applies `theme-light` class to `<html>` immediately for instant feedback
- * without requiring a page reload (unlike the locale switcher).
+ * Stores the user's choice in a `THEME` cookie.
+ * Applies `theme-light` class to `<html>` immediately for instant feedback.
  */
 function ThemeToggle() {
   const t = useTranslations();
@@ -86,7 +342,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="text-[16px] px-1.5 transition-colors text-slate-400 hover:text-slate-200"
+      className="topbtn xs"
       aria-label={isDark ? t("topbar.switchToLight") : t("topbar.switchToDark")}
       aria-pressed={!isDark}
       title={isDark ? t("topbar.switchToLight") : t("topbar.switchToDark")}
@@ -95,6 +351,8 @@ function ThemeToggle() {
     </button>
   );
 }
+
+/* ── AppTopbar ───────────────────────────────────────────────────────────── */
 
 export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus }: AppTopbarProps) {
   // P039: Resolve the current room ID from the URL query param for export links.
@@ -106,7 +364,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
   const t = useTranslations();
 
   return (
-    <header id="topbar" className="border-b border-slate-800" role="banner" aria-label="Application toolbar">
+    <header id="topbar" role="banner" aria-label="Application toolbar">
       <div className="logo" aria-label="SketchGit application logo">
         <div className="logo-badge" aria-hidden="true">⌥</div>
         SketchGit
@@ -135,77 +393,69 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
       <div className="avatar-row" id="avatarRow" aria-label="Connected peers" role="list"></div>
       <div className="live-ind" id="liveInd" style={{ display: "none" }} aria-label="Live collaboration active" aria-live="polite"></div>
 
-      <Button
-        variant="outline" size="sm"
-        className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-violet-500 hover:bg-slate-800"
+      <button
+        className="topbtn"
         onClick={() => call("toggleCollabPanel")}
         aria-label="Toggle collaboration panel"
         aria-haspopup="dialog"
-      >{t("topbar.collab")}</Button>
+      >
+        <IconCollab />
+        {t("topbar.collab")}
+      </button>
 
-      <Button
-        variant="outline" size="sm"
-        className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-rose-500 hover:bg-slate-800"
+      <button
+        className="topbtn danger"
         onClick={() => call("openMergeModal")}
         id="mergeBtn"
         aria-label="Open merge branch dialog"
         aria-haspopup="dialog"
-      >{t("topbar.merge")}</Button>
+      >
+        <IconMerge />
+        {t("topbar.merge")}
+      </button>
 
-      <Button
-        variant="outline" size="sm"
-        className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-violet-500 hover:bg-slate-800"
+      <button
+        className="topbtn"
         onClick={() => call("openBranchCreate")}
         aria-label="Create a new branch"
         aria-haspopup="dialog"
-      >{t("topbar.branch")}</Button>
+      >
+        <IconBranch />
+        {t("topbar.branch")}
+      </button>
 
-      <Button
-        size="sm"
-        className="h-7 bg-violet-600 text-white hover:bg-violet-500"
+      <button
+        className="topbtn primary"
         onClick={() => call("openCommitModal")}
         id="commitBtn"
         aria-label="Commit current drawing changes"
         aria-haspopup="dialog"
-      >{t("topbar.commit")}</Button>
+      >
+        <IconCommit />
+        {t("topbar.commit")}
+      </button>
 
       {/* P091: Share button – only meaningful for authenticated users (API enforces OWNER) */}
       {session?.user && (
-        <Button
-          variant="outline" size="sm"
-          className="h-7 border-slate-700 bg-transparent text-slate-300 hover:border-sky-500 hover:bg-slate-800"
+        <button
+          className="topbtn"
           onClick={() => call("openShareModal")}
           aria-label="Open share links dialog"
           aria-haspopup="dialog"
-        >{t("topbar.share")}</Button>
+        >
+          <IconShare />
+          {t("topbar.share")}
+        </button>
       )}
 
-      {/* P039: Canvas export download links */}
-      <a
-        href={`${exportBase}?format=png`}
-        download={`canvas-${roomId}.png`}
-        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
-        aria-label="Export canvas as PNG image"
-      >{t("toolbar.exportPng")}</a>
-      <a
-        href={`${exportBase}?format=svg`}
-        download={`canvas-${roomId}.svg`}
-        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
-        aria-label="Export canvas as SVG vector file"
-      >{t("toolbar.exportSvg")}</a>
-      {/* P076 – PDF export link */}
-      <a
-        href={`${exportBase}?format=pdf`}
-        download={`canvas-${roomId}.pdf`}
-        className="inline-flex items-center h-7 px-3 rounded-md border border-slate-700 bg-transparent text-slate-300 text-xs font-medium hover:border-violet-500 hover:bg-slate-800 transition-colors"
-        aria-label="Export canvas as PDF document"
-      >{t("toolbar.exportPdf")}</a>
+      {/* P039: Export dropdown – PNG / SVG / PDF */}
+      <ExportDropdown exportBase={exportBase} roomId={roomId} />
 
       {/* Auth section */}
       <div className="sep" role="separator" aria-orientation="vertical"></div>
 
-      {/* P050 – Locale switcher (EN / DE) */}
-      <LocaleSwitcher />
+      {/* P050 – Locale dropdown */}
+      <LocaleDropdown />
 
       {/* P078 – Theme toggle (dark/light) */}
       <ThemeToggle />
@@ -218,9 +468,9 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
             href="/dashboard"
             style={{
               display: "flex", alignItems: "center", gap: "6px",
-              background: "var(--bg2)", border: "1px solid var(--bdr1)",
+              background: "var(--s2)", border: "1px solid var(--bdr)",
               borderRadius: "6px", padding: "3px 10px",
-              fontSize: "12px", color: "var(--tx1)", textDecoration: "none",
+              fontSize: "12px", color: "var(--tx)", textDecoration: "none",
               cursor: "pointer",
             }}
             aria-label={`Go to My Drawings (signed in as ${session.user.name ?? session.user.email})`}
@@ -230,20 +480,18 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
               {session.user.name ?? session.user.email}
             </span>
           </Link>
-          <Button
-            variant="outline" size="sm"
-            className="h-7"
+          <button
+            className="topbtn"
             onClick={() => signOut({ callbackUrl: "/" })}
             aria-label="Sign out of SketchGit"
-          >{t("topbar.signOut")}</Button>
+          >{t("topbar.signOut")}</button>
         </div>
       ) : (
-        <Button
-          variant="outline" size="sm"
-          className="h-7"
+        <button
+          className="topbtn"
           onClick={() => signIn()}
           aria-label="Sign in or create a SketchGit account"
-        >{t("topbar.signIn")}</Button>
+        >{t("topbar.signIn")}</button>
       )}
     </header>
   );
