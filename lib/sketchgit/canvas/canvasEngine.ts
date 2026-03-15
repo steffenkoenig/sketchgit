@@ -47,7 +47,7 @@ export class CanvasEngine {
   strokeDashType: 'solid' | 'dashed' | 'dotted' = 'solid';
   borderRadiusEnabled = false;
   opacityValue = 100;
-  sloppiness: 'architect' | 'artist' | 'cartoonist' = 'architect';
+  sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle' = 'architect';
   fillPattern: 'filled' | 'striped' | 'crossed' = 'filled';
   arrowHeadStart: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'none';
   arrowHeadEnd: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'open';
@@ -1050,9 +1050,9 @@ export class CanvasEngine {
     }
   }
 
-  setSloppiness(type: 'architect' | 'artist' | 'cartoonist'): void {
+  setSloppiness(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): void {
     this.sloppiness = type;
-    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist', 'sloppy-doodle'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('on');
@@ -1277,11 +1277,11 @@ export class CanvasEngine {
 
   /** Maximum jitter in CSS pixels for the given sloppiness level. */
   private static sloppinessAmplitude(
-    sloppiness: 'architect' | 'artist' | 'cartoonist',
+    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
     strokeWidth: number,
   ): number {
     if (sloppiness === 'architect') return 0;
-    const base = sloppiness === 'cartoonist' ? 7 : 3.5;
+    const base = sloppiness === 'cartoonist' ? 7 : sloppiness === 'doodle' ? 5 : 3.5;
     return Math.max(base, strokeWidth * 1.2);
   }
 
@@ -1386,7 +1386,7 @@ export class CanvasEngine {
   }
 
   /**
-   * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist),
+   * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist/doodle),
    * or restores it to its native Fabric shape (architect).
    * Returns the replacement object, or `null` if conversion is not applicable
    * (e.g. arrow groups, text, pen paths without _origGeom).
@@ -1395,7 +1395,7 @@ export class CanvasEngine {
    */
   private tryConvertToSketch(
     obj: FabricObject,
-    sloppiness: 'architect' | 'artist' | 'cartoonist',
+    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
   ): FabricObject | null {
     if (!this.canvas) return null;
 
@@ -1502,12 +1502,20 @@ export class CanvasEngine {
       return newObj;
     }
 
-    // artist / cartoonist → sketch path
+    // artist / cartoonist / doodle → sketch path
     const amp = CanvasEngine.sloppinessAmplitude(sloppiness, sw);
     const d   = this.makeSketchyPath(geom, amp, seed);
     if (!d) return null;
 
-    const newPath = new Path(d, {
+    // doodle: draw a second pass with a different seed offset to create a
+    // characteristic "double-drawn with a pen" appearance.
+    let pathData = d;
+    if (sloppiness === 'doodle') {
+      const d2 = this.makeSketchyPath(geom, amp * 0.6, seed + 1000);
+      if (d2) pathData = `${d} ${d2}`;
+    }
+
+    const newPath = new Path(pathData, {
       stroke, strokeWidth: sw, fill: fillArg,
       strokeLineCap: 'round', strokeLineJoin: 'round',
       strokeDashArray: strokeDashArr,
@@ -1568,9 +1576,9 @@ export class CanvasEngine {
     return da[0] <= (da[1] ?? 0) ? 'dotted' : 'dashed';
   }
 
-  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
+  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
     if (type === 'architect') return { strokeLineCap: 'butt', strokeLineJoin: 'miter' };
-    // Both artist and cartoonist use rounded joins; cartoonist uses a slightly thicker effective stroke (handled by opacity)
+    // artist, cartoonist, and doodle all use rounded joins
     return { strokeLineCap: 'round', strokeLineJoin: 'round' };
   }
 
@@ -1756,8 +1764,8 @@ export class CanvasEngine {
 
     // Sync sloppiness buttons from the object's stored sloppiness
     const objSloppiness = ((o as FabricObject & { _sloppiness?: string })._sloppiness
-      ?? 'architect') as 'architect' | 'artist' | 'cartoonist';
-    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+      ?? 'architect') as 'architect' | 'artist' | 'cartoonist' | 'doodle';
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist', 'sloppy-doodle'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('on');

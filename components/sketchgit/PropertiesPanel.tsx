@@ -133,6 +133,9 @@ export const PropertiesPanel = React.memo(function PropertiesPanel({ call }: Pro
           <button className="sz-btn" id="sloppy-cartoonist" onClick={() => call("setSloppiness", "cartoonist")} aria-label={t("sloppyCartoonist")} aria-pressed="false">
             <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" style={{ stroke: "currentColor", fill: "none", strokeWidth: 2.5, strokeLinecap: "round" }}><path d="M4 14 Q9 3 14 4"/></svg>
           </button>
+          <button className="sz-btn" id="sloppy-doodle" onClick={() => call("setSloppiness", "doodle")} aria-label={t("sloppyDoodle")} aria-pressed="false">
+            <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.8, strokeLinecap: "round" }}><path d="M4 14 Q7 4 14 4"/><path d="M4 14 Q8 5 14 5"/></svg>
+          </button>
         </div>
       </div>
 

@@ -201,7 +201,7 @@ export function createSketchGitApp() {
     setStrokeDash: (type: string) => canvas.setStrokeDash(type as 'solid' | 'dashed' | 'dotted'),
     setBorderRadius: (type: string) => canvas.setBorderRadius(type as 'sharp' | 'rounded'),
     setOpacity: (value: number) => canvas.setOpacity(value),
-    setSloppiness: (type: string) => canvas.setSloppiness(type as 'architect' | 'artist' | 'cartoonist'),
+    setSloppiness: (type: string) => canvas.setSloppiness(type as 'architect' | 'artist' | 'cartoonist' | 'doodle'),
     setFillPattern: (type: string) => canvas.setFillPattern(type as 'filled' | 'striped' | 'crossed'),
     bringToFront: () => canvas.bringToFront(),
     bringForward: () => canvas.bringForward(),

@@ -124,6 +124,7 @@ function setupDom() {
     <button id="sloppy-architect" class="on"></button>
     <button id="sloppy-artist"></button>
     <button id="sloppy-cartoonist"></button>
+    <button id="sloppy-doodle"></button>
     <button id="fp-filled" class="on"></button>
     <button id="fp-striped"></button>
     <button id="fp-crossed"></button>
@@ -1501,6 +1502,17 @@ describe('CanvasEngine – sloppiness for all shapes', () => {
     engine.setSloppiness('architect');
     expect(document.getElementById('sloppy-architect')!.classList.contains('on')).toBe(true);
   });
+
+  it('setSloppiness("doodle") activates only the doodle button', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setSloppiness('doodle');
+    expect(document.getElementById('sloppy-doodle')!.classList.contains('on')).toBe(true);
+    expect(document.getElementById('sloppy-architect')!.classList.contains('on')).toBe(false);
+    expect(document.getElementById('sloppy-artist')!.classList.contains('on')).toBe(false);
+    expect(document.getElementById('sloppy-cartoonist')!.classList.contains('on')).toBe(false);
+    expect(engine.sloppiness).toBe('doodle');
+  });
 });
 
 describe('CanvasEngine – sketch path helpers', () => {
@@ -1511,12 +1523,13 @@ describe('CanvasEngine – sketch path helpers', () => {
     expect(fn('obj_abc123')).toBeGreaterThanOrEqual(0);
   });
 
-  it('sloppinessAmplitude: 0 for architect, positive for artist, larger for cartoonist', () => {
+  it('sloppinessAmplitude: 0 for architect, positive for artist, larger for cartoonist, between artist and cartoonist for doodle', () => {
     const eng = (CanvasEngine as unknown as Record<string, unknown>);
     const fn = eng.sloppinessAmplitude as (s: string, sw: number) => number;
     expect(fn('architect', 2)).toBe(0);
     expect(fn('artist', 2)).toBeGreaterThan(0);
-    expect(fn('cartoonist', 2)).toBeGreaterThan(fn('artist', 2));
+    expect(fn('doodle', 2)).toBeGreaterThan(fn('artist', 2));
+    expect(fn('cartoonist', 2)).toBeGreaterThan(fn('doodle', 2));
   });
 });
 
