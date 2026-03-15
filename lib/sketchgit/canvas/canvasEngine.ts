@@ -433,6 +433,7 @@ export class CanvasEngine {
     this.redoStack.push(current);
     void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
       this.applyStrokeUniformToAll();
+      this.postLoadApplyEndpointControls();
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -449,6 +450,7 @@ export class CanvasEngine {
     this.undoStack.push(current);
     void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
       this.applyStrokeUniformToAll();
+      this.postLoadApplyEndpointControls();
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -1948,6 +1950,8 @@ export class CanvasEngine {
     const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
     const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
     const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined);
+    const strokeLineCap = (firstChild?.get('strokeLineCap') as CanvasLineCap | undefined) ?? 'round';
+    const strokeLineJoin = (firstChild?.get('strokeLineJoin') as CanvasLineJoin | undefined) ?? 'round';
     const opacity = (grp.get('opacity') as number | undefined) ?? 1;
 
     // Build new child shapes with the updated coordinates.
@@ -1971,29 +1975,34 @@ export class CanvasEngine {
         const midX = (x1 + x2) / 2;
         pathD = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
       }
-      shapes.push(new Path(pathD, {
+      const bodyPath = new Path(pathD, {
         stroke, strokeWidth, fill: 'transparent',
         selectable: false, evented: false,
         strokeLineCap: 'round', strokeLineJoin: 'round',
         strokeDashArray, opacity, strokeUniform: true,
-      }));
+      });
+      ensureObjId(bodyPath);
+      shapes.push(bodyPath);
     } else {
-      shapes.push(new Line([x1, y1, x2, y2], {
+      const bodyLine = new Line([x1, y1, x2, y2], {
         stroke, strokeWidth, fill: 'transparent',
         selectable: false, evented: false,
+        strokeLineCap, strokeLineJoin,
         strokeDashArray, opacity, strokeUniform: true,
-      }));
+      });
+      ensureObjId(bodyLine);
+      shapes.push(bodyLine);
     }
 
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const len = 14, spread = 0.4;
     if (headEnd !== 'none') {
       const head = this.makeArrowhead(x2, y2, angle, len, spread, stroke, strokeWidth, headEnd, opacity);
-      if (head) shapes.push(head);
+      if (head) { ensureObjId(head); shapes.push(head); }
     }
     if (headStart !== 'none') {
       const head = this.makeArrowhead(x1, y1, angle + Math.PI, len, spread, stroke, strokeWidth, headStart, opacity);
-      if (head) shapes.push(head);
+      if (head) { ensureObjId(head); shapes.push(head); }
     }
 
     // Replace the Group's children in-place.
@@ -2013,9 +2022,59 @@ export class CanvasEngine {
   }
 
   /**
+   * Update a sketch-path connector's visual data in-place without removing or
+   * replacing the Path object on the canvas.
+   *
+   * This is used by applySketchLineEndpointControls' actionHandler during
+   * endpoint dragging.  Because the Path object is never removed from the canvas,
+   * Fabric.js _currentTransform (drag state) is preserved across mouse-move events.
+   */
+  private updateSketchPathInPlace(
+    pathObj: FabricObject,
+    x1: number, y1: number, x2: number, y2: number,
+  ): void {
+    const sp = pathObj as FabricObject & { _origGeom?: string; _sloppiness?: string };
+
+    // Update origGeom so subsequent snapping / sloppiness changes work correctly.
+    sp._origGeom = JSON.stringify({ type: 'line', x1, y1, x2, y2 });
+
+    const sloppiness = (sp._sloppiness as 'architect' | 'artist' | 'cartoonist') ?? 'artist';
+    const rebuilt = this.tryConvertToSketch(pathObj, sloppiness);
+
+    // tryConvertToSketch returns a Path for artist/cartoonist/doodle sloppiness.
+    // For architect it would return a Line, which cannot be merged into the existing
+    // Path in-place.  If tryConvertToSketch returns null or a non-Path (e.g., when
+    // roughjs is unavailable or sloppiness is architect), skip the visual update for
+    // this frame rather than falling back to rebuildSketchPathForMove: calling
+    // canvas.remove() on the active object during a Control actionHandler would trigger
+    // endCurrentTransform() in Fabric.js v7 and kill the drag.
+    if (!rebuilt || !(rebuilt instanceof Path)) return;
+
+    const existingPath = pathObj as Path;
+    const rebuiltPath = rebuilt as Path;
+
+    // Swap path data in-place.  Path.path and the bounding-box properties
+    // (width, height, pathOffset) are public instance fields in Fabric.js v7.
+    existingPath.path = rebuiltPath.path;
+    existingPath.pathOffset = rebuiltPath.pathOffset;
+    existingPath.width = rebuiltPath.width;
+    existingPath.height = rebuiltPath.height;
+
+    // Reposition to the midpoint of the new endpoints, matching
+    // the behavior of tryConvertToSketch / rebuildSketchPathForMove.
+    existingPath.set({
+      left: (x1 + x2) / 2,
+      top: (y1 + y2) / 2,
+      originX: 'center',
+      originY: 'center',
+    });
+    existingPath.setCoords();
+  }
+
+  /**
    * Apply endpoint-only selection handles to a sketch-path Line (artist /
    * cartoonist sloppiness).  The Path object carries the logical endpoint
-   * coordinates in `_origGeom`.  Dragging a handle rebuilds the sketch path so
+   * coordinates in `_origGeom`.  Dragging a handle updates the sketch path so
    * its endpoint follows the cursor.
    */
   private applySketchLineEndpointControls(path: FabricObject): void {
@@ -2060,19 +2119,12 @@ export class CanvasEngine {
           const nx2 = endpoint === 2 ? x : (g.x2 ?? 0);
           const ny2 = endpoint === 2 ? y : (g.y2 ?? 0);
 
-          const id = s._id;
-          this.rebuildSketchPathForMove(transform.target, nx1, ny1, nx2, ny2);
-
-          const newPath = id
-            ? this.canvas.getObjects().find(
-                (o) => (o as FabricObject & { _id?: string })._id === id,
-              )
-            : undefined;
-          if (newPath) {
-            (transform as Record<string, unknown>).target = newPath;
-            this.applySketchLineEndpointControls(newPath);
-          }
-          return !!newPath;
+          // Update the Path object's visual data in-place.  Calling canvas.remove()
+          // on the active object inside a Control actionHandler triggers
+          // endCurrentTransform() in Fabric.js v7 which kills the drag on the
+          // first mouse-move.  updateSketchPathInPlace avoids that.
+          this.updateSketchPathInPlace(transform.target, nx1, ny1, nx2, ny2);
+          return true;
         }
       ) as Control['actionHandler'],
     });

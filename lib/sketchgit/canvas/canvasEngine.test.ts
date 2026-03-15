@@ -883,6 +883,50 @@ describe('CanvasEngine – undo/redo (P037)', () => {
     expect(mockCanvasInstance.loadFromJSON).toHaveBeenCalled();
   });
 
+  it('undo() calls postLoadApplyEndpointControls after loadFromJSON', async () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 10, y: 10 } });
+    const e = engine as unknown as {
+      undoStack: string[];
+      postLoadApplyEndpointControls: ReturnType<typeof vi.fn>;
+    };
+    expect(e.undoStack.length).toBe(1);
+
+    const arrowGrp = makeFabricObject({ _id: 'undo-arrow', _isArrow: true, _x1: 0, _y1: 0, _x2: 100, _y2: 100 });
+    arrowGrp.getObjects = vi.fn(() => []);
+    mockCanvasInstance.getObjects.mockReturnValue([arrowGrp]);
+
+    engine.undo();
+    // Wait for the resolved loadFromJSON promise to run the .then() callback.
+    await Promise.resolve();
+
+    // The arrow must have endpoint controls applied after undo.
+    expect(arrowGrp.hasBorders).toBe(false);
+    expect((arrowGrp.controls as Record<string, unknown> | undefined)?.ep1).toBeDefined();
+  });
+
+  it('redo() calls postLoadApplyEndpointControls after loadFromJSON', async () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    canvasEventHandlers['mouse:down']?.({ e: makeMouseEvent('mousedown'), scenePoint: { x: 10, y: 10 } });
+    engine.undo();
+    // Wait for undo's .then() to flush
+    await Promise.resolve();
+
+    const arrowGrp = makeFabricObject({ _id: 'redo-arrow', _isArrow: true, _x1: 0, _y1: 0, _x2: 100, _y2: 100 });
+    arrowGrp.getObjects = vi.fn(() => []);
+    mockCanvasInstance.getObjects.mockReturnValue([arrowGrp]);
+
+    engine.redo();
+    await Promise.resolve();
+
+    expect(arrowGrp.hasBorders).toBe(false);
+    expect((arrowGrp.controls as Record<string, unknown> | undefined)?.ep1).toBeDefined();
+  });
+
   it('new action after undo clears redoStack', () => {
     const { engine } = makeEngine();
     engine.init();
@@ -2776,16 +2820,14 @@ describe('CanvasEngine – endpoint selection controls', () => {
     const tempLine = eng.activeObj as Record<string, unknown>;
     expect(tempLine).not.toBeNull();
 
-    // Simulate mouse:up to trigger buildArrowGroup.
+    // Simulate mouse:up to trigger buildArrowGroup (dx=100, dy=100, both > 3).
     mockCanvasInstance.getObjects.mockReturnValue([tempLine]);
     canvasEventHandlers['mouse:up']?.({ scenePoint: { x: 150, y: 150 }, target: undefined });
 
-    // Retrieve the newly created group from the Group mock.
-    const newGroup = (Group as unknown as ReturnType<typeof vi.fn>).mock.results[0]?.value as Record<string, unknown> | undefined;
-    if (!newGroup) {
-      // If buildArrowGroup ran (dx or dy > 3), check the group was created.
-      return;
-    }
+    // Group() must have been called — buildArrowGroup ran.
+    expect((Group as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+    const newGroup = (Group as unknown as ReturnType<typeof vi.fn>).mock.results[0]?.value as Record<string, unknown>;
+    expect(newGroup).toBeDefined();
     expect(newGroup.hasBorders).toBe(false);
     const controls = newGroup.controls as Record<string, unknown> | undefined;
     expect(controls?.ep1).toBeDefined();
@@ -2848,5 +2890,89 @@ describe('CanvasEngine – endpoint selection controls', () => {
     // Rect sketch path: hasBorders not set, no endpoint controls
     expect(rectPath.hasBorders).toBeUndefined();
     expect(rectPath.controls).toBeUndefined();
+  });
+
+  // ── Sketch-path endpoint controls ──────────────────────────────────────────
+
+  it('sketch-path ep1 actionHandler does NOT call canvas.remove on the path', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const sketchPath = makeFabricObject({
+      _id: 'sketch-ep-test',
+      _origGeom: JSON.stringify({ type: 'line', x1: 100, y1: 100, x2: 200, y2: 200 }),
+      _sloppiness: 'artist',
+    });
+    mockCanvasInstance.getObjects.mockReturnValue([sketchPath]);
+
+    const eng = engine as unknown as { applySketchLineEndpointControls: (p: unknown) => void };
+    eng.applySketchLineEndpointControls(sketchPath);
+
+    mockCanvasInstance.remove.mockClear();
+
+    const ep1 = (sketchPath.controls as Record<string, { actionHandler?: (e: unknown, t: { target: unknown }, x: number, y: number) => boolean }>).ep1;
+    expect(ep1).toBeDefined();
+
+    // The actionHandler may return false when tryConvertToSketch can't run (no roughjs),
+    // but regardless canvas.remove must NOT be called with the sketch path.
+    ep1?.actionHandler?.({}, { target: sketchPath }, 50, 60);
+
+    expect(mockCanvasInstance.remove).not.toHaveBeenCalledWith(sketchPath);
+  });
+
+  it('rebuildArrowGroupInPlace assigns _id to each new child shape', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const childLine = makeFabricObject({ stroke: '#111', strokeWidth: 2 });
+    const arrowGrp = makeFabricObject({
+      _id: 'arrow-child-id-test', _isArrow: true,
+      _x1: 100, _y1: 100, _x2: 200, _y2: 200,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+    });
+    arrowGrp.getObjects = vi.fn(() => [childLine]);
+    const addedShapes: Record<string, unknown>[] = [];
+    arrowGrp.removeAll = vi.fn();
+    arrowGrp.add = vi.fn((...shapes: unknown[]) => {
+      addedShapes.push(...(shapes as Record<string, unknown>[]));
+    });
+    mockCanvasInstance.getObjects.mockReturnValue([arrowGrp]);
+
+    const eng = engine as unknown as { rebuildArrowGroupInPlace: (g: unknown, x1: number, y1: number, x2: number, y2: number) => void };
+    eng.rebuildArrowGroupInPlace(arrowGrp, 50, 60, 200, 200);
+
+    // Every newly created child must have a stable _id.
+    expect(addedShapes.length).toBeGreaterThan(0);
+    for (const shape of addedShapes) {
+      expect(shape._id).toBeDefined();
+      expect(typeof shape._id).toBe('string');
+    }
+  });
+
+  it('rebuildArrowGroupInPlace carries strokeLineCap/strokeLineJoin from existing child for sharp arrows', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const childLine = makeFabricObject({ stroke: '#ff0000', strokeWidth: 3, strokeLineCap: 'butt', strokeLineJoin: 'miter' });
+    const arrowGrp = makeFabricObject({
+      _id: 'arrow-linecap-test', _isArrow: true,
+      _x1: 100, _y1: 100, _x2: 200, _y2: 200,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+    });
+    arrowGrp.getObjects = vi.fn(() => [childLine]);
+    const addedShapes: Record<string, unknown>[] = [];
+    arrowGrp.removeAll = vi.fn();
+    arrowGrp.add = vi.fn((...shapes: unknown[]) => {
+      addedShapes.push(...(shapes as Record<string, unknown>[]));
+    });
+    mockCanvasInstance.getObjects.mockReturnValue([arrowGrp]);
+
+    const eng = engine as unknown as { rebuildArrowGroupInPlace: (g: unknown, x1: number, y1: number, x2: number, y2: number) => void };
+    eng.rebuildArrowGroupInPlace(arrowGrp, 50, 60, 200, 200);
+
+    // The first shape is the body Line for a sharp arrow.
+    const bodyShape = addedShapes[0];
+    expect(bodyShape?.strokeLineCap).toBe('butt');
+    expect(bodyShape?.strokeLineJoin).toBe('miter');
   });
 });
