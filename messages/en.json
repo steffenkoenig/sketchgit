@@ -209,7 +209,8 @@
     "fontFamily": "Font family",
     "opacity": "Opacity",
     "flipX": "Flip X",
-    "flipY": "Flip Y"
+    "flipY": "Flip Y",
+    "_mermaidCode": "Mermaid diagram code"
   },
   "toast": {
     "committed": "✓ Committed: {message}",

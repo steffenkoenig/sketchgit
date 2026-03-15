@@ -53,6 +53,8 @@ export class CanvasEngine {
   arrowHeadStart: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'none';
   arrowHeadEnd: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'open';
   arrowType: 'sharp' | 'curved' | 'elbow' = 'sharp';
+  /** Current canvas theme – used for mermaid diagram rendering. */
+  canvasTheme: 'dark' | 'default' = 'dark';
 
   // ── Drawing interaction state ─────────────────────────────────────────────
   private isDrawing = false;
@@ -490,11 +492,8 @@ export class CanvasEngine {
       // properties panel so the user can enter diagram code before rendering.
       this.pendingMermaidPos = { x: p.x, y: p.y };
       this.isDrawing = false;
-      // Populate textarea with starter template and focus it
+      // Focus the mermaid code textarea so the user can immediately start typing
       const ta = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
-      if (ta && ta.value.trim() === '') {
-        ta.value = 'graph TD\n    A[Start] --> B[End]';
-      }
       if (ta) ta.focus();
       return;
     }
@@ -939,7 +938,7 @@ export class CanvasEngine {
    * and adds it to the canvas with the stored `_mermaidCode` for later editing.
    */
   async addMermaidObject(left: number, top: number, code: string): Promise<void> {
-    const dataUrl = await renderMermaidToDataUrl(code);
+    const dataUrl = await renderMermaidToDataUrl(code, this.canvasTheme);
     if (!dataUrl) {
       logger.warn({}, 'addMermaidObject: mermaid render failed');
       return;
@@ -979,14 +978,18 @@ export class CanvasEngine {
     if (!trimmedCode) return;
 
     if (o && mermaidObj._isMermaid) {
-      // Re-render for an already-placed mermaid image
-      void renderMermaidToDataUrl(trimmedCode).then((dataUrl) => {
+      // Re-render for an already-placed mermaid image.
+      // Update _mermaidCode only after setSrc succeeds so the stored code stays
+      // in sync with what is visually displayed on the canvas.
+      void renderMermaidToDataUrl(trimmedCode, this.canvasTheme).then((dataUrl) => {
         if (!dataUrl) return;
-        mermaidObj._mermaidCode = trimmedCode;
         void (o as FabricImage).setSrc(dataUrl).then(() => {
+          mermaidObj._mermaidCode = trimmedCode;
           this.canvas?.requestRenderAll();
           this.markDirty();
           this.onBroadcastDraw(true);
+        }).catch((err: unknown) => {
+          logger.warn({ err }, 'updateMermaidCode: setSrc failed');
         });
       });
     } else if (this.pendingMermaidPos) {

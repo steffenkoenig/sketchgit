@@ -8,31 +8,37 @@
 
 import { logger } from '../logger';
 
-let mermaidInitialized = false;
+let mermaidTheme: 'dark' | 'default' | null = null;
 let renderCounter = 0;
 
-async function ensureMermaidInit(): Promise<void> {
-  if (mermaidInitialized) return;
+async function ensureMermaidInit(theme: 'dark' | 'default'): Promise<void> {
+  if (mermaidTheme === theme) return;
   const { default: mermaid } = await import('mermaid');
   mermaid.initialize({
     startOnLoad: false,
-    theme: 'dark',
+    theme,
     fontFamily: 'Fira Code, monospace',
     securityLevel: 'strict',
   });
-  mermaidInitialized = true;
+  mermaidTheme = theme;
 }
 
 /**
  * Render a Mermaid diagram code string to an SVG data URL.
  *
+ * @param code    Mermaid diagram source code.
+ * @param theme   Optional theme – defaults to 'dark'. Pass 'default' for the
+ *                light-mode canvas background.
  * @returns An SVG data URL string on success, or `null` if rendering failed
  *          (e.g. invalid mermaid syntax).
  */
-export async function renderMermaidToDataUrl(code: string): Promise<string | null> {
+export async function renderMermaidToDataUrl(
+  code: string,
+  theme: 'dark' | 'default' = 'dark',
+): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   try {
-    await ensureMermaidInit();
+    await ensureMermaidInit(theme);
     const { default: mermaid } = await import('mermaid');
     const id = `mermaid-render-${++renderCounter}`;
     const { svg } = await mermaid.render(id, code);

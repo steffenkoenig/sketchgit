@@ -209,7 +209,8 @@
     "fontFamily": "Schriftart",
     "opacity": "Deckkraft",
     "flipX": "Spiegeln X",
-    "flipY": "Spiegeln Y"
+    "flipY": "Spiegeln Y",
+    "_mermaidCode": "Mermaid-Diagramm-Code"
   },
   "toast": {
     "committed": "✓ Committet: {message}",

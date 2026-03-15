@@ -110,6 +110,18 @@ describe('getObjLabel', () => {
     const label = getObjLabel({ type: 'rect' });
     expect(label).toContain('#?');
   });
+
+  it('labels mermaid images as Mermaid (not generic image)', () => {
+    const label = getObjLabel({ type: 'image', _isMermaid: true, _id: 'obj_mer001' });
+    expect(label).toContain('Mermaid');
+    expect(label).not.toContain('image');
+  });
+
+  it('labels plain images without _isMermaid as their raw type', () => {
+    const label = getObjLabel({ type: 'image', _id: 'obj_img001' });
+    expect(label).toContain('image');
+    expect(label).not.toContain('Mermaid');
+  });
 });
 
 // ─── threeWayMerge ────────────────────────────────────────────────────────────
@@ -301,11 +313,10 @@ describe('mergeTextLineByLine', () => {
     const base = 'graph TD\n    A --> B';
     const ours = 'graph TD\n    A --> B\n    B --> C';  // added line
     const theirs = 'graph TD\n    A --> X';              // changed line 1
+    // base[0]="graph TD", ours[0]="graph TD" (unchanged), theirs[0]="graph TD" (unchanged)
+    // base[1]="    A --> B", ours[1]="    A --> B" (unchanged), theirs[1]="    A --> X" (changed)
+    // base[2]=undefined, ours[2]="    B --> C" (changed), theirs[2]=undefined (unchanged)
     const merged = mergeTextLineByLine(base, ours, theirs);
-    // Line 0: theirs changed → X; Line 1: ours kept B, theirs deleted → conflict at index
-    // Index-based: line0 both changed (A->B vs A->X) and A-->B ≠ A-->X...
-    // Actually: base[0]=A-->B, ours[0]=A-->B (unchanged), theirs[0]=A-->X (changed)
-    // base[1]=undefined, ours[1]=B-->C (changed), theirs[1]=undefined (unchanged)
     expect(merged).toBe('graph TD\n    A --> X\n    B --> C');
   });
 
@@ -329,6 +340,24 @@ describe('mergeTextLineByLine', () => {
     // Both changed line index 1 from "line2" to "line3" and line index 2 from "line3" to undefined
     // → same change, no conflict
     expect(mergeTextLineByLine(base, ours, theirs)).toBe(ours);
+  });
+
+  it('handles empty base with non-empty ours', () => {
+    expect(mergeTextLineByLine('', 'A --> B', '')).toBe('A --> B');
+  });
+
+  it('handles empty base with non-empty theirs', () => {
+    expect(mergeTextLineByLine('', '', 'A --> B')).toBe('A --> B');
+  });
+
+  it('handles all-empty inputs', () => {
+    expect(mergeTextLineByLine('', '', '')).toBe('');
+  });
+
+  it('handles empty ours (ours cleared the diagram)', () => {
+    const base = 'graph TD\n    A --> B';
+    // ours cleared; theirs unchanged → take ours (deletion)
+    expect(mergeTextLineByLine(base, '', base)).toBe('');
   });
 });
 

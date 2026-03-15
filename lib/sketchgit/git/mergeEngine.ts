@@ -56,13 +56,16 @@ const OBJ_TYPE_LABELS: Record<string, string> = {
   text: 'T Text',
   group: '⊞ Group',
   polygon: '⬡ Polygon',
-  image: '◇ Mermaid',
 };
 
 export function getObjLabel(obj: Record<string, unknown> | null | undefined): string {
   if (!obj) return 'Object';
   const type = (obj.type as string) || 'object';
-  const base = OBJ_TYPE_LABELS[type] ?? type;
+  // Mermaid diagrams are stored as FabricImage (type='image') but have a
+  // specific label that distinguishes them from generic images.
+  const base = obj._isMermaid
+    ? '◇ Mermaid'
+    : (OBJ_TYPE_LABELS[type] ?? type);
   const id = obj._id ? (obj._id as string).slice(4, 10) : '?';
   return `${base} #${id}`;
 }
