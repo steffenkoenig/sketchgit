@@ -10,7 +10,7 @@
  */
 
 import { AppContext } from './appContext';
-import { PendingMerge, BranchNames, MergeConflict, ConflictChoice, MermaidLineConflict } from '../types';
+import { PendingMerge, BranchNames, MergeConflict, ConflictChoice } from '../types';
 import { showToast } from '../ui/toast';
 import { openModal, closeModal } from '../ui/modals';
 
@@ -118,12 +118,19 @@ export class MergeCoordinator {
         const merged = { ...conflict.oursObj };
         conflict.propConflicts.forEach((pc: ConflictChoice) => {
           if (pc.prop === '_mermaidCode' && pc.mermaidLineConflicts && pc.mermaidPartialLines) {
-            // Reconstruct the code from auto-resolved lines + per-line user choices
+            // Reconstruct the code from auto-resolved lines + per-line user choices.
+            // Lines chosen as deleted (ours/theirs === undefined) are omitted entirely.
             let lcIdx = 0;
-            const finalLines = pc.mermaidPartialLines.map((line) => {
-              if (line !== null) return line;
-              const lc = pc.mermaidLineConflicts![lcIdx++];
-              return lc.chosen === 'ours' ? (lc.ours ?? '') : (lc.theirs ?? '');
+            const finalLines: string[] = [];
+            pc.mermaidPartialLines.forEach((line) => {
+              if (line !== null) {
+                finalLines.push(line);
+              } else {
+                const lc = pc.mermaidLineConflicts![lcIdx++];
+                const chosen = lc.chosen === 'ours' ? lc.ours : lc.theirs;
+                if (chosen !== undefined) finalLines.push(chosen);
+                // undefined = the chosen side deleted this line → omit it
+              }
             });
             merged[pc.prop] = finalLines.join('\n');
           } else {

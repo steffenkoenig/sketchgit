@@ -83,6 +83,12 @@ vi.mock('fabric', () => ({
   Polygon: vi.fn(function FabricPolygon(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   Group: vi.fn(function FabricGroup(_items: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   FabricObject: class FabricObject { static customProperties: string[] = []; },
+  FabricImage: {
+    fromURL: vi.fn(async (_url: string) => ({
+      ...makeFabricObject(),
+      setSrc: vi.fn().mockResolvedValue(undefined),
+    })),
+  },
   // Fabric v7: Point is used by zoomToPoint; provide a minimal implementation.
   Point: vi.fn(function MockPoint(this: { x: number; y: number }, x: number, y: number) {
     this.x = x; this.y = y;

@@ -951,6 +951,7 @@ export class CanvasEngine {
       top,
       stroke: this.strokeColor,
       strokeWidth: this.strokeWidth,
+      strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
       opacity: this.opacityValue / 100,
       selectable: true,
       evented: true,
