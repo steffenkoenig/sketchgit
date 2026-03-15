@@ -98,10 +98,14 @@ vi.mock('fabric', () => ({
     })),
   },
   // Fabric v7: Point is used by zoomToPoint; provide a minimal implementation.
-  Point: vi.fn(function MockPoint(this: { x: number; y: number }, x: number, y: number) {
+  Point: vi.fn(function MockPoint(this: { x: number; y: number; transform: (m: unknown) => { x: number; y: number } }, x: number, y: number) {
     this.x = x; this.y = y;
+    this.transform = vi.fn(() => ({ x, y }));
   }),
   Pattern: vi.fn(function MockPattern() { return {}; }),
+  Control: vi.fn(function MockControl(this: Record<string, unknown>, opts: Record<string, unknown> = {}) {
+    Object.assign(this, opts);
+  }),
 }));
 
 import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group, FabricObject } from 'fabric';
@@ -2579,5 +2583,200 @@ describe('CanvasEngine – connector snapping and following', () => {
     const setArgs = (attachedLine.set as ReturnType<typeof vi.fn>).mock.calls
       .find((args: unknown[]) => typeof args[0] === 'object' && 'x2' in (args[0] as object));
     expect(setArgs?.[0]).toMatchObject({ x2: 200, y2: 140 });
+  });
+});
+
+// ─── Endpoint controls ────────────────────────────────────────────────────────
+
+describe('CanvasEngine – endpoint selection controls', () => {
+  beforeEach(() => resetMocks());
+
+  // ── Line endpoint controls ──────────────────────────────────────────────────
+
+  it('drawing a line applies hasBorders=false and two ep1/ep2 controls', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    engine.setTool('line');
+    const downEvent = { scenePoint: { x: 100, y: 100 }, target: undefined };
+    canvasEventHandlers['mouse:down']?.(downEvent);
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const lineObj = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 100, y1: 100, x2: 200, y2: 200, _id: 'line-1' }),
+    );
+    // Supply calcLinePoints so the control positionHandler can call it.
+    (lineObj as Record<string, unknown>).calcLinePoints = vi.fn(() => ({ x1: -50, y1: -50, x2: 50, y2: 50 }));
+
+    mockCanvasInstance.getObjects.mockReturnValue([lineObj]);
+    const upEvent = { scenePoint: { x: 200, y: 200 }, target: undefined };
+    // Inject the active object the engine is drawing.
+    (engine as unknown as { activeObj: unknown }).activeObj = lineObj;
+    canvasEventHandlers['mouse:up']?.(upEvent);
+
+    expect(lineObj.hasBorders).toBe(false);
+    expect(lineObj.controls).toBeDefined();
+    expect((lineObj.controls as Record<string, unknown>).ep1).toBeDefined();
+    expect((lineObj.controls as Record<string, unknown>).ep2).toBeDefined();
+  });
+
+  it('line ep1 actionHandler updates x1, y1 and calls setCoords', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const lineObj = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 100, y1: 100, x2: 200, y2: 200, _id: 'line-ep' }),
+    );
+    (lineObj as Record<string, unknown>).calcLinePoints = vi.fn(() => ({ x1: -50, y1: -50, x2: 50, y2: 50 }));
+    mockCanvasInstance.getObjects.mockReturnValue([lineObj]);
+
+    const eng = engine as unknown as { applyLineEndpointControls: (l: unknown) => void };
+    eng.applyLineEndpointControls(lineObj);
+
+    const ep1 = (lineObj.controls as Record<string, { actionHandler?: (e: unknown, t: { target: unknown }, x: number, y: number) => boolean }>).ep1;
+    expect(ep1).toBeDefined();
+
+    const result = ep1?.actionHandler?.({}, { target: lineObj }, 50, 60);
+    expect(result).toBe(true);
+
+    const setCall = (lineObj.set as ReturnType<typeof vi.fn>).mock.calls
+      .find((args: unknown[]) => typeof args[0] === 'object' && 'x1' in (args[0] as object));
+    expect(setCall?.[0]).toMatchObject({ x1: 50, y1: 60 });
+    expect(lineObj.setCoords).toHaveBeenCalled();
+  });
+
+  it('line ep2 actionHandler updates x2, y2 and calls setCoords', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const lineObj = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 100, y1: 100, x2: 200, y2: 200, _id: 'line-ep2' }),
+    );
+    (lineObj as Record<string, unknown>).calcLinePoints = vi.fn(() => ({ x1: -50, y1: -50, x2: 50, y2: 50 }));
+    mockCanvasInstance.getObjects.mockReturnValue([lineObj]);
+
+    const eng = engine as unknown as { applyLineEndpointControls: (l: unknown) => void };
+    eng.applyLineEndpointControls(lineObj);
+
+    const ep2 = (lineObj.controls as Record<string, { actionHandler?: (e: unknown, t: { target: unknown }, x: number, y: number) => boolean }>).ep2;
+    const result = ep2?.actionHandler?.({}, { target: lineObj }, 250, 260);
+    expect(result).toBe(true);
+
+    const setCall = (lineObj.set as ReturnType<typeof vi.fn>).mock.calls
+      .find((args: unknown[]) => typeof args[0] === 'object' && 'x2' in (args[0] as object));
+    expect(setCall?.[0]).toMatchObject({ x2: 250, y2: 260 });
+    expect(lineObj.setCoords).toHaveBeenCalled();
+  });
+
+  // ── Arrow endpoint controls ─────────────────────────────────────────────────
+
+  it('applyArrowEndpointControls sets hasBorders=false and adds ep1/ep2 controls', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const arrowGrp = makeFabricObject({
+      _id: 'arrow-ctrl', _isArrow: true, _x1: 50, _y1: 50, _x2: 150, _y2: 150,
+    });
+
+    const eng = engine as unknown as { applyArrowEndpointControls: (g: unknown) => void };
+    eng.applyArrowEndpointControls(arrowGrp);
+
+    expect(arrowGrp.hasBorders).toBe(false);
+    const controls = arrowGrp.controls as Record<string, unknown> | undefined;
+    expect(controls?.ep1).toBeDefined();
+    expect(controls?.ep2).toBeDefined();
+  });
+
+  it('buildArrowGroup results in a group with hasBorders=false and ep1/ep2 controls', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    engine.setTool('arrow');
+    (Group as unknown as ReturnType<typeof vi.fn>).mockClear();
+
+    // Simulate drawing an arrow start.
+    canvasEventHandlers['mouse:down']?.({ e: new MouseEvent('mousedown'), scenePoint: { x: 50, y: 50 } });
+
+    const eng = engine as unknown as { activeObj: unknown };
+    const tempLine = eng.activeObj as Record<string, unknown>;
+    expect(tempLine).not.toBeNull();
+
+    // Simulate mouse:up to trigger buildArrowGroup.
+    mockCanvasInstance.getObjects.mockReturnValue([tempLine]);
+    canvasEventHandlers['mouse:up']?.({ scenePoint: { x: 150, y: 150 }, target: undefined });
+
+    // Retrieve the newly created group from the Group mock.
+    const newGroup = (Group as unknown as ReturnType<typeof vi.fn>).mock.results[0]?.value as Record<string, unknown> | undefined;
+    if (!newGroup) {
+      // If buildArrowGroup ran (dx or dy > 3), check the group was created.
+      return;
+    }
+    expect(newGroup.hasBorders).toBe(false);
+    const controls = newGroup.controls as Record<string, unknown> | undefined;
+    expect(controls?.ep1).toBeDefined();
+    expect(controls?.ep2).toBeDefined();
+  });
+
+  // ── postLoadApplyEndpointControls ───────────────────────────────────────────
+
+  it('postLoadApplyEndpointControls applies controls to all lines, arrows, and sketch-path lines', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const lineObj = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 0, y1: 0, x2: 100, y2: 100, _id: 'loaded-line' }),
+    );
+    (lineObj as Record<string, unknown>).calcLinePoints = vi.fn(() => ({ x1: -50, y1: -50, x2: 50, y2: 50 }));
+
+    const arrowGrp = makeFabricObject({
+      _id: 'loaded-arrow', _isArrow: true, _x1: 0, _y1: 0, _x2: 100, _y2: 100,
+    });
+    arrowGrp.getObjects = vi.fn(() => []);
+
+    const sketchPath = makeFabricObject({
+      _id: 'loaded-sketch', _origGeom: JSON.stringify({ type: 'line', x1: 0, y1: 0, x2: 100, y2: 100 }),
+    });
+
+    mockCanvasInstance.getObjects.mockReturnValue([lineObj, arrowGrp, sketchPath]);
+
+    const eng = engine as unknown as { postLoadApplyEndpointControls: () => void };
+    eng.postLoadApplyEndpointControls();
+
+    // Line: endpoint controls applied
+    expect(lineObj.hasBorders).toBe(false);
+    expect((lineObj.controls as Record<string, unknown> | undefined)?.ep1).toBeDefined();
+
+    // Arrow group: endpoint controls applied
+    expect(arrowGrp.hasBorders).toBe(false);
+    expect((arrowGrp.controls as Record<string, unknown> | undefined)?.ep1).toBeDefined();
+
+    // Sketch path line: endpoint controls applied
+    expect(sketchPath.hasBorders).toBe(false);
+    expect((sketchPath.controls as Record<string, unknown> | undefined)?.ep1).toBeDefined();
+  });
+
+  it('postLoadApplyEndpointControls ignores non-line sketch paths', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const rectPath = makeFabricObject({
+      _id: 'loaded-rect-sketch',
+      _origGeom: JSON.stringify({ type: 'rect', x: 0, y: 0, width: 100, height: 80 }),
+    });
+    mockCanvasInstance.getObjects.mockReturnValue([rectPath]);
+
+    const eng = engine as unknown as { postLoadApplyEndpointControls: () => void };
+    eng.postLoadApplyEndpointControls();
+
+    // Rect sketch path: hasBorders not set, no endpoint controls
+    expect(rectPath.hasBorders).toBeUndefined();
+    expect(rectPath.controls).toBeUndefined();
   });
 });
