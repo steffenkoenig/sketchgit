@@ -6,7 +6,7 @@
  * making them straightforward to unit-test.
  */
 
-import { Commit, MergeConflict, MergeResult } from '../types';
+import { Commit, MergeConflict, MergeResult, MermaidLineConflict } from '../types';
 import { buildObjMap, extractProps, propsEqual } from './objectIdTracker';
 
 // ─── Lowest Common Ancestor ───────────────────────────────────────────────────
@@ -80,6 +80,9 @@ export function getObjLabel(obj: Record<string, unknown> | null | undefined): st
  * (no line-level conflict), while still flagging conflicts when the same line
  * was modified differently on both sides.
  *
+ * Delegates to `computeMermaidLineMergeDetails` to avoid duplicating the
+ * line-iteration logic.
+ *
  * @returns The merged string when all line-level changes are non-overlapping.
  *          Returns `null` when a line was modified differently on both sides
  *          (a true line-level conflict that requires user resolution).
@@ -94,12 +97,36 @@ export function mergeTextLineByLine(
   if (ours === base) return theirs;
   if (theirs === base) return ours;
 
+  const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(base, ours, theirs);
+  if (lineConflicts.length > 0) return null;
+  // No conflicts: partialLines contains no nulls, so the cast is safe.
+  return (partialLines as string[]).join('\n');
+}
+
+/**
+ * Compute line-level merge details for `_mermaidCode` when the overall merge
+ * cannot be auto-resolved (i.e. `mergeTextLineByLine` returned `null`).
+ *
+ * Returns two parallel pieces of data:
+ *  - `partialLines` – the already-resolved merged lines, with `null` at each
+ *    position that has a true line-level conflict requiring user choice.
+ *  - `lineConflicts` – the conflicting line entries, in order.  The number of
+ *    `null` entries in `partialLines` equals `lineConflicts.length`.
+ *
+ * Exported for unit testing only – treat as internal.
+ */
+export function computeMermaidLineMergeDetails(
+  base: string,
+  ours: string,
+  theirs: string,
+): { partialLines: (string | null)[]; lineConflicts: MermaidLineConflict[] } {
   const baseLines = base.split('\n');
   const oursLines = ours.split('\n');
   const theirsLines = theirs.split('\n');
   const maxLen = Math.max(baseLines.length, oursLines.length, theirsLines.length);
 
-  const result: string[] = [];
+  const partialLines: (string | null)[] = [];
+  const lineConflicts: MermaidLineConflict[] = [];
 
   for (let i = 0; i < maxLen; i++) {
     const b = i < baseLines.length ? baseLines[i] : undefined;
@@ -110,35 +137,30 @@ export function mergeTextLineByLine(
     const theirsChangedLine = t !== b;
 
     if (!oursChangedLine && !theirsChangedLine) {
-      // Unchanged on both sides – keep the base line
-      if (b !== undefined) result.push(b);
+      if (b !== undefined) partialLines.push(b);
     } else if (oursChangedLine && !theirsChangedLine) {
-      // Only ours changed – take ours (undefined means deleted)
-      if (o !== undefined) result.push(o);
+      if (o !== undefined) partialLines.push(o);
     } else if (!oursChangedLine && theirsChangedLine) {
-      // Only theirs changed – take theirs (undefined means deleted)
-      if (t !== undefined) result.push(t);
+      if (t !== undefined) partialLines.push(t);
     } else {
       // Both changed this position
       if (o === t) {
-        // Both made the same change – keep it
-        if (o !== undefined) result.push(o);
+        if (o !== undefined) partialLines.push(o);
       } else if (o === undefined && t === undefined) {
         // Both deleted the line – skip it
       } else if (b === undefined) {
-        // Both appended new (different) content at the same position beyond the
-        // base.  There is no canonical order, so include both in a deterministic
-        // order (ours first) so neither side's addition is lost.
-        if (o !== undefined) result.push(o);
-        if (t !== undefined) result.push(t);
+        // Both appended different content – include both (deterministic order)
+        if (o !== undefined) partialLines.push(o);
+        if (t !== undefined) partialLines.push(t);
       } else {
-        // True line-level conflict: same existing position, different content
-        return null;
+        // True line-level conflict – record a placeholder and a conflict entry
+        lineConflicts.push({ lineNumber: i + 1, base: b, ours: o, theirs: t, chosen: 'ours' });
+        partialLines.push(null);
       }
     }
   }
 
-  return result.join('\n');
+  return { partialLines, lineConflicts };
 }
 
 // ─── 3-way merge ─────────────────────────────────────────────────────────────
@@ -227,6 +249,15 @@ export function threeWayMerge(
             lineMergedProps.set(prop, lineMerged);
             continue;
           }
+          // Line-level merge failed – compute per-line conflict detail so the UI
+          // can show each conflicting line individually instead of the whole string.
+          const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(bVal, oVal, tVal);
+          propConflicts.push({
+            prop, base: bVal, ours: oVal, theirs: tVal, chosen: 'ours',
+            mermaidLineConflicts: lineConflicts,
+            mermaidPartialLines: partialLines,
+          });
+          continue;
         }
         // True conflict on this property
         propConflicts.push({ prop, base: bVal, ours: oVal, theirs: tVal, chosen: 'ours' });

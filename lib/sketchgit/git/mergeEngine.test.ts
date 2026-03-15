@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findLCA, getObjLabel, threeWayMerge, mergeTextLineByLine } from './mergeEngine';
+import { findLCA, getObjLabel, threeWayMerge, mergeTextLineByLine, computeMermaidLineMergeDetails } from './mergeEngine';
 import { Commit } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -412,6 +412,118 @@ describe('threeWayMerge – mermaid _mermaidCode', () => {
       expect(pc).toBeDefined();
       expect(pc?.ours).toBe(mermaidOurs);
       expect(pc?.theirs).toBe(mermaidTheirs);
+      // The per-line conflict details should be attached so the UI can show
+      // individual lines rather than the entire code string as one choice.
+      expect(pc?.mermaidLineConflicts).toBeDefined();
+      expect(pc?.mermaidLineConflicts).toHaveLength(1);
+      expect(pc?.mermaidLineConflicts?.[0].lineNumber).toBe(2);
+      expect(pc?.mermaidLineConflicts?.[0].ours).toBe('    A --> X');
+      expect(pc?.mermaidLineConflicts?.[0].theirs).toBe('    A --> Y');
+      expect(pc?.mermaidLineConflicts?.[0].chosen).toBe('ours');
+      // partialLines should have the unchanged first line and a null placeholder
+      expect(pc?.mermaidPartialLines).toEqual(['graph TD', null]);
     }
+  });
+
+  it('attaches per-line conflicts for multiple conflicting lines', () => {
+    const mermaidBase = 'graph TD\n    A --> B\n    C --> D\n    E --> F';
+    const mermaidOurs   = 'graph TD\n    A --> X\n    C --> D\n    E --> Z';
+    const mermaidTheirs = 'graph TD\n    A --> Y\n    C --> D\n    E --> W';
+
+    const baseObj = { type: 'image', _id: 'obj_mer3', _isMermaid: true, _mermaidCode: mermaidBase };
+    const base   = canvasWithObjects([baseObj]);
+    const ours   = canvasWithObjects([{ ...baseObj, _mermaidCode: mermaidOurs }]);
+    const theirs = canvasWithObjects([{ ...baseObj, _mermaidCode: mermaidTheirs }]);
+
+    const result = threeWayMerge(base, ours, theirs);
+    expect('conflicts' in result).toBe(true);
+    if ('conflicts' in result) {
+      const pc = result.conflicts[0]?.propConflicts.find((p) => p.prop === '_mermaidCode');
+      expect(pc?.mermaidLineConflicts).toHaveLength(2);
+      expect(pc?.mermaidLineConflicts?.[0].lineNumber).toBe(2); // A --> B line
+      expect(pc?.mermaidLineConflicts?.[1].lineNumber).toBe(4); // E --> F line
+      // Unchanged line C --> D should be in the partial lines (not a conflict)
+      expect(pc?.mermaidPartialLines).toContain('    C --> D');
+    }
+  });
+});
+
+// ─── computeMermaidLineMergeDetails ──────────────────────────────────────────
+
+describe('computeMermaidLineMergeDetails', () => {
+  it('records a null placeholder and a line conflict for each conflicting line', () => {
+    const base   = 'graph TD\n    A --> B';
+    const ours   = 'graph TD\n    A --> X';
+    const theirs = 'graph TD\n    A --> Y';
+
+    const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(base, ours, theirs);
+
+    expect(lineConflicts).toHaveLength(1);
+    expect(lineConflicts[0].lineNumber).toBe(2);
+    expect(lineConflicts[0].base).toBe('    A --> B');
+    expect(lineConflicts[0].ours).toBe('    A --> X');
+    expect(lineConflicts[0].theirs).toBe('    A --> Y');
+    expect(lineConflicts[0].chosen).toBe('ours');
+
+    // First line is unchanged – present as-is.  Second position is a conflict placeholder.
+    expect(partialLines).toEqual(['graph TD', null]);
+  });
+
+  it('includes multiple conflict placeholders for multiple conflicting lines', () => {
+    const base   = 'L1\nL2\nL3';
+    const ours   = 'L1\nO2\nO3';
+    const theirs = 'L1\nT2\nT3';
+
+    const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(base, ours, theirs);
+
+    expect(lineConflicts).toHaveLength(2);
+    expect(lineConflicts[0].lineNumber).toBe(2);
+    expect(lineConflicts[1].lineNumber).toBe(3);
+    expect(partialLines).toEqual(['L1', null, null]);
+  });
+
+  it('auto-resolves non-conflicting lines alongside conflicting ones', () => {
+    const base   = 'graph TD\n    A --> B\n    C --> D\n    E --> F';
+    const ours   = 'graph TD\n    A --> X\n    C --> D\n    E --> F'; // changed line 2 only
+    const theirs = 'graph TD\n    A --> B\n    C --> D\n    E --> Z'; // changed line 4 – not conflicting with ours
+
+    // Line 2: only ours changed → auto-resolved to ours value
+    // Line 4: only theirs changed → auto-resolved to theirs value
+    // Result should have no line conflicts
+    const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(base, ours, theirs);
+    expect(lineConflicts).toHaveLength(0);
+    expect(partialLines).toEqual(['graph TD', '    A --> X', '    C --> D', '    E --> Z']);
+  });
+
+  it('handles deletion vs modification on the same line as a conflict', () => {
+    // ours deleted line 1, theirs changed it → conflict
+    const base   = 'graph TD\n    A --> B';
+    const ours   = 'graph TD';             // deleted line 1
+    const theirs = 'graph TD\n    A --> Y'; // changed line 1
+
+    const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(base, ours, theirs);
+    expect(lineConflicts).toHaveLength(1);
+    expect(lineConflicts[0].ours).toBeUndefined();    // deletion
+    expect(lineConflicts[0].theirs).toBe('    A --> Y');
+    expect(partialLines).toEqual(['graph TD', null]);
+  });
+
+  it('assembling partial lines with chosen values reproduces the correct code', () => {
+    const base   = 'graph TD\n    A --> B\n    C --> D';
+    const ours   = 'graph TD\n    A --> X\n    C --> D'; // conflict on line 2
+    const theirs = 'graph TD\n    A --> Y\n    C --> D'; // conflict on line 2
+
+    const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(base, ours, theirs);
+    expect(lineConflicts).toHaveLength(1);
+
+    // Simulate user picking "theirs" for line 2
+    lineConflicts[0].chosen = 'theirs';
+    let lcIdx = 0;
+    const finalLines = partialLines.map((l) => {
+      if (l !== null) return l;
+      const lc = lineConflicts[lcIdx++];
+      return lc.chosen === 'ours' ? (lc.ours ?? '') : (lc.theirs ?? '');
+    });
+    expect(finalLines.join('\n')).toBe('graph TD\n    A --> Y\n    C --> D');
   });
 });

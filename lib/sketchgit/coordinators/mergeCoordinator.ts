@@ -10,9 +10,12 @@
  */
 
 import { AppContext } from './appContext';
-import { PendingMerge, BranchNames, MergeConflict, ConflictChoice } from '../types';
+import { PendingMerge, BranchNames, MergeConflict, ConflictChoice, MermaidLineConflict } from '../types';
 import { showToast } from '../ui/toast';
 import { openModal, closeModal } from '../ui/modals';
+
+/** Maximum characters of a mermaid code line shown in a conflict card. */
+const MERMAID_LINE_DISPLAY_MAX = 60;
 
 export class MergeCoordinator {
   /** Accumulated conflict state while the conflict-resolution modal is open. */
@@ -80,7 +83,10 @@ export class MergeCoordinator {
   resolveAllOurs(): void {
     if (!this.pendingMerge) return;
     this.pendingMerge.conflicts.forEach((c) => {
-      c.propConflicts.forEach((pc) => { pc.chosen = 'ours'; });
+      c.propConflicts.forEach((pc) => {
+        pc.chosen = 'ours';
+        pc.mermaidLineConflicts?.forEach((lc) => { lc.chosen = 'ours'; });
+      });
     });
     this._rebuildConflictChoiceUI();
     this._updateConflictStats();
@@ -89,7 +95,10 @@ export class MergeCoordinator {
   resolveAllTheirs(): void {
     if (!this.pendingMerge) return;
     this.pendingMerge.conflicts.forEach((c) => {
-      c.propConflicts.forEach((pc) => { pc.chosen = 'theirs'; });
+      c.propConflicts.forEach((pc) => {
+        pc.chosen = 'theirs';
+        pc.mermaidLineConflicts?.forEach((lc) => { lc.chosen = 'theirs'; });
+      });
     });
     this._rebuildConflictChoiceUI();
     this._updateConflictStats();
@@ -108,7 +117,18 @@ export class MergeCoordinator {
         const conflict = conflicts[conflictIdx++];
         const merged = { ...conflict.oursObj };
         conflict.propConflicts.forEach((pc: ConflictChoice) => {
-          merged[pc.prop] = pc.chosen === 'ours' ? pc.ours : pc.theirs;
+          if (pc.prop === '_mermaidCode' && pc.mermaidLineConflicts && pc.mermaidPartialLines) {
+            // Reconstruct the code from auto-resolved lines + per-line user choices
+            let lcIdx = 0;
+            const finalLines = pc.mermaidPartialLines.map((line) => {
+              if (line !== null) return line;
+              const lc = pc.mermaidLineConflicts![lcIdx++];
+              return lc.chosen === 'ours' ? (lc.ours ?? '') : (lc.theirs ?? '');
+            });
+            merged[pc.prop] = finalLines.join('\n');
+          } else {
+            merged[pc.prop] = pc.chosen === 'ours' ? pc.ours : pc.theirs;
+          }
         });
         finalObjects[i] = merged;
       }
@@ -150,7 +170,11 @@ export class MergeCoordinator {
     if (!list) return;
     list.replaceChildren();
 
-    const totalConflicts = conflicts.reduce((s, c) => s + c.propConflicts.length, 0);
+    const totalConflicts = conflicts.reduce((s, c) => {
+      return s + c.propConflicts.reduce((ps, pc) => {
+        return ps + (pc.mermaidLineConflicts ? pc.mermaidLineConflicts.length : 1);
+      }, 0);
+    }, 0);
     const summaryEl = document.getElementById('conflictSummary');
     if (summaryEl) {
       summaryEl.textContent =
@@ -171,30 +195,77 @@ export class MergeCoordinator {
       const countSpan = document.createElement('span');
       countSpan.style.marginLeft = 'auto';
       countSpan.style.color = 'var(--tx3)';
-      countSpan.textContent = `${conflict.propConflicts.length} conflict(s)`;
+      const numConflicts = conflict.propConflicts.reduce((s, pc) =>
+        s + (pc.mermaidLineConflicts ? pc.mermaidLineConflicts.length : 1), 0);
+      countSpan.textContent = `${numConflicts} conflict(s)`;
       header.appendChild(iconSpan);
       header.appendChild(labelBold);
       header.appendChild(countSpan);
       objEl.appendChild(header);
 
       conflict.propConflicts.forEach((pc, pi) => {
-        const propEl = document.createElement('div');
-        propEl.className = 'conflict-prop';
+        if (pc.prop === '_mermaidCode' && pc.mermaidLineConflicts) {
+          // ── Mermaid: per-line rendering ────────────────────────────────────
+          // Show a non-interactive header row identifying the property, then one
+          // selectable row per conflicting line.
+          const headerEl = document.createElement('div');
+          headerEl.className = 'conflict-prop conflict-prop-mermaid-header';
+          const hNameSpan = document.createElement('span');
+          hNameSpan.className = 'prop-name';
+          hNameSpan.textContent = this._getPropLabel(pc.prop);
+          const hCountSpan = document.createElement('span');
+          hCountSpan.style.color = 'var(--tx3)';
+          hCountSpan.style.fontSize = '10px';
+          hCountSpan.textContent = `${pc.mermaidLineConflicts.length} line conflict(s)`;
+          headerEl.appendChild(hNameSpan);
+          headerEl.appendChild(hCountSpan);
+          objEl.appendChild(headerEl);
 
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'prop-name';
-        nameSpan.textContent = this._getPropLabel(pc.prop);
-        propEl.appendChild(nameSpan);
+          pc.mermaidLineConflicts.forEach((lc, li) => {
+            const lineEl = document.createElement('div');
+            lineEl.className = 'conflict-prop';
 
-        const oursBtn = this._createConflictOption('ours', `← Ours (${branchNames.ours})`, pc.prop, pc.ours, pc.chosen === 'ours', ci, pi);
-        const vsSpan = document.createElement('span');
-        vsSpan.className = 'prop-vs'; vsSpan.textContent = 'vs';
-        const theirsBtn = this._createConflictOption('theirs', `Theirs (${branchNames.theirs}) →`, pc.prop, pc.theirs, pc.chosen === 'theirs', ci, pi);
+            const lineLabelSpan = document.createElement('span');
+            lineLabelSpan.className = 'prop-name';
+            lineLabelSpan.textContent = `Line ${lc.lineNumber}`;
+            lineEl.appendChild(lineLabelSpan);
 
-        propEl.appendChild(oursBtn);
-        propEl.appendChild(vsSpan);
-        propEl.appendChild(theirsBtn);
-        objEl.appendChild(propEl);
+            const oursBtn = this._createConflictOption(
+              'ours', `← Ours (${branchNames.ours})`, '_mermaidCode',
+              lc.ours ?? '(deleted)', lc.chosen === 'ours', ci, pi, li,
+            );
+            const vsSpan = document.createElement('span');
+            vsSpan.className = 'prop-vs'; vsSpan.textContent = 'vs';
+            const theirsBtn = this._createConflictOption(
+              'theirs', `Theirs (${branchNames.theirs}) →`, '_mermaidCode',
+              lc.theirs ?? '(deleted)', lc.chosen === 'theirs', ci, pi, li,
+            );
+
+            lineEl.appendChild(oursBtn);
+            lineEl.appendChild(vsSpan);
+            lineEl.appendChild(theirsBtn);
+            objEl.appendChild(lineEl);
+          });
+        } else {
+          // ── Normal property rendering ──────────────────────────────────────
+          const propEl = document.createElement('div');
+          propEl.className = 'conflict-prop';
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'prop-name';
+          nameSpan.textContent = this._getPropLabel(pc.prop);
+          propEl.appendChild(nameSpan);
+
+          const oursBtn = this._createConflictOption('ours', `← Ours (${branchNames.ours})`, pc.prop, pc.ours, pc.chosen === 'ours', ci, pi);
+          const vsSpan = document.createElement('span');
+          vsSpan.className = 'prop-vs'; vsSpan.textContent = 'vs';
+          const theirsBtn = this._createConflictOption('theirs', `Theirs (${branchNames.theirs}) →`, pc.prop, pc.theirs, pc.chosen === 'theirs', ci, pi);
+
+          propEl.appendChild(oursBtn);
+          propEl.appendChild(vsSpan);
+          propEl.appendChild(theirsBtn);
+          objEl.appendChild(propEl);
+        }
       });
 
       list.appendChild(objEl);
@@ -212,6 +283,7 @@ export class MergeCoordinator {
     selected: boolean,
     ci: number,
     pi: number,
+    li?: number,
   ): HTMLElement {
     const el = document.createElement('div');
     el.className = 'prop-option' + (selected ? ` selected-${choice}` : '');
@@ -227,7 +299,7 @@ export class MergeCoordinator {
 
     el.appendChild(labelDiv);
     el.appendChild(valDiv);
-    el.addEventListener('click', () => this._selectConflictChoice(ci, pi, choice, el));
+    el.addEventListener('click', () => this._selectConflictChoice(ci, pi, choice, el, li));
     return el;
   }
 
@@ -236,9 +308,15 @@ export class MergeCoordinator {
     pi: number,
     choice: 'ours' | 'theirs',
     clickedEl: HTMLElement,
+    li?: number,
   ): void {
     if (!this.pendingMerge) return;
-    this.pendingMerge.conflicts[ci].propConflicts[pi].chosen = choice;
+    const pc = this.pendingMerge.conflicts[ci].propConflicts[pi];
+    if (li !== undefined && pc.mermaidLineConflicts) {
+      pc.mermaidLineConflicts[li].chosen = choice;
+    } else {
+      pc.chosen = choice;
+    }
     const propEl = clickedEl.closest('.conflict-prop');
     if (propEl) {
       propEl.querySelectorAll('.prop-option').forEach((el) => {
@@ -266,9 +344,17 @@ export class MergeCoordinator {
     let oursCount = 0, theirsCount = 0, total = 0;
     this.pendingMerge.conflicts.forEach((c) => {
       c.propConflicts.forEach((pc) => {
-        total++;
-        if (pc.chosen === 'ours') oursCount++;
-        else theirsCount++;
+        if (pc.mermaidLineConflicts) {
+          pc.mermaidLineConflicts.forEach((lc) => {
+            total++;
+            if (lc.chosen === 'ours') oursCount++;
+            else theirsCount++;
+          });
+        } else {
+          total++;
+          if (pc.chosen === 'ours') oursCount++;
+          else theirsCount++;
+        }
       });
     });
     const statsEl = document.getElementById('conflictStats');
@@ -323,6 +409,17 @@ export class MergeCoordinator {
       container.appendChild(i);
       return container;
     }
+    if (prop === '_mermaidCode') {
+      // Display individual mermaid code lines (not the whole diagram) as monospace code
+      const code = document.createElement('code');
+      code.className = 'opt-val-code';
+      const truncated = v.length > MERMAID_LINE_DISPLAY_MAX
+        ? v.slice(0, MERMAID_LINE_DISPLAY_MAX - 2) + '…'
+        : (v || '(deleted)');
+      code.textContent = truncated;
+      container.appendChild(code);
+      return container;
+    }
     container.textContent = v.length > 40 ? v.slice(0, 38) + '…' : v;
     return container;
   }
@@ -336,6 +433,7 @@ export class MergeCoordinator {
       x2: 'End X', y2: 'End Y', path: 'Path', text: 'Text',
       fontSize: 'Font size', fontFamily: 'Font family', opacity: 'Opacity',
       flipX: 'Flip X', flipY: 'Flip Y',
+      _mermaidCode: 'Diagram code',
     };
     return labels[prop] ?? prop;
   }
