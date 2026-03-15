@@ -629,6 +629,9 @@ export class CanvasEngine {
             const arrowType = (arrowObj._arrowType ?? this.arrowType) as 'sharp' | 'curved' | 'elbow';
             // Store sloppiness/origGeom on arrow line before building group
             this.stampOrigGeomAndSloppiness(this.activeObj);
+            // Snap arrow endpoints to nearby shapes before building the group so
+            // that the resulting group carries _attachedFrom/_attachedTo IDs.
+            this.snapLineAttachment(this.activeObj);
             this.buildArrowGroup(this.activeObj as Line, headStart, headEnd, arrowType);
           } else {
             // For rect / ellipse / line: store origGeom, then convert to sketch path if needed.
@@ -727,7 +730,12 @@ export class CanvasEngine {
     const grp = Object.assign(
       new Group(shapes, { selectable: true, evented: true }),
       { _isArrow: true, _arrowHeadStart: headStart, _arrowHeadEnd: headEnd, _arrowType: arrowType,
-        _x1: x1, _y1: y1, _x2: x2, _y2: y2 },
+        _x1: x1, _y1: y1, _x2: x2, _y2: y2,
+        // Transfer attachment IDs from the source line so the group follows
+        // connected shapes when they move (set by snapLineAttachment).
+        _attachedFrom: (line as Line & { _attachedFrom?: string })._attachedFrom,
+        _attachedTo: (line as Line & { _attachedTo?: string })._attachedTo,
+      },
     );
     ensureObjId(grp);
     this.canvas.add(grp);
@@ -1225,16 +1233,19 @@ export class CanvasEngine {
     const firstChild = children[0] as FabricObject | undefined;
     const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
     const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
-    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined) ?? undefined;
+    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined);
     const opacity = (o.get('opacity') as number | undefined) ?? 1;
 
     const tempLine = new Line([x1, y1, x2, y2], {
-      stroke, strokeWidth, strokeDashArray: strokeDashArray ?? undefined,
+      stroke, strokeWidth, strokeDashArray,
       opacity, selectable: false, evented: false,
     });
     // Copy the original group's ID so the merge engine keeps tracking the same object
     (tempLine as FabricObject & { _id?: string })._id =
       (o as FabricObject & { _id?: string })._id;
+    // Preserve attachment IDs so the rebuilt arrow continues following its connected shapes.
+    (tempLine as Line & { _attachedFrom?: string })._attachedFrom = (ag as ArrowGroupExt & { _attachedFrom?: string })._attachedFrom;
+    (tempLine as Line & { _attachedTo?: string })._attachedTo = (ag as ArrowGroupExt & { _attachedTo?: string })._attachedTo;
 
     this.canvas.remove(o);
     this.buildArrowGroup(tempLine, headStart, headEnd, arrowType);
@@ -1602,7 +1613,11 @@ export class CanvasEngine {
     if (!this.canvas) return;
     if (!(line instanceof Line)) return;
     const SNAP_RADIUS = 30;
-    const objs = this.canvas.getObjects().filter((o) => o !== line && !(o instanceof Line));
+    // Exclude the line itself, other plain lines, and arrow groups — connectors
+    // should only link to real shapes (rect, ellipse, text, path, etc.).
+    const objs = this.canvas.getObjects().filter(
+      (o) => o !== line && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
+    );
     const typedLine = line as Line & { _attachedFrom?: string; _attachedTo?: string };
     const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = typedLine as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
 
@@ -1621,7 +1636,7 @@ export class CanvasEngine {
     }
   }
 
-  /** When a shape is moved, update the endpoints of any Line attached to it. */
+  /** When a shape is moved, update the endpoints of any Line or arrow Group attached to it. */
   private updateAttachedLines(movedObj: FabricObject): void {
     if (!this.canvas) return;
     const id = (movedObj as FabricObject & { _id?: string })._id;
@@ -1629,24 +1644,86 @@ export class CanvasEngine {
     const center = movedObj.getCenterPoint();
     let changed = false;
 
+    // Collect arrow groups that need rebuilding so we don't modify the objects
+    // list while iterating over it.
+    const arrowsToRebuild: Array<{ grp: FabricObject; x1: number; y1: number; x2: number; y2: number }> = [];
+
     for (const obj of this.canvas.getObjects()) {
-      if (!(obj instanceof Line)) continue;
-      const attached = obj as Line & { _attachedFrom?: string; _attachedTo?: string };
-      if (attached._attachedFrom === id) {
-        attached.set({ x1: center.x, y1: center.y });
-        attached.setCoords();
-        changed = true;
-      }
-      if (attached._attachedTo === id) {
-        attached.set({ x2: center.x, y2: center.y });
-        attached.setCoords();
-        changed = true;
+      if (obj instanceof Line) {
+        const attached = obj as Line & { _attachedFrom?: string; _attachedTo?: string };
+        if (attached._attachedFrom === id) {
+          attached.set({ x1: center.x, y1: center.y });
+          attached.setCoords();
+          changed = true;
+        }
+        if (attached._attachedTo === id) {
+          attached.set({ x2: center.x, y2: center.y });
+          attached.setCoords();
+          changed = true;
+        }
+      } else {
+        const ag = obj as ArrowGroupExt & { _attachedFrom?: string; _attachedTo?: string };
+        if (!ag._isArrow) continue;
+        let x1 = ag._x1 ?? 0;
+        let y1 = ag._y1 ?? 0;
+        let x2 = ag._x2 ?? 0;
+        let y2 = ag._y2 ?? 0;
+        let needsRebuild = false;
+        if (ag._attachedFrom === id) { x1 = center.x; y1 = center.y; needsRebuild = true; }
+        if (ag._attachedTo === id) { x2 = center.x; y2 = center.y; needsRebuild = true; }
+        if (needsRebuild) { arrowsToRebuild.push({ grp: obj, x1, y1, x2, y2 }); changed = true; }
       }
     }
+
+    for (const { grp, x1, y1, x2, y2 } of arrowsToRebuild) {
+      this.rebuildArrowForMove(grp, x1, y1, x2, y2);
+    }
+
     if (changed) {
       this.canvas.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(false); // throttled — endpoint moves are frequent
+    }
+  }
+
+  /**
+   * Rebuild an arrow Group with updated endpoint coordinates without changing
+   * the canvas selection (used when a connected shape is being moved).
+   * Preserves the group's _id, _attachedFrom, and _attachedTo.
+   */
+  private rebuildArrowForMove(
+    grp: FabricObject,
+    x1: number, y1: number, x2: number, y2: number,
+  ): void {
+    if (!this.canvas) return;
+    const ag = grp as ArrowGroupExt & { _attachedFrom?: string; _attachedTo?: string };
+
+    const headStart = (ag._arrowHeadStart ?? 'none') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const headEnd   = (ag._arrowHeadEnd   ?? 'open') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const arrowType = (ag._arrowType      ?? 'sharp') as 'sharp' | 'curved' | 'elbow';
+
+    const children = (grp as Group).getObjects?.() ?? [];
+    const firstChild = children[0] as FabricObject | undefined;
+    const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
+    const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
+    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined);
+    const opacity = (grp.get('opacity') as number | undefined) ?? 1;
+
+    const tempLine = new Line([x1, y1, x2, y2], {
+      stroke, strokeWidth, strokeDashArray,
+      opacity, selectable: false, evented: false,
+    });
+    // Preserve the group's ID and attachment references.
+    (tempLine as FabricObject & { _id?: string })._id = (grp as FabricObject & { _id?: string })._id;
+    (tempLine as Line & { _attachedFrom?: string })._attachedFrom = ag._attachedFrom;
+    (tempLine as Line & { _attachedTo?: string })._attachedTo = ag._attachedTo;
+
+    // Save and restore active selection so dragging the connected shape is not interrupted.
+    const prevActive = this.canvas.getActiveObject();
+    this.canvas.remove(grp);
+    this.buildArrowGroup(tempLine, headStart, headEnd, arrowType);
+    if (prevActive && prevActive !== grp) {
+      this.canvas.setActiveObject(prevActive);
     }
   }
 
