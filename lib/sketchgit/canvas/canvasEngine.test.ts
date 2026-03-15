@@ -740,6 +740,26 @@ describe('CanvasEngine – mouse events', () => {
     expect(mockCanvasInstance.selection).toBe(false);
   });
 
+  it('mouse:down on an existing object with a drawing tool does NOT create a new shape', () => {
+    // Regression: when a drawing tool was active and the user clicked on an
+    // existing object (to move/resize it), a new shape was incorrectly created.
+    // The fix: if e.target is set, onMouseDown returns early.
+    const existingObj = makeFabricObject();
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    (Rect as unknown as ReturnType<typeof vi.fn>).mockClear();
+    mockCanvasInstance.add.mockClear();
+    // Fire mouse:down with a target (clicking on existing object)
+    canvasEventHandlers['mouse:down']?.({
+      e: makeMouseEvent('mousedown'),
+      scenePoint: defaultScenePoint,
+      target: existingObj,
+    });
+    expect(Rect).not.toHaveBeenCalled();
+    expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+  });
+
   it('mouse:wheel zooms the canvas', () => {
     const { engine } = makeEngine();
     engine.init();
