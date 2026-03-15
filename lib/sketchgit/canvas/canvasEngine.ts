@@ -18,9 +18,9 @@
  */
 
 import {
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern,
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern, Control,
 } from 'fabric';
-import type { TPointerEventInfo, XY } from 'fabric';
+import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
 import { logger } from '../logger';
@@ -423,6 +423,7 @@ export class CanvasEngine {
     // Fabric v7: loadFromJSON is promise-based; use .then() instead of a callback.
     void this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
       this.applyStrokeUniformToAll();
+      this.postLoadApplyEndpointControls();
       this.canvas?.requestRenderAll();
     }).catch((err: unknown) => {
       logger.error({ err }, 'loadCanvasData: failed to load canvas JSON');
@@ -452,6 +453,7 @@ export class CanvasEngine {
     this.redoStack.push(current);
     void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
       this.applyStrokeUniformToAll();
+      this.postLoadApplyEndpointControls();
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -468,6 +470,7 @@ export class CanvasEngine {
     this.undoStack.push(current);
     void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
       this.applyStrokeUniformToAll();
+      this.postLoadApplyEndpointControls();
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -743,6 +746,15 @@ export class CanvasEngine {
                 this.canvas?.add(this.activeObj);
               }
             }
+            // Apply endpoint controls for the line tool (architect = Line object,
+            // artist/cartoonist = sketch Path with _origGeom).
+            if (this.currentTool === 'line') {
+              if (this.activeObj instanceof Line) {
+                this.applyLineEndpointControls(this.activeObj as Line);
+              } else {
+                this.applySketchLineEndpointControls(this.activeObj);
+              }
+            }
             this.canvas?.setActiveObject(this.activeObj);
           }
           this.markDirty();
@@ -856,6 +868,7 @@ export class CanvasEngine {
     const grpCenter = grp.getCenterPoint();
     (grp as AnchoredArrowGroup)._gcx = grpCenter.x;
     (grp as AnchoredArrowGroup)._gcy = grpCenter.y;
+    this.applyArrowEndpointControls(grp);
     if (selectAfter) this.canvas.setActiveObject(grp);
     // Do NOT clear this.activeObj here — when buildArrowGroup is called mid-drag
     // (via rebuildArrowForMove → object:moving) this.activeObj may be a Line that
@@ -1835,6 +1848,336 @@ export class CanvasEngine {
     this.canvas?.getObjects().forEach((obj) => {
       if (!obj.strokeUniform) obj.set('strokeUniform', true);
     });
+  }
+
+  /**
+   * Apply endpoint-only selection handles to a Fabric.js Line.
+   * Replaces the default 8-handle rectangular bounding box with two circular
+   * handles – one at each endpoint – so users can precisely drag individual
+   * endpoints instead of moving the whole bounding box.
+   */
+  private applyLineEndpointControls(line: Line): void {
+    line.hasBorders = false;
+    line.cornerStyle = 'circle';
+    line.cornerColor = '#6c63ff';
+    line.cornerStrokeColor = '#ffffff';
+    line.cornerSize = 10;
+
+    const makeEndpointControl = (endpoint: 1 | 2): Control => new Control({
+      cursorStyle: 'crosshair',
+      positionHandler: (
+        _dim: Point,
+        finalMatrix: TMat2D,
+        fabricObject: FabricObject,
+      ): Point => {
+        const l = fabricObject as Line;
+        const pts = l.calcLinePoints();
+        return new Point(
+          endpoint === 1 ? pts.x1 : pts.x2,
+          endpoint === 1 ? pts.y1 : pts.y2,
+        ).transform(finalMatrix);
+      },
+      actionHandler: (
+        (_e: unknown, transform: { target: FabricObject }, x: number, y: number): boolean => {
+          const l = transform.target as Line;
+          if (endpoint === 1) {
+            l.set({ x1: x, y1: y });
+          } else {
+            l.set({ x2: x, y2: y });
+          }
+          l.setCoords();
+          return true;
+        }
+      ) as Control['actionHandler'],
+    });
+
+    line.controls = { ep1: makeEndpointControl(1), ep2: makeEndpointControl(2) };
+  }
+
+  /**
+   * Apply endpoint-only selection handles to an arrow Group object.
+   * Shows circular handles at the arrow's stored _x1/_y1 and _x2/_y2 positions,
+   * hiding the rectangular group bounding box.  Dragging a handle rebuilds the
+   * arrow group's children in-place (without removing the Group from the canvas)
+   * so Fabric.js drag-tracking is never interrupted.
+   */
+  private applyArrowEndpointControls(grp: FabricObject): void {
+    grp.hasBorders = false;
+    grp.cornerStyle = 'circle';
+    grp.cornerColor = '#6c63ff';
+    grp.cornerStrokeColor = '#ffffff';
+    grp.cornerSize = 10;
+
+    const makeArrowEndpointControl = (endpoint: 1 | 2): Control => new Control({
+      cursorStyle: 'crosshair',
+      positionHandler: (
+        _dim: Point,
+        finalMatrix: TMat2D,
+        fabricObject: FabricObject,
+      ): Point => {
+        const a = fabricObject as AnchoredArrowGroup;
+        const ax = endpoint === 1 ? (a._x1 ?? 0) : (a._x2 ?? 0);
+        const ay = endpoint === 1 ? (a._y1 ?? 0) : (a._y2 ?? 0);
+        const center = fabricObject.getCenterPoint();
+        return new Point(ax - center.x, ay - center.y).transform(finalMatrix);
+      },
+      actionHandler: (
+        (_e: unknown, transform: { target: FabricObject }, x: number, y: number): boolean => {
+          const a = transform.target as AnchoredArrowGroup;
+          if (!this.canvas) return false;
+
+          const nx1 = endpoint === 1 ? x : (a._x1 ?? 0);
+          const ny1 = endpoint === 1 ? y : (a._y1 ?? 0);
+          const nx2 = endpoint === 2 ? x : (a._x2 ?? 0);
+          const ny2 = endpoint === 2 ? y : (a._y2 ?? 0);
+
+          // Rebuild the Group's children in-place.  The Group object itself
+          // stays on the canvas so Fabric.js drag-tracking (_currentTransform)
+          // is never interrupted.  Calling canvas.remove(activeObject) during
+          // an actionHandler causes Fabric to call endCurrentTransform() and
+          // kill the drag immediately — this avoids that problem entirely.
+          this.rebuildArrowGroupInPlace(a, nx1, ny1, nx2, ny2);
+          return true;
+        }
+      ) as Control['actionHandler'],
+    });
+
+    grp.controls = { ep1: makeArrowEndpointControl(1), ep2: makeArrowEndpointControl(2) };
+  }
+
+  /**
+   * Rebuild an arrow Group's visual children in-place without removing or
+   * replacing the Group object itself.
+   *
+   * This is used by applyArrowEndpointControls' actionHandler to update the
+   * arrow's appearance on every mouse-move during endpoint dragging.  Because
+   * the Group object stays in canvas._objects throughout the drag, Fabric.js
+   * never fires _discardActiveObject() and the _currentTransform (drag state)
+   * is preserved.
+   */
+  private rebuildArrowGroupInPlace(
+    grp: FabricObject,
+    x1: number, y1: number, x2: number, y2: number,
+  ): void {
+    const ag = grp as AnchoredArrowGroup;
+    const headStart = (ag._arrowHeadStart ?? 'none') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const headEnd   = (ag._arrowHeadEnd   ?? 'open') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const arrowType = (ag._arrowType      ?? 'sharp') as 'sharp' | 'curved' | 'elbow';
+    const group = grp as Group;
+
+    // Read style from existing children so we don't lose per-arrow styling.
+    const children = group.getObjects?.() ?? [];
+    const firstChild = children[0] as FabricObject | undefined;
+    const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
+    const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
+    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined);
+    const strokeLineCap = (firstChild?.get('strokeLineCap') as CanvasLineCap | undefined) ?? 'round';
+    const strokeLineJoin = (firstChild?.get('strokeLineJoin') as CanvasLineJoin | undefined) ?? 'round';
+    const opacity = (grp.get('opacity') as number | undefined) ?? 1;
+
+    // Build new child shapes with the updated coordinates.
+    const shapes: FabricObject[] = [];
+
+    if (arrowType === 'curved' || arrowType === 'elbow') {
+      let pathD: string;
+      if (arrowType === 'curved') {
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const dx = x2 - x1, dy = y2 - y1;
+        const segLen = Math.hypot(dx, dy);
+        if (segLen > 0) {
+          const curvature = Math.min(segLen * 0.3, 60);
+          const cx = mx - (dy / segLen) * curvature;
+          const cy = my + (dx / segLen) * curvature;
+          pathD = `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
+        } else {
+          pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
+        }
+      } else {
+        const midX = (x1 + x2) / 2;
+        pathD = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+      }
+      const bodyPath = new Path(pathD, {
+        stroke, strokeWidth, fill: 'transparent',
+        selectable: false, evented: false,
+        strokeLineCap, strokeLineJoin,
+        strokeDashArray, opacity, strokeUniform: true,
+      });
+      ensureObjId(bodyPath);
+      shapes.push(bodyPath);
+    } else {
+      const bodyLine = new Line([x1, y1, x2, y2], {
+        stroke, strokeWidth, fill: 'transparent',
+        selectable: false, evented: false,
+        strokeLineCap, strokeLineJoin,
+        strokeDashArray, opacity, strokeUniform: true,
+      });
+      ensureObjId(bodyLine);
+      shapes.push(bodyLine);
+    }
+
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const len = 14, spread = 0.4;
+    if (headEnd !== 'none') {
+      const head = this.makeArrowhead(x2, y2, angle, len, spread, stroke, strokeWidth, headEnd, opacity);
+      if (head) { ensureObjId(head); shapes.push(head); }
+    }
+    if (headStart !== 'none') {
+      const head = this.makeArrowhead(x1, y1, angle + Math.PI, len, spread, stroke, strokeWidth, headStart, opacity);
+      if (head) { ensureObjId(head); shapes.push(head); }
+    }
+
+    // Replace the Group's children in-place.
+    // group.add() calls enterGroup(obj, true) for each shape, converting the
+    // shape's absolute canvas coordinates into group-local coordinates, exactly
+    // as the original Group constructor does when buildArrowGroup first creates
+    // the group.  The Group object itself is never removed from the canvas.
+    group.removeAll();
+    group.add(...shapes);
+
+    // Update stored endpoint metadata and group center.
+    ag._x1 = x1; ag._y1 = y1;
+    ag._x2 = x2; ag._y2 = y2;
+    const newCenter = grp.getCenterPoint();
+    ag._gcx = newCenter.x;
+    ag._gcy = newCenter.y;
+  }
+
+  /**
+   * Update a sketch-path connector's visual data in-place without removing or
+   * replacing the Path object on the canvas.
+   *
+   * This is used by applySketchLineEndpointControls' actionHandler during
+   * endpoint dragging.  Because the Path object is never removed from the canvas,
+   * Fabric.js _currentTransform (drag state) is preserved across mouse-move events.
+   */
+  private updateSketchPathInPlace(
+    pathObj: FabricObject,
+    x1: number, y1: number, x2: number, y2: number,
+  ): void {
+    const sp = pathObj as FabricObject & { _origGeom?: string; _sloppiness?: string };
+
+    // Update origGeom so subsequent snapping / sloppiness changes work correctly.
+    sp._origGeom = JSON.stringify({ type: 'line', x1, y1, x2, y2 });
+
+    const sloppiness = (sp._sloppiness as 'architect' | 'artist' | 'cartoonist') ?? 'artist';
+    const rebuilt = this.tryConvertToSketch(pathObj, sloppiness);
+
+    // tryConvertToSketch returns a Path for artist/cartoonist/doodle sloppiness.
+    // For architect it would return a Line, which cannot be merged into the existing
+    // Path in-place.  If tryConvertToSketch returns null or a non-Path (e.g., when
+    // roughjs is unavailable or sloppiness is architect), skip the visual update for
+    // this frame rather than falling back to rebuildSketchPathForMove: calling
+    // canvas.remove() on the active object during a Control actionHandler would trigger
+    // endCurrentTransform() in Fabric.js v7 and kill the drag.
+    if (!rebuilt || !(rebuilt instanceof Path)) return;
+
+    const existingPath = pathObj as Path;
+    const rebuiltPath = rebuilt as Path;
+
+    // Swap path data in-place.  Path.path and the bounding-box properties
+    // (width, height, pathOffset) are public instance fields in Fabric.js v7.
+    existingPath.path = rebuiltPath.path;
+    existingPath.pathOffset = rebuiltPath.pathOffset;
+    existingPath.width = rebuiltPath.width;
+    existingPath.height = rebuiltPath.height;
+
+    // Reposition to the midpoint of the new endpoints, matching
+    // the behavior of tryConvertToSketch / rebuildSketchPathForMove.
+    existingPath.set({
+      left: (x1 + x2) / 2,
+      top: (y1 + y2) / 2,
+      originX: 'center',
+      originY: 'center',
+    });
+    existingPath.setCoords();
+  }
+
+  /**
+   * Apply endpoint-only selection handles to a sketch-path Line (artist /
+   * cartoonist sloppiness).  The Path object carries the logical endpoint
+   * coordinates in `_origGeom`.  Dragging a handle updates the sketch path so
+   * its endpoint follows the cursor.
+   */
+  private applySketchLineEndpointControls(path: FabricObject): void {
+    type GeomExt = { _origGeom?: string };
+    const sp = path as FabricObject & GeomExt;
+    if (!sp._origGeom) return;
+    let geom: { type?: string; x1?: number; y1?: number; x2?: number; y2?: number };
+    try { geom = JSON.parse(sp._origGeom) as typeof geom; } catch { return; /* malformed _origGeom */ }
+    if (geom.type !== 'line') return;
+
+    path.hasBorders = false;
+    path.cornerStyle = 'circle';
+    path.cornerColor = '#6c63ff';
+    path.cornerStrokeColor = '#ffffff';
+    path.cornerSize = 10;
+
+    const makeSketchEndpointControl = (endpoint: 1 | 2): Control => new Control({
+      cursorStyle: 'crosshair',
+      positionHandler: (
+        _dim: Point,
+        finalMatrix: TMat2D,
+        fabricObject: FabricObject,
+      ): Point => {
+        const s = fabricObject as FabricObject & GeomExt;
+        let g = { x1: 0, y1: 0, x2: 0, y2: 0 };
+        try { g = JSON.parse(s._origGeom ?? '{}') as typeof g; } catch { /* malformed _origGeom, fall back to origin */ }
+        const ax = endpoint === 1 ? (g.x1 ?? 0) : (g.x2 ?? 0);
+        const ay = endpoint === 1 ? (g.y1 ?? 0) : (g.y2 ?? 0);
+        const center = fabricObject.getCenterPoint();
+        return new Point(ax - center.x, ay - center.y).transform(finalMatrix);
+      },
+      actionHandler: (
+        (_e: unknown, transform: { target: FabricObject }, x: number, y: number): boolean => {
+          const s = transform.target as FabricObject & GeomExt & { _id?: string };
+          if (!this.canvas) return false;
+          let g = { type: 'line', x1: 0, y1: 0, x2: 0, y2: 0 };
+          try { g = JSON.parse(s._origGeom ?? '{}') as typeof g; } catch { return false; }
+          if (g.type !== 'line') return false;
+
+          const nx1 = endpoint === 1 ? x : (g.x1 ?? 0);
+          const ny1 = endpoint === 1 ? y : (g.y1 ?? 0);
+          const nx2 = endpoint === 2 ? x : (g.x2 ?? 0);
+          const ny2 = endpoint === 2 ? y : (g.y2 ?? 0);
+
+          // Update the Path object's visual data in-place.  Calling canvas.remove()
+          // on the active object inside a Control actionHandler triggers
+          // endCurrentTransform() in Fabric.js v7 which kills the drag on the
+          // first mouse-move.  updateSketchPathInPlace avoids that.
+          this.updateSketchPathInPlace(transform.target, nx1, ny1, nx2, ny2);
+          return true;
+        }
+      ) as Control['actionHandler'],
+    });
+
+    path.controls = {
+      ep1: makeSketchEndpointControl(1),
+      ep2: makeSketchEndpointControl(2),
+    };
+  }
+
+  /**
+   * After loading canvas JSON, re-apply endpoint controls to all lines, arrows,
+   * and sketch-path line connectors.  These controls are not serialised so must
+   * be restored each time the canvas state is loaded.
+   */
+  private postLoadApplyEndpointControls(): void {
+    if (!this.canvas) return;
+    for (const obj of this.canvas.getObjects()) {
+      if (obj instanceof Line) {
+        this.applyLineEndpointControls(obj);
+      } else if ((obj as FabricObject & { _isArrow?: boolean })._isArrow) {
+        this.applyArrowEndpointControls(obj);
+      } else {
+        const sp = obj as FabricObject & { _origGeom?: string };
+        if (sp._origGeom) {
+          try {
+            const g = JSON.parse(sp._origGeom) as { type?: string };
+            if (g.type === 'line') this.applySketchLineEndpointControls(obj);
+          } catch { /* ignore malformed _origGeom */ }
+        }
+      }
+    }
   }
 
   /** Reverse of getDashArray: infer the dash type from a stored strokeDashArray. */
