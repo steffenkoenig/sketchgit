@@ -592,6 +592,7 @@ describe('CanvasEngine – keyboard shortcuts', () => {
     const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     pressKey(engine, 'Backspace');
+    expect(mockCanvasInstance.remove).toHaveBeenCalledTimes(1);
     expect(mockCanvasInstance.remove).toHaveBeenCalledWith(obj1, obj2, obj3);
     expect(mockCanvasInstance.discardActiveObject).toHaveBeenCalled();
     expect(onBroadcastDraw).toHaveBeenCalled();
