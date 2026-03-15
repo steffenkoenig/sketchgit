@@ -34,6 +34,22 @@ type ArrowGroupExt = FabricObject & {
   _arrowHeadEnd?: string;
 };
 
+/** Attachment fields (shape IDs + border-anchor offsets) shared by lines and arrow groups. */
+type AttachmentProps = {
+  _attachedFrom?: string;
+  _attachedTo?: string;
+  _attachedFromAnchorX?: number;
+  _attachedFromAnchorY?: number;
+  _attachedToAnchorX?: number;
+  _attachedToAnchorY?: number;
+};
+
+/** Arrow group with full attachment metadata. */
+type AnchoredArrowGroup = ArrowGroupExt & AttachmentProps;
+
+/** Fabric Line with full attachment metadata. */
+type AnchoredLine = Line & AttachmentProps;
+
 export class CanvasEngine {
   // ── Fabric.js canvas instance (set by init()) ──────────────────────────────
   canvas: Canvas | null = null;
@@ -119,7 +135,7 @@ export class CanvasEngine {
     if (!FabricObject.customProperties.includes('_isArrow')) {
       FabricObject.customProperties.push('_isArrow');
     }
-    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_x1', '_y1', '_x2', '_y2', '_fillColor']) {
+    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY', '_x1', '_y1', '_x2', '_y2', '_fillColor']) {
       if (!FabricObject.customProperties.includes(p)) {
         FabricObject.customProperties.push(p);
       }
@@ -329,6 +345,7 @@ export class CanvasEngine {
       '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
       '_sloppiness', '_origGeom',
       '_attachedFrom', '_attachedTo',
+      '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
       '_x1', '_y1', '_x2', '_y2',
     ]));
   }
@@ -731,10 +748,14 @@ export class CanvasEngine {
       new Group(shapes, { selectable: true, evented: true }),
       { _isArrow: true, _arrowHeadStart: headStart, _arrowHeadEnd: headEnd, _arrowType: arrowType,
         _x1: x1, _y1: y1, _x2: x2, _y2: y2,
-        // Transfer attachment IDs from the source line so the group follows
-        // connected shapes when they move (set by snapLineAttachment).
+        // Transfer attachment IDs and anchor offsets from the source line so the group
+        // follows connected shapes when they move (set by snapLineAttachment).
         _attachedFrom: (line as Line & { _attachedFrom?: string })._attachedFrom,
         _attachedTo: (line as Line & { _attachedTo?: string })._attachedTo,
+        _attachedFromAnchorX: (line as Line & { _attachedFromAnchorX?: number })._attachedFromAnchorX,
+        _attachedFromAnchorY: (line as Line & { _attachedFromAnchorY?: number })._attachedFromAnchorY,
+        _attachedToAnchorX: (line as Line & { _attachedToAnchorX?: number })._attachedToAnchorX,
+        _attachedToAnchorY: (line as Line & { _attachedToAnchorY?: number })._attachedToAnchorY,
       },
     );
     ensureObjId(grp);
@@ -1220,7 +1241,7 @@ export class CanvasEngine {
   }): void {
     const o = this.canvas?.getActiveObject();
     if (!o || !this.canvas) return;
-    const ag = o as ArrowGroupExt;
+    const ag = o as AnchoredArrowGroup;
     if (!ag._isArrow) return; // no-op: not an arrow group
 
     const x1 = ag._x1 ?? 0, y1 = ag._y1 ?? 0, x2 = ag._x2 ?? 0, y2 = ag._y2 ?? 0;
@@ -1243,9 +1264,16 @@ export class CanvasEngine {
     // Copy the original group's ID so the merge engine keeps tracking the same object
     (tempLine as FabricObject & { _id?: string })._id =
       (o as FabricObject & { _id?: string })._id;
-    // Preserve attachment IDs so the rebuilt arrow continues following its connected shapes.
-    (tempLine as Line & { _attachedFrom?: string })._attachedFrom = (ag as ArrowGroupExt & { _attachedFrom?: string })._attachedFrom;
-    (tempLine as Line & { _attachedTo?: string })._attachedTo = (ag as ArrowGroupExt & { _attachedTo?: string })._attachedTo;
+    // Preserve attachment IDs and anchor offsets so the rebuilt arrow continues following
+    // its connected shapes at the same border anchor positions.
+    const src = ag as AnchoredArrowGroup;
+    const dst = tempLine as AnchoredLine;
+    dst._attachedFrom = src._attachedFrom;
+    dst._attachedTo = src._attachedTo;
+    dst._attachedFromAnchorX = src._attachedFromAnchorX;
+    dst._attachedFromAnchorY = src._attachedFromAnchorY;
+    dst._attachedToAnchorX = src._attachedToAnchorX;
+    dst._attachedToAnchorY = src._attachedToAnchorY;
 
     this.canvas.remove(o);
     this.buildArrowGroup(tempLine, headStart, headEnd, arrowType);
@@ -1608,7 +1636,19 @@ export class CanvasEngine {
     return new Pattern({ source: patternCanvas, repeat: 'repeat' });
   }
 
-  /** Snap a line's endpoints to nearby shape centers and store attachment IDs. */
+  /**
+   * Snap a line's endpoints to nearby shapes and store attachment IDs + anchor offsets.
+   *
+   * Detection: an endpoint snaps if it is within SNAP_RADIUS of any point on a
+   * shape's axis-aligned bounding box (including the interior — distance is 0 when
+   * the endpoint is inside the shape, ensuring any drop on or near the shape triggers
+   * a snap).
+   *
+   * Snap target: the nearest point on the shape's bounding box perimeter. The
+   * resulting offset from the shape's center is stored in _attachedFrom/ToAnchorX/Y
+   * so that, when the shape is later moved, the connector endpoint tracks the same
+   * relative border position rather than always jumping to the center.
+   */
   private snapLineAttachment(line: FabricObject): void {
     if (!this.canvas) return;
     if (!(line instanceof Line)) return;
@@ -1618,22 +1658,74 @@ export class CanvasEngine {
     const objs = this.canvas.getObjects().filter(
       (o) => o !== line && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
     );
-    const typedLine = line as Line & { _attachedFrom?: string; _attachedTo?: string };
-    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = typedLine as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
+    const typedLine = line as AnchoredLine;
+    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = typedLine as AnchoredLine & { x1?: number; y1?: number; x2?: number; y2?: number };
 
     for (const obj of objs) {
       const center = obj.getCenterPoint();
       const id = (obj as FabricObject & { _id?: string })._id;
       if (!id) continue;
-      if (Math.hypot(center.x - x1, center.y - y1) < SNAP_RADIUS) {
+
+      // Build axis-aligned bounding box in scene coords from the shape's center and
+      // scaled dimensions. scaleX/scaleY default to 1 when not explicitly set.
+      const w = ((obj.get('width') as number) ?? 0) * ((obj.get('scaleX') as number) ?? 1);
+      const h = ((obj.get('height') as number) ?? 0) * ((obj.get('scaleY') as number) ?? 1);
+      const bLeft = center.x - w / 2;
+      const bRight = center.x + w / 2;
+      const bTop = center.y - h / 2;
+      const bBottom = center.y + h / 2;
+
+      // Distance from a point to the AABB (0 when the point is inside the box).
+      const distToBox = (px: number, py: number): number => {
+        const cx = Math.max(bLeft, Math.min(bRight, px));
+        const cy = Math.max(bTop, Math.min(bBottom, py));
+        return Math.hypot(px - cx, py - cy);
+      };
+
+      if (distToBox(x1, y1) < SNAP_RADIUS) {
+        const anchor = CanvasEngine.nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
         typedLine._attachedFrom = id;
-        typedLine.set({ x1: center.x, y1: center.y });
+        typedLine._attachedFromAnchorX = anchor.x - center.x;
+        typedLine._attachedFromAnchorY = anchor.y - center.y;
+        typedLine.set({ x1: anchor.x, y1: anchor.y });
       }
-      if (Math.hypot(center.x - x2, center.y - y2) < SNAP_RADIUS) {
+      if (distToBox(x2, y2) < SNAP_RADIUS) {
+        const anchor = CanvasEngine.nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
         typedLine._attachedTo = id;
-        typedLine.set({ x2: center.x, y2: center.y });
+        typedLine._attachedToAnchorX = anchor.x - center.x;
+        typedLine._attachedToAnchorY = anchor.y - center.y;
+        typedLine.set({ x2: anchor.x, y2: anchor.y });
       }
     }
+  }
+
+  /**
+   * Return the nearest point on the perimeter of an axis-aligned bounding box.
+   * If the query point is inside the box it is projected to the nearest edge;
+   * if it is outside, it is clamped to the nearest border point.
+   */
+  private static nearestPointOnBounds(
+    px: number, py: number,
+    left: number, top: number, right: number, bottom: number,
+  ): { x: number; y: number } {
+    const inside = px >= left && px <= right && py >= top && py <= bottom;
+    if (inside) {
+      // Project to the nearest edge.
+      const dLeft = px - left;
+      const dRight = right - px;
+      const dTop = py - top;
+      const dBottom = bottom - py;
+      const minD = Math.min(dLeft, dRight, dTop, dBottom);
+      if (minD === dLeft) return { x: left, y: py };
+      if (minD === dRight) return { x: right, y: py };
+      if (minD === dTop) return { x: px, y: top };
+      return { x: px, y: bottom };
+    }
+    // Clamp to the nearest point on the perimeter.
+    return {
+      x: Math.max(left, Math.min(right, px)),
+      y: Math.max(top, Math.min(bottom, py)),
+    };
   }
 
   /** When a shape is moved, update the endpoints of any Line or arrow Group attached to it. */
@@ -1650,28 +1742,45 @@ export class CanvasEngine {
 
     for (const obj of this.canvas.getObjects()) {
       if (obj instanceof Line) {
-        const attached = obj as Line & { _attachedFrom?: string; _attachedTo?: string };
+        const attached = obj as AnchoredLine;
         if (attached._attachedFrom === id) {
-          attached.set({ x1: center.x, y1: center.y });
+          attached.set({
+            x1: center.x + (attached._attachedFromAnchorX ?? 0),
+            y1: center.y + (attached._attachedFromAnchorY ?? 0),
+          });
           attached.setCoords();
           changed = true;
         }
         if (attached._attachedTo === id) {
-          attached.set({ x2: center.x, y2: center.y });
+          attached.set({
+            x2: center.x + (attached._attachedToAnchorX ?? 0),
+            y2: center.y + (attached._attachedToAnchorY ?? 0),
+          });
           attached.setCoords();
           changed = true;
         }
       } else {
-        const ag = obj as ArrowGroupExt & { _attachedFrom?: string; _attachedTo?: string };
+        const ag = obj as AnchoredArrowGroup;
         if (!ag._isArrow) continue;
         let x1 = ag._x1 ?? 0;
         let y1 = ag._y1 ?? 0;
         let x2 = ag._x2 ?? 0;
         let y2 = ag._y2 ?? 0;
         let needsRebuild = false;
-        if (ag._attachedFrom === id) { x1 = center.x; y1 = center.y; needsRebuild = true; }
-        if (ag._attachedTo === id) { x2 = center.x; y2 = center.y; needsRebuild = true; }
-        if (needsRebuild) { arrowsToRebuild.push({ grp: obj, x1, y1, x2, y2 }); changed = true; }
+        if (ag._attachedFrom === id) {
+          x1 = center.x + (ag._attachedFromAnchorX ?? 0);
+          y1 = center.y + (ag._attachedFromAnchorY ?? 0);
+          needsRebuild = true;
+        }
+        if (ag._attachedTo === id) {
+          x2 = center.x + (ag._attachedToAnchorX ?? 0);
+          y2 = center.y + (ag._attachedToAnchorY ?? 0);
+          needsRebuild = true;
+        }
+        if (needsRebuild) {
+          arrowsToRebuild.push({ grp: obj, x1, y1, x2, y2 });
+          changed = true;
+        }
       }
     }
 
@@ -1689,14 +1798,14 @@ export class CanvasEngine {
   /**
    * Rebuild an arrow Group with updated endpoint coordinates without changing
    * the canvas selection (used when a connected shape is being moved).
-   * Preserves the group's _id, _attachedFrom, and _attachedTo.
+   * Preserves the group's _id, _attachedFrom, _attachedTo, and anchor offsets.
    */
   private rebuildArrowForMove(
     grp: FabricObject,
     x1: number, y1: number, x2: number, y2: number,
   ): void {
     if (!this.canvas) return;
-    const ag = grp as ArrowGroupExt & { _attachedFrom?: string; _attachedTo?: string };
+    const ag = grp as AnchoredArrowGroup;
 
     const headStart = (ag._arrowHeadStart ?? 'none') as 'none' | 'open' | 'triangle' | 'triangle-outline';
     const headEnd   = (ag._arrowHeadEnd   ?? 'open') as 'none' | 'open' | 'triangle' | 'triangle-outline';
@@ -1713,10 +1822,15 @@ export class CanvasEngine {
       stroke, strokeWidth, strokeDashArray,
       opacity, selectable: false, evented: false,
     });
-    // Preserve the group's ID and attachment references.
+    // Preserve the group's ID, attachment IDs, and anchor offsets.
     (tempLine as FabricObject & { _id?: string })._id = (grp as FabricObject & { _id?: string })._id;
-    (tempLine as Line & { _attachedFrom?: string })._attachedFrom = ag._attachedFrom;
-    (tempLine as Line & { _attachedTo?: string })._attachedTo = ag._attachedTo;
+    const tl = tempLine as AnchoredLine;
+    tl._attachedFrom = ag._attachedFrom;
+    tl._attachedTo = ag._attachedTo;
+    tl._attachedFromAnchorX = ag._attachedFromAnchorX;
+    tl._attachedFromAnchorY = ag._attachedFromAnchorY;
+    tl._attachedToAnchorX = ag._attachedToAnchorX;
+    tl._attachedToAnchorY = ag._attachedToAnchorY;
 
     // Save and restore active selection so dragging the connected shape is not interrupted.
     const prevActive = this.canvas.getActiveObject();

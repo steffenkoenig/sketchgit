@@ -335,6 +335,7 @@ describe('CanvasEngine – serialisation', () => {
       '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
       '_sloppiness', '_origGeom',
       '_attachedFrom', '_attachedTo',
+      '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
       '_x1', '_y1', '_x2', '_y2',
     ]);
     expect(mockCanvasInstance.toJSON).not.toHaveBeenCalled();
@@ -1285,6 +1286,10 @@ describe('CanvasEngine – new custom properties serialisation', () => {
     expect(props).toContain('_arrowHeadEnd');
     expect(props).toContain('_arrowType');
     expect(props).toContain('_fillPattern');
+    expect(props).toContain('_attachedFromAnchorX');
+    expect(props).toContain('_attachedFromAnchorY');
+    expect(props).toContain('_attachedToAnchorX');
+    expect(props).toContain('_attachedToAnchorY');
   });
 });
 
@@ -1799,5 +1804,136 @@ describe('CanvasEngine – connector snapping and following', () => {
     expect(testLine._attachedFrom).not.toBe('arrow-nearby');
     // Real shape at center (25, 5) is within 30px of (5, 5) → should be snapped.
     expect(testLine._attachedFrom).toBe('real-shape');
+  });
+
+  // ── Border-snapping tests ──────────────────────────────────────────────────
+
+  it('snapLineAttachment snaps endpoint near the border (not just center)', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    // Shape: 100×80 at (100, 100) → center (140, 130), bbox [100,100,180,160].
+    // Place line endpoint 10px outside the right edge at (190, 130):
+    // dist to bbox = 10 < SNAP_RADIUS=30 → should snap.
+    const shape = makeFabricObject({ left: 100, top: 100, width: 80, height: 60, _id: 'border-shape' });
+    mockCanvasInstance.getObjects.mockReturnValue([shape]);
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const testLine = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 190, y1: 130, x2: 300, y2: 300, _id: 'my-line' }),
+    );
+
+    const eng = engine as unknown as { snapLineAttachment: (l: unknown) => void };
+    eng.snapLineAttachment(testLine);
+
+    expect(testLine._attachedFrom).toBe('border-shape');
+  });
+
+  it('snapLineAttachment snaps endpoint inside a shape to nearest border', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    // Shape: 100×80 at (100, 100). Endpoint at (150, 115) is inside the shape.
+    // dist to bbox = 0 < 30 → snaps.
+    const shape = makeFabricObject({ left: 100, top: 100, width: 100, height: 80, _id: 'inner-shape' });
+    mockCanvasInstance.getObjects.mockReturnValue([shape]);
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const testLine = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 150, y1: 115, x2: 0, y2: 0, _id: 'my-line-2' }),
+    );
+
+    const eng = engine as unknown as { snapLineAttachment: (l: unknown) => void };
+    eng.snapLineAttachment(testLine);
+
+    expect(testLine._attachedFrom).toBe('inner-shape');
+    // Endpoint should be projected to the nearest edge.
+    // center=(150,140), bbox=[100,100,200,180]. Nearest edge to (150,115) is top (y=100), dist=15.
+    expect(testLine.x1).toBe(150); // x stays (projected to top edge)
+    expect(testLine.y1).toBe(100); // projected to top edge
+  });
+
+  it('snapLineAttachment stores anchor offset from shape center', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    // Shape: 100×80 at (0, 0) → center (50, 40), bbox [0,0,100,80].
+    // Endpoint at (110, 40): 10px right of the right edge.
+    // Nearest border point = (100, 40), offset from center = (+50, 0).
+    const shape = makeFabricObject({ left: 0, top: 0, width: 100, height: 80, _id: 'anchor-shape' });
+    mockCanvasInstance.getObjects.mockReturnValue([shape]);
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const testLine = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 0, y1: 0, x2: 110, y2: 40, _id: 'anchor-line' }),
+    );
+
+    const eng = engine as unknown as { snapLineAttachment: (l: unknown) => void };
+    eng.snapLineAttachment(testLine);
+
+    // x2/y2 should snap to nearest border point (100, 40).
+    expect(testLine.x2).toBe(100);
+    expect(testLine.y2).toBe(40);
+    // Anchor offset from center (50, 40) → (50, 0).
+    expect(testLine._attachedToAnchorX).toBe(50);
+    expect(testLine._attachedToAnchorY).toBe(0);
+  });
+
+  it('updateAttachedLines uses anchor offset to place line endpoint on shape border', () => {
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+
+    // Shape moves to center (200, 150).
+    const shape = makeFabricObject({ _id: 'offset-shape', left: 150, top: 110, width: 100, height: 80 });
+    // line end is attached to 'offset-shape' with anchor (+50, 0) (right border).
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const attachedLine = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 0, y1: 0, x2: 0, y2: 0, _id: 'offset-line',
+        _attachedTo: 'offset-shape',
+        _attachedToAnchorX: 50, _attachedToAnchorY: 0 }),
+    );
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape, attachedLine]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+
+    canvasEventHandlers['object:moving']?.({ target: shape });
+
+    // center of shape = (150 + 50, 110 + 40) = (200, 150). Endpoint = center + anchor = (250, 150).
+    const setArgs = (attachedLine.set as ReturnType<typeof vi.fn>).mock.calls
+      .find((args: unknown[]) => typeof args[0] === 'object' && 'x2' in (args[0] as object));
+    expect(setArgs?.[0]).toMatchObject({ x2: 250, y2: 150 });
+    expect(onBroadcastDraw).toHaveBeenCalled();
+  });
+
+  // ── nearestPointOnBounds helper ────────────────────────────────────────────
+
+  it('nearestPointOnBounds: point outside returns clamped border point', () => {
+    const eng = CanvasEngine as unknown as {
+      nearestPointOnBounds: (px: number, py: number, l: number, t: number, r: number, b: number) => { x: number; y: number };
+    };
+    // Point to the right of the box.
+    expect(eng.nearestPointOnBounds(120, 50, 0, 0, 100, 100)).toEqual({ x: 100, y: 50 });
+    // Point above the box.
+    expect(eng.nearestPointOnBounds(50, -20, 0, 0, 100, 100)).toEqual({ x: 50, y: 0 });
+    // Point to the bottom-right corner region.
+    expect(eng.nearestPointOnBounds(110, 110, 0, 0, 100, 100)).toEqual({ x: 100, y: 100 });
+  });
+
+  it('nearestPointOnBounds: point inside is projected to nearest edge', () => {
+    const eng = CanvasEngine as unknown as {
+      nearestPointOnBounds: (px: number, py: number, l: number, t: number, r: number, b: number) => { x: number; y: number };
+    };
+    // Closest to top edge (y=0, dist=5).
+    expect(eng.nearestPointOnBounds(50, 5, 0, 0, 100, 100)).toEqual({ x: 50, y: 0 });
+    // Closest to left edge (x=0, dist=3).
+    expect(eng.nearestPointOnBounds(3, 50, 0, 0, 100, 100)).toEqual({ x: 0, y: 50 });
+    // Closest to right edge (x=100, dist=4).
+    expect(eng.nearestPointOnBounds(96, 50, 0, 0, 100, 100)).toEqual({ x: 100, y: 50 });
+    // Closest to bottom edge (y=100, dist=2).
+    expect(eng.nearestPointOnBounds(50, 98, 0, 0, 100, 100)).toEqual({ x: 50, y: 100 });
   });
 });
