@@ -1,7 +1,7 @@
 # Bug Summary
 
 This registry records all confirmed bugs found by systematic scanning of the SketchGit codebase.
-Last updated: 2026-03-13 (fifth scan pass).
+Last updated: 2026-03-14 (sixth scan pass – targeted investigation of arrow-snap crash).
 
 ---
 
@@ -37,6 +37,8 @@ Resolved reports are archived in [`done/`](./done/).
 | [BUG-016](./BUG-016_reset-password-routes-not-rate-limited.md) | Medium | `proxy.ts` | `forgot-password` and `reset-password` routes absent from rate-limiter matcher |
 | [BUG-017](./BUG-017_rate-limit-429-uses-wrong-error-format.md) | Low | `proxy.ts` | 429 rate-limit response uses `{ error }` not `{ code, message }` |
 | [BUG-018](./BUG-018_openapi-export-format-missing-pdf.md) | Low | `lib/api/openapi.ts` | OpenAPI export `format` enum missing `"pdf"` value |
+| [BUG-020](./BUG-020_resnap-on-modified-missing-reentrancy-guard-infinite-arrow-rebuild.md) | Critical | `lib/sketchgit/canvas/canvasEngine.ts` | Missing re-entrancy guard in `reSnapOnModified`; drops arrow near shape → hundreds of arrows + tab crash |
+| [BUG-021](./BUG-021_stale-attachment-raf-not-cancelled-after-resnap-rebuild.md) | Low | `lib/sketchgit/canvas/canvasEngine.ts` | Stale `scheduleAttachmentUpdate` rAF not cancelled after snap rebuild |
 
 
 ---
@@ -121,6 +123,44 @@ The timeline SVG renders a clickable label for each branch. When clicked, `Timel
 **Severity**: Low
 
 `buildOpenApiSpec()` in `lib/api/openapi.ts` defines the `/api/rooms/{roomId}/export` `format` parameter inline as `{ "type": "string", "enum": ["png", "svg"] }` (line 304). The actual `ExportQuerySchema` accepts `["png", "svg", "pdf"]` and the route returns `application/pdf` for `format=pdf`. The 200-response content map also omits `application/pdf`. The `ExportQuery` component is generated correctly from the Zod schema but the path-level parameter bypasses it with a hardcoded schema, so the discrepancy is invisible until the route is tested directly.
+
+---
+
+### BUG-020 – `reSnapOnModified` missing re-entrancy guard causes infinite arrow rebuild loop
+
+**Severity**: Critical
+
+When a user drops an arrow group near a shape, `object:modified` fires and calls
+`reSnapOnModified`, which detects the snap, calls `rebuildArrowForMove` (removes the original
+group, adds a new snapped group), then calls `canvas.setActiveObject(newGroup)`. In Fabric.js
+v7, `setActiveObject` internally calls `discardActiveObject`, which calls `endCurrentTransform`
+if `this._currentTransform` is not yet cleared at the moment `object:modified` fired. This
+fires a second `object:modified` event for the already-removed original arrow. Because there
+is no re-entrancy guard, the handler re-enters: `canvas.remove(arrowA)` becomes a no-op
+(already removed), but `buildArrowGroup` unconditionally adds a **new** arrow group to the
+canvas without removing the one added in the previous iteration. The snap check always
+succeeds (snapped endpoints are always within `SNAP_RADIUS`), so the loop continues until
+a call-stack overflow crashes the tab or hundreds of overlapping arrow objects exhaust the
+renderer. The fix is to add a `private _reSnapping = false` guard flag and check it at the
+entry of the `object:modified` handler or `reSnapOnModified`, wrapped in `try/finally`.
+
+---
+
+### BUG-021 – Stale `scheduleAttachmentUpdate` rAF not cancelled after snap rebuild
+
+**Severity**: Low
+
+The last `object:moving` event before a mouse release queues a `requestAnimationFrame`
+callback via `scheduleAttachmentUpdate`. When `object:modified` fires synchronously (before
+the rAF runs), `reSnapOnModified` rebuilds the arrow but never cancels `_attachmentRafId`
+or resets `_attachmentRafTarget`. The rAF fires on the next frame and calls
+`updateAttachedLines` with a reference to the already-removed original arrow group. In normal
+usage this is a harmless no-op (arrow groups are never attachment targets for other connectors),
+but in an edge case where a connector carries `_attachedFrom === removedArrow._id`, an
+unexpected visual rebuild occurs one frame after the interaction completes. The fix is to
+call `cancelAnimationFrame(this._attachmentRafId)` and reset both rAF fields at the start
+of the arrow-group branch of `reSnapOnModified`, mirroring the pattern already used in
+`destroy()`.
 
 ---
 

@@ -2601,4 +2601,91 @@ describe('CanvasEngine – connector snapping and following', () => {
       .find((args: unknown[]) => typeof args[0] === 'object' && 'x2' in (args[0] as object));
     expect(setArgs?.[0]).toMatchObject({ x2: 200, y2: 140 });
   });
+
+  // ── BUG-020: re-entrancy guard on object:modified prevents infinite rebuild ─
+
+  it('re-entrant object:modified during arrow snap does NOT add extra arrows (BUG-020)', () => {
+    // Reproduces the crash: Fabric.js v7 can fire object:modified a second time
+    // (for the already-removed arrow) when setActiveObject → discardActiveObject
+    // → endCurrentTransform re-fires the event.  Without the _reSnapping guard
+    // the remove() becomes a no-op but buildArrowGroup still runs, accumulating
+    // hundreds of arrows and eventually crashing the tab.
+    const { engine } = makeEngine();
+    engine.init();
+
+    const shape = makeFabricObject({ _id: 'reen-shape', left: 0, top: 0, width: 10, height: 10 });
+    const arrowGroup = makeFabricObject({
+      _isArrow: true, _id: 'reen-arrow',
+      _x1: 0, _y1: 0, _x2: 100, _y2: 100,
+      _gcx: 50, _gcy: 50,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+      getObjects: vi.fn().mockReturnValue([]),
+    });
+    // Simulate the group having been dragged so x1/y1 snaps to the shape.
+    (arrowGroup.getCenterPoint as ReturnType<typeof vi.fn>).mockReturnValue({ x: 55, y: 55 });
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape, arrowGroup]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(arrowGroup);
+
+    // Simulate Fabric.js v7 re-firing object:modified for the ALREADY-REMOVED
+    // old arrow when setActiveObject triggers discardActiveObject → endCurrentTransform.
+    // This is the exact re-entrant scenario that caused the "hundreds of arrows" crash.
+    // Use mockImplementationOnce so the custom behaviour is discarded after a single
+    // call and cannot leak into subsequent tests via the shared mockCanvasInstance.
+    mockCanvasInstance.setActiveObject.mockImplementationOnce(() => {
+      canvasEventHandlers['object:modified']?.({ target: arrowGroup });
+    });
+
+    (Group as unknown as ReturnType<typeof vi.fn>).mockClear();
+    mockCanvasInstance.add.mockClear();
+    mockCanvasInstance.remove.mockClear();
+
+    // Fire object:modified once (as Fabric.js does on mouse-up).
+    canvasEventHandlers['object:modified']?.({ target: arrowGroup });
+
+    // Only ONE Group should have been constructed (one rebuild, not two).
+    expect((Group as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  });
+
+  // ── BUG-021: pending rAF cancelled on snap rebuild ────────────────────────
+
+  it('object:modified snap rebuild cancels any pending scheduleAttachmentUpdate rAF (BUG-021)', () => {
+    // If a rAF was queued by the last object:moving event before mouse-up, and then
+    // object:modified fires and rebuilds the arrow, the stale rAF must be cancelled
+    // so it cannot run with a reference to the removed old arrow group.
+    const { engine } = makeEngine();
+    engine.init();
+
+    // Patch cancelAnimationFrame on the engine's window to detect calls.
+    const cancelRaf = vi.spyOn(globalThis, 'cancelAnimationFrame');
+
+    const shape = makeFabricObject({ _id: 'raf-shape', left: 0, top: 0, width: 10, height: 10 });
+    const arrowGroup = makeFabricObject({
+      _isArrow: true, _id: 'raf-arrow',
+      _x1: 0, _y1: 0, _x2: 100, _y2: 100,
+      _gcx: 50, _gcy: 50,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+      getObjects: vi.fn().mockReturnValue([]),
+    });
+    (arrowGroup.getCenterPoint as ReturnType<typeof vi.fn>).mockReturnValue({ x: 55, y: 55 });
+
+    // Queue a rAF via object:moving so that _attachmentRafId is non-null.
+    mockCanvasInstance.getObjects.mockReturnValue([shape, arrowGroup]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(arrowGroup);
+    canvasEventHandlers['object:moving']?.({ target: shape });
+
+    // Verify that a rAF was scheduled (synchronous RAF stub fires immediately in
+    // tests, so _attachmentRafId may already be null — simulate by setting it directly).
+    const eng = engine as unknown as { _attachmentRafId: number | null };
+    eng._attachmentRafId = 42; // inject a fake pending rAF id
+
+    cancelRaf.mockClear();
+
+    // Now fire object:modified with the snapping arrow — should cancel the rAF.
+    canvasEventHandlers['object:modified']?.({ target: arrowGroup });
+
+    expect(cancelRaf).toHaveBeenCalledWith(42);
+
+    cancelRaf.mockRestore();
+  });
 });
