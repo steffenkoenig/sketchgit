@@ -114,6 +114,13 @@ export class CanvasEngine {
   /** The most-recently-moved shape waiting for a connector-follow update. */
   private _attachmentRafTarget: FabricObject | null = null;
 
+  // ── Re-entrancy guard for object:modified snap logic ──────────────────────
+  /** True while reSnapOnModified is running. Prevents Fabric.js v7's
+   *  setActiveObject → discardActiveObject → endCurrentTransform from
+   *  re-firing object:modified for the already-removed old arrow group,
+   *  which would cause unbounded arrow accumulation ("hundreds of arrows"). */
+  private _reSnapping = false;
+
   // ── Callbacks provided by the orchestrator ────────────────────────────────
   private readonly onBroadcastDraw: (immediate?: boolean) => void;
   private readonly onBroadcastCursor: (e: { e: MouseEvent }) => void;
@@ -172,11 +179,24 @@ export class CanvasEngine {
     this.canvas.on('mouse:move', (e: TPointerEventInfo) => this.onMouseMove(e));
     this.canvas.on('mouse:up', (e: TPointerEventInfo) => this.onMouseUp(e));
     this.canvas.on('object:modified', (e: { target?: FabricObject }) => {
+      // Guard against re-entrant calls: Fabric.js v7 can re-fire object:modified
+      // for the already-removed arrow group when setActiveObject triggers
+      // discardActiveObject → endCurrentTransform.  Without this guard the
+      // remove() becomes a no-op while buildArrowGroup keeps adding new arrows,
+      // accumulating hundreds of groups and crashing the tab.
+      if (this._reSnapping) return;
       this.pushHistory();
       this.markDirty();
       // Re-run snap so an already-placed line or arrow group can be attached
       // to a shape by moving it next to one (or detached by moving it away).
-      if (e.target) this.reSnapOnModified(e.target);
+      if (e.target) {
+        this._reSnapping = true;
+        try {
+          this.reSnapOnModified(e.target);
+        } finally {
+          this._reSnapping = false;
+        }
+      }
       this.onBroadcastDraw(true);
     });
     this.canvas.on('object:added', (e: { target?: FabricObject }) => { if (e.target) ensureObjId(e.target); });
@@ -2052,6 +2072,13 @@ export class CanvasEngine {
       ag._y2 = snapY2;
 
       if (didSnap) {
+        // Cancel any pending attachment rAF so it cannot run with a stale
+        // reference to the old arrow group after it has been removed.
+        if (this._attachmentRafId !== null) {
+          cancelAnimationFrame(this._attachmentRafId);
+          this._attachmentRafId = null;
+          this._attachmentRafTarget = null;
+        }
         // Rebuild the arrow at the snapped coordinates.  Track whether the group was
         // active so we can re-select the rebuilt group, preserving selection after snap.
         const wasActive = this.canvas.getActiveObject() === obj;
@@ -2146,6 +2173,12 @@ export class CanvasEngine {
     }
 
     if (didSnapSp) {
+      // Cancel any pending attachment rAF (same reason as for arrow groups above).
+      if (this._attachmentRafId !== null) {
+        cancelAnimationFrame(this._attachmentRafId);
+        this._attachmentRafId = null;
+        this._attachmentRafTarget = null;
+      }
       // Rebuild the sketch path at the snapped coordinates and restore selection.
       const wasActive = this.canvas.getActiveObject() === obj;
       const spId = (sp as FabricObject & { _id?: string })._id;
