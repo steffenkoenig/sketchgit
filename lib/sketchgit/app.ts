@@ -201,13 +201,15 @@ export function createSketchGitApp() {
     setStrokeDash: (type: string) => canvas.setStrokeDash(type as 'solid' | 'dashed' | 'dotted'),
     setBorderRadius: (type: string) => canvas.setBorderRadius(type as 'sharp' | 'rounded'),
     setOpacity: (value: number) => canvas.setOpacity(value),
-    setSloppiness: (type: string) => canvas.setSloppiness(type as 'architect' | 'artist' | 'cartoonist'),
+    setSloppiness: (type: string) => canvas.setSloppiness(type as 'architect' | 'artist' | 'cartoonist' | 'doodle'),
     setFillPattern: (type: string) => canvas.setFillPattern(type as 'filled' | 'striped' | 'crossed'),
     bringToFront: () => canvas.bringToFront(),
     bringForward: () => canvas.bringForward(),
     sendBackward: () => canvas.sendBackward(),
     sendToBack: () => canvas.sendToBack(),
     setObjectLink: (url: string) => canvas.setObjectLink(url),
+    // Mermaid diagram tool
+    updateMermaidCode: (code: string) => canvas.updateMermaidCode(code),
     setArrowHeads: (start: string, end: string) => canvas.setArrowHeads(
       start as 'none' | 'open' | 'triangle' | 'triangle-outline',
       end as 'none' | 'open' | 'triangle' | 'triangle-outline',

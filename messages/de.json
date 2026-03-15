@@ -43,6 +43,7 @@
     "sloppyArchitect": "Architekt (sauber)",
     "sloppyArtist": "Künstler (leicht rau)",
     "sloppyCartoonist": "Cartoonist (rau)",
+    "sloppyDoodle": "Doodle (mit Stift gezeichnet)",
     "arrowType": "Pfeiltyp",
     "arrowSharp": "Gerader Pfeil",
     "arrowCurved": "Geschwungener Pfeil",
@@ -61,6 +62,10 @@
     "sendBackward": "Eine Ebene nach hinten",
     "sendToBack": "In Hintergrund",
     "shapeProperties": "Formeigenschaften",
+    "mermaid": "Mermaid (M)",
+    "mermaidCode": "Diagramm-Code",
+    "mermaidPlaceholder": "graph TD\n    A[Start] --> B[Ende]",
+    "mermaidRender": "Diagramm rendern",
     "linkPlaceholder": "https://…"
   },
   "topbar": {
@@ -204,7 +209,8 @@
     "fontFamily": "Schriftart",
     "opacity": "Deckkraft",
     "flipX": "Spiegeln X",
-    "flipY": "Spiegeln Y"
+    "flipY": "Spiegeln Y",
+    "_mermaidCode": "Mermaid-Diagramm-Code"
   },
   "toast": {
     "committed": "✓ Committet: {message}",

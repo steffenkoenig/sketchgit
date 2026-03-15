@@ -91,6 +91,12 @@ vi.mock('fabric', () => ({
   Polygon: vi.fn(function FabricPolygon(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   Group: vi.fn(function FabricGroup(_items: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   FabricObject: class FabricObject { static customProperties: string[] = []; },
+  FabricImage: {
+    fromURL: vi.fn(async (_url: string) => ({
+      ...makeFabricObject(),
+      setSrc: vi.fn().mockResolvedValue(undefined),
+    })),
+  },
   // Fabric v7: Point is used by zoomToPoint; provide a minimal implementation.
   Point: vi.fn(function MockPoint(this: { x: number; y: number }, x: number, y: number) {
     this.x = x; this.y = y;
@@ -132,6 +138,7 @@ function setupDom() {
     <button id="sloppy-architect" class="on"></button>
     <button id="sloppy-artist"></button>
     <button id="sloppy-cartoonist"></button>
+    <button id="sloppy-doodle"></button>
     <button id="fp-filled" class="on"></button>
     <button id="fp-striped"></button>
     <button id="fp-crossed"></button>
@@ -342,6 +349,7 @@ describe('CanvasEngine – serialisation', () => {
       '_attachedFrom', '_attachedTo',
       '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
       '_x1', '_y1', '_x2', '_y2',
+      '_isMermaid', '_mermaidCode',
     ]);
     expect(mockCanvasInstance.toJSON).not.toHaveBeenCalled();
   });
@@ -754,6 +762,50 @@ describe('CanvasEngine – mouse events', () => {
     expect(mockCanvasInstance.selection).toBe(false);
   });
 
+  it('mouse:down on an existing object with a drawing tool does NOT create a new shape', () => {
+    // Regression: when a drawing tool was active and the user clicked on an
+    // existing object (to move/resize it), a new shape was incorrectly created.
+    // The fix: if e.target is set (and tool !== eraser), onMouseDown returns early.
+    const existingObj = makeFabricObject();
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    (Rect as unknown as ReturnType<typeof vi.fn>).mockClear();
+    mockCanvasInstance.add.mockClear();
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[] };
+    const stackLengthBefore = e.undoStack.length;
+    // Fire mouse:down with a target (clicking on existing object)
+    canvasEventHandlers['mouse:down']?.({
+      e: makeMouseEvent('mousedown'),
+      scenePoint: defaultScenePoint,
+      target: existingObj,
+    });
+    expect(Rect).not.toHaveBeenCalled();
+    expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+    // pushHistory() must also be skipped so the undo stack is not polluted
+    expect(e.undoStack.length).toBe(stackLengthBefore);
+  });
+
+  it('mouse:down on an existing object with "eraser" tool STILL sets isDrawing (eraser acts on objects)', () => {
+    // The eraser must NOT be affected by the e.target guard — its whole purpose
+    // is to act on existing objects.
+    const existingObj = makeFabricObject();
+    (existingObj.containsPoint as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    mockCanvasInstance.getObjects.mockReturnValue([existingObj]);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('eraser');
+    // mousedown over an existing object
+    canvasEventHandlers['mouse:down']?.({
+      e: makeMouseEvent('mousedown'),
+      scenePoint: defaultScenePoint,
+      target: existingObj,
+    });
+    // mousemove should erase the object because isDrawing was set
+    canvasEventHandlers['mouse:move']?.({ e: makeMouseEvent('mousemove'), scenePoint: defaultScenePoint });
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(existingObj);
+  });
+
   it('mouse:wheel zooms the canvas', () => {
     const { engine } = makeEngine();
     engine.init();
@@ -1109,6 +1161,53 @@ describe('CanvasEngine – border radius', () => {
     engine.setBorderRadius('rounded');
     engine.setBorderRadius('sharp');
     expect(engine.borderRadiusEnabled).toBe(false);
+  });
+
+  it('setBorderRadius("rounded") on a sketch rect path updates _origGeom rx and regenerates path', () => {
+    const origGeom = JSON.stringify({ type: 'rect', left: 0, top: 0, width: 100, height: 80, rx: 3 });
+    const sketchPath = makeFabricObject({
+      type: 'path',
+      _origGeom: origGeom,
+      _sloppiness: 'artist',
+      _id: 'obj_test1',
+    });
+    mockCanvasInstance.getActiveObject.mockReturnValue(sketchPath);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setBorderRadius('rounded');
+    // _origGeom should have rx updated to 12
+    const updatedGeom = JSON.parse((sketchPath as Record<string, unknown>)._origGeom as string) as { rx: number };
+    expect(updatedGeom.rx).toBe(12);
+    expect(engine.borderRadiusEnabled).toBe(true);
+    expect(document.getElementById('br-rounded')!.classList.contains('on')).toBe(true);
+  });
+
+  it('setBorderRadius("sharp") on a sketch rect path reverts rx to 3', () => {
+    const origGeom = JSON.stringify({ type: 'rect', left: 0, top: 0, width: 100, height: 80, rx: 12 });
+    const sketchPath = makeFabricObject({
+      type: 'path',
+      _origGeom: origGeom,
+      _sloppiness: 'cartoonist',
+      _id: 'obj_test2',
+    });
+    mockCanvasInstance.getActiveObject.mockReturnValue(sketchPath);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setBorderRadius('sharp');
+    const updatedGeom = JSON.parse((sketchPath as Record<string, unknown>)._origGeom as string) as { rx: number };
+    expect(updatedGeom.rx).toBe(3);
+    expect(engine.borderRadiusEnabled).toBe(false);
+  });
+
+  it('setBorderRadius ignores non-rect sketch paths (e.g. ellipse origGeom)', () => {
+    const origGeom = JSON.stringify({ type: 'ellipse', cx: 50, cy: 40, rx: 50, ry: 40 });
+    const sketchPath = makeFabricObject({ type: 'path', _origGeom: origGeom, _sloppiness: 'artist' });
+    mockCanvasInstance.getActiveObject.mockReturnValue(sketchPath);
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+    engine.setBorderRadius('rounded');
+    // Should not call onBroadcastDraw (no change for non-rect origGeom)
+    expect(onBroadcastDraw).not.toHaveBeenCalled();
   });
 });
 
@@ -1521,6 +1620,17 @@ describe('CanvasEngine – sloppiness for all shapes', () => {
     engine.setSloppiness('architect');
     expect(document.getElementById('sloppy-architect')!.classList.contains('on')).toBe(true);
   });
+
+  it('setSloppiness("doodle") activates only the doodle button', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setSloppiness('doodle');
+    expect(document.getElementById('sloppy-doodle')!.classList.contains('on')).toBe(true);
+    expect(document.getElementById('sloppy-architect')!.classList.contains('on')).toBe(false);
+    expect(document.getElementById('sloppy-artist')!.classList.contains('on')).toBe(false);
+    expect(document.getElementById('sloppy-cartoonist')!.classList.contains('on')).toBe(false);
+    expect(engine.sloppiness).toBe('doodle');
+  });
 });
 
 describe('CanvasEngine – sketch path helpers', () => {
@@ -1531,12 +1641,50 @@ describe('CanvasEngine – sketch path helpers', () => {
     expect(fn('obj_abc123')).toBeGreaterThanOrEqual(0);
   });
 
-  it('sloppinessAmplitude: 0 for architect, positive for artist, larger for cartoonist', () => {
+  it('sloppinessAmplitude: 0 for architect, positive for artist, larger for cartoonist, between artist and cartoonist for doodle', () => {
     const eng = (CanvasEngine as unknown as Record<string, unknown>);
     const fn = eng.sloppinessAmplitude as (s: string, sw: number) => number;
     expect(fn('architect', 2)).toBe(0);
     expect(fn('artist', 2)).toBeGreaterThan(0);
-    expect(fn('cartoonist', 2)).toBeGreaterThan(fn('artist', 2));
+    expect(fn('doodle', 2)).toBeGreaterThan(fn('artist', 2));
+    expect(fn('cartoonist', 2)).toBeGreaterThan(fn('doodle', 2));
+  });
+
+  it('makeSketchyPath: rounded rect path contains Q commands and closes', () => {
+    const eng = (CanvasEngine as unknown as Record<string, unknown>);
+    const engine = new CanvasEngine(vi.fn(), vi.fn());
+    const makeSketchyPath = (engine as unknown as Record<string, unknown>).makeSketchyPath as
+      (geom: Record<string, unknown>, amp: number, seed: number) => string;
+    const geom = { type: 'rect', left: 10, top: 10, width: 100, height: 80, rx: 12 };
+    const path = makeSketchyPath.call(engine, geom, 3, 42);
+    expect(path).toContain('Q');
+    expect(path).toContain('L');
+    expect(path.trim().endsWith('Z')).toBe(true);
+  });
+
+  it('makeSketchyPath: sharp rect path (rx=0) uses only Q commands to connect corners', () => {
+    const engine = new CanvasEngine(vi.fn(), vi.fn());
+    const makeSketchyPath = (engine as unknown as Record<string, unknown>).makeSketchyPath as
+      (geom: Record<string, unknown>, amp: number, seed: number) => string;
+    const geom = { type: 'rect', left: 10, top: 10, width: 100, height: 80, rx: 0 };
+    const path = makeSketchyPath.call(engine, geom, 3, 42);
+    expect(path).toContain('Q');
+    expect(path).not.toContain('L');
+    expect(path.trim().endsWith('Z')).toBe(true);
+  });
+
+  it('getObjectShapeType: sketch path with rect _origGeom returns "rect"', () => {
+    const engine = new CanvasEngine(vi.fn(), vi.fn());
+    const getObjectShapeType = (engine as unknown as Record<string, unknown>).getObjectShapeType as
+      (o: Record<string, unknown>) => string;
+    const sketchRect = { type: 'path', _origGeom: JSON.stringify({ type: 'rect', left: 0, top: 0, width: 100, height: 80, rx: 3 }) };
+    expect(getObjectShapeType.call(engine, sketchRect)).toBe('rect');
+    const sketchEllipse = { type: 'path', _origGeom: JSON.stringify({ type: 'ellipse', cx: 50, cy: 40, rx: 50, ry: 40 }) };
+    expect(getObjectShapeType.call(engine, sketchEllipse)).toBe('ellipse');
+    const sketchLine = { type: 'path', _origGeom: JSON.stringify({ type: 'line', x1: 0, y1: 0, x2: 100, y2: 100 }) };
+    expect(getObjectShapeType.call(engine, sketchLine)).toBe('line');
+    const penPath = { type: 'path' };  // no _origGeom → freehand pen
+    expect(getObjectShapeType.call(engine, penPath)).toBe('pen');
   });
 });
 

@@ -43,6 +43,7 @@
     "sloppyArchitect": "Architect (clean)",
     "sloppyArtist": "Artist (slightly rough)",
     "sloppyCartoonist": "Cartoonist (rough)",
+    "sloppyDoodle": "Doodle (pen drawn)",
     "arrowType": "Arrow Type",
     "arrowSharp": "Sharp arrow",
     "arrowCurved": "Curved arrow",
@@ -61,6 +62,10 @@
     "sendBackward": "Send Backward",
     "sendToBack": "Send to Back",
     "shapeProperties": "Shape properties",
+    "mermaid": "Mermaid (M)",
+    "mermaidCode": "Diagram code",
+    "mermaidPlaceholder": "graph TD\n    A[Start] --> B[End]",
+    "mermaidRender": "Render Diagram",
     "linkPlaceholder": "https://…"
   },
   "topbar": {
@@ -204,7 +209,8 @@
     "fontFamily": "Font family",
     "opacity": "Opacity",
     "flipX": "Flip X",
-    "flipY": "Flip Y"
+    "flipY": "Flip Y",
+    "_mermaidCode": "Mermaid diagram code"
   },
   "toast": {
     "committed": "✓ Committed: {message}",

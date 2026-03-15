@@ -18,12 +18,13 @@
  */
 
 import {
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricObject, Point, Pattern,
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern,
 } from 'fabric';
 import type { TPointerEventInfo, XY } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
 import { logger } from '../logger';
+import { renderMermaidToDataUrl } from './mermaidRenderer';
 
 /** Shared type for arrow Group objects carrying endpoint + style metadata. */
 type ArrowGroupExt = FabricObject & {
@@ -67,11 +68,13 @@ export class CanvasEngine {
   strokeDashType: 'solid' | 'dashed' | 'dotted' = 'solid';
   borderRadiusEnabled = false;
   opacityValue = 100;
-  sloppiness: 'architect' | 'artist' | 'cartoonist' = 'architect';
+  sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle' = 'architect';
   fillPattern: 'filled' | 'striped' | 'crossed' = 'filled';
   arrowHeadStart: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'none';
   arrowHeadEnd: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'open';
   arrowType: 'sharp' | 'curved' | 'elbow' = 'sharp';
+  /** Current canvas theme – used for mermaid diagram rendering. */
+  canvasTheme: 'dark' | 'default' = 'dark';
 
   // ── Drawing interaction state ─────────────────────────────────────────────
   private isDrawing = false;
@@ -94,6 +97,9 @@ export class CanvasEngine {
 
   // ── P067: Remote object locks (clientId → { objectIds, color, origStyles }) ─
   private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number | undefined; strokeDashArray: number[] | undefined }> }>();
+
+  // ── Mermaid: pending placement position when creating a new mermaid object ─
+  private pendingMermaidPos: { x: number; y: number } | null = null;
 
   // ── P085: Pinch-to-zoom touch state ──────────────────────────────────────
   private touchStartDist: number | null = null;
@@ -145,7 +151,7 @@ export class CanvasEngine {
     if (!FabricObject.customProperties.includes('_isArrow')) {
       FabricObject.customProperties.push('_isArrow');
     }
-    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY', '_x1', '_y1', '_x2', '_y2', '_fillColor', '_gcx', '_gcy']) {
+    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY', '_x1', '_y1', '_x2', '_y2', '_fillColor', '_gcx', '_gcy', '_isMermaid', '_mermaidCode']) {
       if (!FabricObject.customProperties.includes(p)) {
         FabricObject.customProperties.push(p);
       }
@@ -179,6 +185,17 @@ export class CanvasEngine {
     this.canvas.on('mouse:dblclick', (e: { target?: FabricObject }) => {
       const target = e.target;
       if (!target) return;
+      // Mermaid: double-click focuses the code editor in the properties panel.
+      const mermaidTarget = target as FabricObject & { _isMermaid?: boolean; _mermaidCode?: string };
+      if (mermaidTarget._isMermaid) {
+        const ta = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
+        if (ta) {
+          ta.value = mermaidTarget._mermaidCode ?? '';
+          ta.focus();
+          ta.select();
+        }
+        return;
+      }
       const link = (target as FabricObject & { _link?: string })._link;
       if (link) {
         // Only allow safe URL schemes to prevent javascript: injection.
@@ -372,6 +389,7 @@ export class CanvasEngine {
       '_attachedFrom', '_attachedTo',
       '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
       '_x1', '_y1', '_x2', '_y2',
+      '_isMermaid', '_mermaidCode',
     ]));
   }
 
@@ -464,6 +482,10 @@ export class CanvasEngine {
 
   private onMouseDown(e: TPointerEventInfo): void {
     if (this.currentTool === 'select') return;
+    // If the user clicked on an existing object, let Fabric handle it (move/resize/select)
+    // instead of starting a new shape draw.  The eraser is excluded because its
+    // whole purpose is to act on existing objects.
+    if (e.target && this.currentTool !== 'eraser') return;
     // P037: Snapshot the canvas state before this gesture so Ctrl+Z can restore it.
     this.pushHistory();
     // Fabric v7: scenePoint is supplied directly on the event info object
@@ -508,6 +530,17 @@ export class CanvasEngine {
       t.selectAll();
       this.isDrawing = false;
       this.markDirty();
+      return;
+    }
+
+    if (this.currentTool === 'mermaid') {
+      // Record placement position and show the mermaid code editor in the
+      // properties panel so the user can enter diagram code before rendering.
+      this.pendingMermaidPos = { x: p.x, y: p.y };
+      this.isDrawing = false;
+      // Focus the mermaid code textarea so the user can immediately start typing
+      const ta = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
+      if (ta) ta.focus();
       return;
     }
 
@@ -920,6 +953,7 @@ export class CanvasEngine {
     else if (k === 'r') this.setTool('rect');
     else if (k === 'e') this.setTool('ellipse');
     else if (k === 't') this.setTool('text');
+    else if (k === 'm') this.setTool('mermaid');
     else if (k === 'x') this.setTool('eraser');
     else if (k === '+' || k === '=') this.zoomIn();
     else if (k === '-') this.zoomOut();
@@ -974,6 +1008,74 @@ export class CanvasEngine {
     } else {
       // Drawing tool selected – show panel with relevant sections for that tool.
       this.showPropertiesPanelForShape(t, false);
+    }
+  }
+
+  // ── Mermaid diagram tool ───────────────────────────────────────────────────
+
+  /**
+   * Create a new mermaid diagram object on the canvas at the given position.
+   * Renders the provided mermaid code to an SVG, creates a FabricImage from it,
+   * and adds it to the canvas with the stored `_mermaidCode` for later editing.
+   */
+  async addMermaidObject(left: number, top: number, code: string): Promise<void> {
+    const dataUrl = await renderMermaidToDataUrl(code, this.canvasTheme);
+    if (!dataUrl) {
+      logger.warn({}, 'addMermaidObject: mermaid render failed');
+      return;
+    }
+    const img = await FabricImage.fromURL(dataUrl);
+    ensureObjId(img);
+    Object.assign(img, { _isMermaid: true, _mermaidCode: code });
+    img.set({
+      left,
+      top,
+      stroke: this.strokeColor,
+      strokeWidth: this.strokeWidth,
+      strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+      opacity: this.opacityValue / 100,
+      selectable: true,
+      evented: true,
+      strokeUniform: true,
+    });
+    this.pendingMermaidPos = null;
+    this.canvas?.add(img);
+    this.canvas?.setActiveObject(img);
+    this.canvas?.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  /**
+   * Re-render the mermaid code for the selected mermaid object (or create a
+   * new one at the pending placement position set by the last canvas click).
+   * Called when the user submits code via the properties panel textarea.
+   */
+  updateMermaidCode(code: string): void {
+    const o = this.canvas?.getActiveObject();
+    const mermaidObj = o as FabricObject & { _isMermaid?: boolean; _mermaidCode?: string };
+
+    const trimmedCode = code.trim();
+    if (!trimmedCode) return;
+
+    if (o && mermaidObj._isMermaid) {
+      // Re-render for an already-placed mermaid image.
+      // Update _mermaidCode only after setSrc succeeds so the stored code stays
+      // in sync with what is visually displayed on the canvas.
+      void renderMermaidToDataUrl(trimmedCode, this.canvasTheme).then((dataUrl) => {
+        if (!dataUrl) return;
+        void (o as FabricImage).setSrc(dataUrl).then(() => {
+          mermaidObj._mermaidCode = trimmedCode;
+          this.canvas?.requestRenderAll();
+          this.markDirty();
+          this.onBroadcastDraw(true);
+        }).catch((err: unknown) => {
+          logger.warn({ err }, 'updateMermaidCode: setSrc failed');
+        });
+      });
+    } else if (this.pendingMermaidPos) {
+      // Create a new mermaid object at the stored click position
+      void this.addMermaidObject(this.pendingMermaidPos.x, this.pendingMermaidPos.y, trimmedCode);
     }
   }
 
@@ -1103,9 +1205,27 @@ export class CanvasEngine {
     el?.classList.add('on');
     el?.setAttribute('aria-pressed', 'true');
     const o = this.canvas?.getActiveObject();
-    if (o && o.isType('rect')) {
-      const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
+    if (!o) return;
+    const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
+    if (o.isType('rect')) {
       (o as Rect).set({ rx: r, ry: r });
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    } else {
+      // For sketch paths (artist/cartoonist/doodle) representing a rect: update
+      // the stored original geometry and regenerate the sketch path.
+      const oe = o as FabricObject & { _origGeom?: string; _sloppiness?: string };
+      if (!oe._origGeom) return;
+      let geom: Record<string, unknown>;
+      try { geom = JSON.parse(oe._origGeom) as Record<string, unknown>; }
+      catch { return; }
+      if (geom.type !== 'rect') return;
+      geom.rx = r;
+      oe._origGeom = JSON.stringify(geom);
+      const sloppiness = (oe._sloppiness ?? this.sloppiness) as 'architect' | 'artist' | 'cartoonist' | 'doodle';
+      const replacement = this.tryConvertToSketch(o, sloppiness);
+      if (replacement) this.replaceActiveObject(o, replacement);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -1127,9 +1247,9 @@ export class CanvasEngine {
     }
   }
 
-  setSloppiness(type: 'architect' | 'artist' | 'cartoonist'): void {
+  setSloppiness(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): void {
     this.sloppiness = type;
-    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist', 'sloppy-doodle'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('on');
@@ -1363,11 +1483,11 @@ export class CanvasEngine {
 
   /** Maximum jitter in CSS pixels for the given sloppiness level. */
   private static sloppinessAmplitude(
-    sloppiness: 'architect' | 'artist' | 'cartoonist',
+    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
     strokeWidth: number,
   ): number {
     if (sloppiness === 'architect') return 0;
-    const base = sloppiness === 'cartoonist' ? 7 : 3.5;
+    const base = sloppiness === 'cartoonist' ? 7 : sloppiness === 'doodle' ? 5 : 3.5;
     return Math.max(base, strokeWidth * 1.2);
   }
 
@@ -1427,20 +1547,52 @@ export class CanvasEngine {
     if (t === 'rect') {
       const { left: l, top: to, width: w, height: h } =
         geom as { left: number; top: number; width: number; height: number };
-      // Four corners, each slightly offset
+      const rx = (geom.rx as number | undefined) ?? 0;
+      const r = Math.min(rx, w / 2, h / 2);
+
+      if (r > 0) {
+        // Rounded-corner rect: 8 approach points (2 per corner) with jitter applied.
+        // Indices 0-15 for approach points, 16-23 for corner arc control points.
+        const pts: [number, number][] = [
+          [l + r + j(0),     to + j(1)],           // top side start (after TL arc)
+          [l + w - r + j(2), to + j(3)],            // top side end   (before TR arc)
+          [l + w + j(4),     to + r + j(5)],        // right side start (after TR arc)
+          [l + w + j(6),     to + h - r + j(7)],   // right side end   (before BR arc)
+          [l + w - r + j(8), to + h + j(9)],        // bottom side start (after BR arc)
+          [l + r + j(10),    to + h + j(11)],       // bottom side end   (before BL arc)
+          [l + j(12),        to + h - r + j(13)],  // left side start (after BL arc)
+          [l + j(14),        to + r + j(15)],       // left side end   (before TL arc)
+        ];
+        // Control points at each corner (jittered toward actual corner)
+        const cps: [number, number][] = [
+          [l + w + j(16), to + j(17)],        // TR corner
+          [l + w + j(18), to + h + j(19)],   // BR corner
+          [l + j(20),     to + h + j(21)],   // BL corner
+          [l + j(22),     to + j(23)],        // TL corner
+        ];
+        const pt = (p: [number, number]) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+        const cp = (p: [number, number]) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+        return `M ${pt(pts[0])} `
+             + `L ${pt(pts[1])} Q ${cp(cps[0])} ${pt(pts[2])} `  // TR arc
+             + `L ${pt(pts[3])} Q ${cp(cps[1])} ${pt(pts[4])} `  // BR arc
+             + `L ${pt(pts[5])} Q ${cp(cps[2])} ${pt(pts[6])} `  // BL arc
+             + `L ${pt(pts[7])} Q ${cp(cps[3])} ${pt(pts[0])} Z`; // TL arc
+      }
+
+      // Sharp corners: four corners, each slightly offset
       const c: [number, number][] = [
         [l + j(0),     to + j(1)],
         [l + w + j(2), to + j(3)],
         [l + w + j(4), to + h + j(5)],
         [l + j(6),     to + h + j(7)],
       ];
-      const cp = (a: [number, number], b: [number, number], i: number) =>
+      const jitteredMidpoint = (a: [number, number], b: [number, number], i: number) =>
         `${((a[0] + b[0]) / 2 + j(i)).toFixed(1)} ${((a[1] + b[1]) / 2 + j(i + 1)).toFixed(1)}`;
       return `M ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} `
-           + `Q ${cp(c[0], c[1], 8)} ${c[1][0].toFixed(1)} ${c[1][1].toFixed(1)} `
-           + `Q ${cp(c[1], c[2], 10)} ${c[2][0].toFixed(1)} ${c[2][1].toFixed(1)} `
-           + `Q ${cp(c[2], c[3], 12)} ${c[3][0].toFixed(1)} ${c[3][1].toFixed(1)} `
-           + `Q ${cp(c[3], c[0], 14)} ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} Z`;
+           + `Q ${jitteredMidpoint(c[0], c[1], 8)} ${c[1][0].toFixed(1)} ${c[1][1].toFixed(1)} `
+           + `Q ${jitteredMidpoint(c[1], c[2], 10)} ${c[2][0].toFixed(1)} ${c[2][1].toFixed(1)} `
+           + `Q ${jitteredMidpoint(c[2], c[3], 12)} ${c[3][0].toFixed(1)} ${c[3][1].toFixed(1)} `
+           + `Q ${jitteredMidpoint(c[3], c[0], 14)} ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} Z`;
     }
 
     if (t === 'ellipse') {
@@ -1472,7 +1624,7 @@ export class CanvasEngine {
   }
 
   /**
-   * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist),
+   * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist/doodle),
    * or restores it to its native Fabric shape (architect).
    * Returns the replacement object, or `null` if conversion is not applicable
    * (e.g. arrow groups, text, pen paths without _origGeom).
@@ -1481,7 +1633,7 @@ export class CanvasEngine {
    */
   private tryConvertToSketch(
     obj: FabricObject,
-    sloppiness: 'architect' | 'artist' | 'cartoonist',
+    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
   ): FabricObject | null {
     if (!this.canvas) return null;
 
@@ -1597,12 +1749,20 @@ export class CanvasEngine {
       return newObj;
     }
 
-    // artist / cartoonist → sketch path
+    // artist / cartoonist / doodle → sketch path
     const amp = CanvasEngine.sloppinessAmplitude(sloppiness, sw);
     const d   = this.makeSketchyPath(geom, amp, seed);
     if (!d) return null;
 
-    const newPath = new Path(d, {
+    // doodle: draw a second pass with a different seed offset to create a
+    // characteristic "double-drawn with a pen" appearance.
+    let pathData = d;
+    if (sloppiness === 'doodle') {
+      const d2 = this.makeSketchyPath(geom, amp * 0.6, seed + 1000);
+      if (d2) pathData = `${d} ${d2}`;
+    }
+
+    const newPath = new Path(pathData, {
       stroke, strokeWidth: sw, fill: fillArg,
       strokeLineCap: 'round', strokeLineJoin: 'round',
       strokeDashArray: strokeDashArr,
@@ -1663,9 +1823,9 @@ export class CanvasEngine {
     return da[0] <= (da[1] ?? 0) ? 'dotted' : 'dashed';
   }
 
-  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
+  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
     if (type === 'architect') return { strokeLineCap: 'butt', strokeLineJoin: 'miter' };
-    // Both artist and cartoonist use rounded joins; cartoonist uses a slightly thicker effective stroke (handled by opacity)
+    // artist, cartoonist, and doodle all use rounded joins
     return { strokeLineCap: 'round', strokeLineJoin: 'round' };
   }
 
@@ -2283,6 +2443,11 @@ export class CanvasEngine {
     const linkInput = document.getElementById('linkInput') as HTMLInputElement | null;
     if (linkInput) linkInput.value = link;
 
+    // Sync mermaid code textarea when a mermaid image is selected
+    const mermaidCode = (o as FabricObject & { _mermaidCode?: string })._mermaidCode ?? '';
+    const mermaidInput = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
+    if (mermaidInput) mermaidInput.value = mermaidCode;
+
     // Sync fill-enabled toggle from the object's actual fill state
     const fillVal2 = o.get('fill');
     const objHasFill = fillVal2 !== 'transparent' && fillVal2 != null;
@@ -2326,8 +2491,8 @@ export class CanvasEngine {
 
     // Sync sloppiness buttons from the object's stored sloppiness
     const objSloppiness = ((o as FabricObject & { _sloppiness?: string })._sloppiness
-      ?? 'architect') as 'architect' | 'artist' | 'cartoonist';
-    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+      ?? 'architect') as 'architect' | 'artist' | 'cartoonist' | 'doodle';
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist', 'sloppy-doodle'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('on');
@@ -2335,6 +2500,32 @@ export class CanvasEngine {
     });
     document.getElementById(`sloppy-${objSloppiness}`)?.classList.add('on');
     document.getElementById(`sloppy-${objSloppiness}`)?.setAttribute('aria-pressed', 'true');
+
+    // Sync border-radius buttons from the selected rect (native or sketch)
+    const shapeTypeForBr = this.getObjectShapeType(o);
+    if (shapeTypeForBr === 'rect') {
+      let objRx: number;
+      if (o.isType('rect')) {
+        objRx = (o.get('rx') as number) ?? 0;
+      } else {
+        // Sketch path: read rx from stored _origGeom
+        const origGeomStr = (o as FabricObject & { _origGeom?: string })._origGeom;
+        try {
+          const g = JSON.parse(origGeomStr ?? '') as { rx?: number };
+          objRx = g.rx ?? 0;
+        } catch { objRx = 0; }
+      }
+      const brType = objRx > 3 ? 'rounded' : 'sharp';
+      ['br-sharp', 'br-rounded'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('on');
+        el.setAttribute('aria-pressed', 'false');
+      });
+      document.getElementById(`br-${brType}`)?.classList.add('on');
+      document.getElementById(`br-${brType}`)?.setAttribute('aria-pressed', 'true');
+      this.borderRadiusEnabled = brType === 'rounded';
+    }
 
     // Sync arrow type and arrowhead buttons from the selected arrow group
     const oa = o as ArrowGroupExt;
@@ -2359,15 +2550,30 @@ export class CanvasEngine {
   /**
    * Returns a canonical shape-type string for a Fabric object.
    * This is used to determine which properties-panel sections to show.
+   * Sketch paths (artist/cartoonist/doodle) preserve their original shape type
+   * via `_origGeom` so that the correct controls remain visible.
    */
   private getObjectShapeType(o: FabricObject): string {
-    const oa = o as FabricObject & { _isArrow?: boolean; type?: string };
+    const oa = o as FabricObject & { _isArrow?: boolean; _isMermaid?: boolean; type?: string; _origGeom?: string };
+    if (oa._isMermaid) return 'mermaid';
     if (oa._isArrow) return 'arrow';
     const t = (oa.type as string | undefined) ?? '';
     if (t === 'rect') return 'rect';
     if (t === 'ellipse') return 'ellipse';
     if (t === 'line') return 'line';
-    if (t === 'path' || t === 'polyline') return 'pen';
+    if (t === 'path' || t === 'polyline') {
+      // A sketch path generated from a rect/ellipse/line stores the original geometry
+      // in _origGeom so we can show the correct properties-panel sections.
+      if (oa._origGeom) {
+        try {
+          const g = JSON.parse(oa._origGeom) as { type?: string };
+          if (g.type === 'rect') return 'rect';
+          if (g.type === 'ellipse') return 'ellipse';
+          if (g.type === 'line') return 'line';
+        } catch { /* fall through */ }
+      }
+      return 'pen';
+    }
     if (t === 'i-text' || t === 'text') return 'text';
     return 'unknown';
   }
@@ -2385,13 +2591,15 @@ export class CanvasEngine {
     const show = (id: string) => document.getElementById(id)?.classList.remove('hide');
     const hide = (id: string) => document.getElementById(id)?.classList.add('hide');
 
-    const isRect    = shapeType === 'rect';
-    const isEllipse = shapeType === 'ellipse';
-    const isArrow   = shapeType === 'arrow';
-    const isPen     = shapeType === 'pen';
-    const isText    = shapeType === 'text';
-    const hasFill   = isRect || isEllipse;
-    const hasStroke = !isText;
+    const isRect     = shapeType === 'rect';
+    const isEllipse  = shapeType === 'ellipse';
+    const isArrow    = shapeType === 'arrow';
+    const isPen      = shapeType === 'pen';
+    const isText     = shapeType === 'text';
+    const isMermaid  = shapeType === 'mermaid';
+    const hasFill    = isRect || isEllipse;
+    // Mermaid objects support stroke (border) but not text-style (no stroke width/dash exclusion)
+    const hasStroke  = !isText;
 
     // Colors: always visible
     show('pp-color-section');
@@ -2400,14 +2608,14 @@ export class CanvasEngine {
     hasStroke ? show('pp-stroke-width-section') : hide('pp-stroke-width-section');
     hasStroke ? show('pp-stroke-dash-section')  : hide('pp-stroke-dash-section');
 
-    // Fill: rect and ellipse only
+    // Fill: rect and ellipse only (mermaid has its own SVG background)
     hasFill ? show('pp-fill-pattern-section') : hide('pp-fill-pattern-section');
 
     // Border radius: rect only
     isRect ? show('pp-border-radius-section') : hide('pp-border-radius-section');
 
-    // Sloppiness: all shapes except text (and eraser, select)
-    const hasSloppiness = !isText && shapeType !== 'select' && shapeType !== 'eraser';
+    // Sloppiness: all shapes except text, mermaid, eraser, and select
+    const hasSloppiness = !isText && !isMermaid && shapeType !== 'select' && shapeType !== 'eraser';
     hasSloppiness ? show('pp-sloppiness-section') : hide('pp-sloppiness-section');
 
     // Arrow controls: arrow only
@@ -2416,6 +2624,9 @@ export class CanvasEngine {
 
     // Opacity: always visible
     show('pp-opacity-section');
+
+    // Mermaid code editor: mermaid objects and the mermaid tool only
+    isMermaid ? show('pp-mermaid-section') : hide('pp-mermaid-section');
 
     // Layer + link: only when an existing object is selected
     isObjectSelected ? show('pp-layer-section') : hide('pp-layer-section');

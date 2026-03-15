@@ -11,6 +11,7 @@
  */
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import type { SketchGitCall } from "@/components/sketchgit/types";
 
 type LeftToolbarProps = {
@@ -18,6 +19,7 @@ type LeftToolbarProps = {
 };
 
 export const LeftToolbar = React.memo(function LeftToolbar({ call }: LeftToolbarProps) {
+  const t = useTranslations("toolbar");
   return (
     <div
       id="toolbar"
@@ -54,6 +56,10 @@ export const LeftToolbar = React.memo(function LeftToolbar({ call }: LeftToolbar
       <button className="tbtn" id="ttext" onClick={() => call("setTool", "text")} aria-label="Text tool (T)" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
         <span className="tt" aria-hidden="true">Text (T)</span>
+      </button>
+      <button className="tbtn" id="tmermaid" onClick={() => call("setTool", "mermaid")} aria-label={t('mermaid')} aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/><path d="M7 12h2l2-4 2 8 2-4h2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <span className="tt" aria-hidden="true">{t('mermaid')}</span>
       </button>
       <div className="tsep" role="separator"></div>
       <button className="tbtn" id="teraser" onClick={() => call("setTool", "eraser")} aria-label="Eraser tool (X)" aria-pressed="false">

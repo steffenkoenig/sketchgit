@@ -133,6 +133,9 @@ export const PropertiesPanel = React.memo(function PropertiesPanel({ call }: Pro
           <button className="sz-btn" id="sloppy-cartoonist" onClick={() => call("setSloppiness", "cartoonist")} aria-label={t("sloppyCartoonist")} aria-pressed="false">
             <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" style={{ stroke: "currentColor", fill: "none", strokeWidth: 2.5, strokeLinecap: "round" }}><path d="M4 14 Q9 3 14 4"/></svg>
           </button>
+          <button className="sz-btn" id="sloppy-doodle" onClick={() => call("setSloppiness", "doodle")} aria-label={t("sloppyDoodle")} aria-pressed="false">
+            <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" style={{ stroke: "currentColor", fill: "none", strokeWidth: 1.8, strokeLinecap: "round" }}><path d="M4 14 Q7 4 14 4"/><path d="M4 14 Q8 5 14 5"/></svg>
+          </button>
         </div>
       </div>
 
@@ -241,6 +244,33 @@ export const PropertiesPanel = React.memo(function PropertiesPanel({ call }: Pro
               }
             }}
           />
+        </div>
+      </div>
+
+      {/* ── Mermaid code editor (mermaid objects and mermaid tool) ─────────── */}
+      <div className="pp-section hide" id="pp-mermaid-section">
+        <label className="pp-label" htmlFor="mermaidCodeInput">{t("mermaidCode")}</label>
+        <div className="pp-row" style={{ flexDirection: "column", gap: "6px" }}>
+          <textarea
+            id="mermaidCodeInput"
+            rows={5}
+            defaultValue=""
+            placeholder={t("mermaidPlaceholder")}
+            aria-label={t("mermaidCode")}
+            className="pp-input"
+            style={{ resize: "vertical", fontFamily: "Fira Code, monospace", fontSize: "11px", width: "100%" }}
+          />
+          <button
+            className="tbtn"
+            style={{ width: "100%", fontSize: "12px", padding: "4px 8px" }}
+            onClick={() => {
+              const ta = document.getElementById("mermaidCodeInput") as HTMLTextAreaElement | null;
+              if (ta) call("updateMermaidCode", ta.value);
+            }}
+            aria-label={t("mermaidRender")}
+          >
+            {t("mermaidRender")}
+          </button>
         </div>
       </div>
 
