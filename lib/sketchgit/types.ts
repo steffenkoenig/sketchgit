@@ -20,7 +20,10 @@ export const MERGE_PROPS: readonly string[] = [
   'fontSize', 'fontFamily', 'opacity', 'flipX', 'flipY',
   'strokeDashArray', 'strokeLineCap', 'strokeLineJoin',
   '_fillPattern', '_fillColor', '_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
-  '_attachedFrom', '_attachedTo', '_sloppiness', '_origGeom',
+  '_attachedFrom', '_attachedTo',
+  '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
+  '_sloppiness', '_origGeom',
+  '_gcx', '_gcy',
   // Mermaid diagram content and type flag – compared line-by-line during merge
   '_isMermaid', '_mermaidCode',
 ];
