@@ -1875,7 +1875,8 @@ export class CanvasEngine {
    * Apply endpoint-only selection handles to an arrow Group object.
    * Shows circular handles at the arrow's stored _x1/_y1 and _x2/_y2 positions,
    * hiding the rectangular group bounding box.  Dragging a handle rebuilds the
-   * arrow group so its endpoint follows the cursor.
+   * arrow group's children in-place (without removing the Group from the canvas)
+   * so Fabric.js drag-tracking is never interrupted.
    */
   private applyArrowEndpointControls(grp: FabricObject): void {
     grp.hasBorders = false;
@@ -1901,31 +1902,114 @@ export class CanvasEngine {
         (_e: unknown, transform: { target: FabricObject }, x: number, y: number): boolean => {
           const a = transform.target as AnchoredArrowGroup;
           if (!this.canvas) return false;
-          const id = (a as FabricObject & { _id?: string })._id;
-          if (!id) return false;
 
           const nx1 = endpoint === 1 ? x : (a._x1 ?? 0);
           const ny1 = endpoint === 1 ? y : (a._y1 ?? 0);
           const nx2 = endpoint === 2 ? x : (a._x2 ?? 0);
           const ny2 = endpoint === 2 ? y : (a._y2 ?? 0);
 
-          this.rebuildArrowForMove(a, nx1, ny1, nx2, ny2);
-
-          // Find the rebuilt group (same _id) and redirect the drag transform
-          // to the new group so subsequent mouse-move events continue the drag.
-          const newGrp = this.canvas.getObjects().find(
-            (o) => (o as FabricObject & { _id?: string })._id === id,
-          );
-          if (newGrp) {
-            (transform as Record<string, unknown>).target = newGrp;
-            this.applyArrowEndpointControls(newGrp);
-          }
-          return !!newGrp;
+          // Rebuild the Group's children in-place.  The Group object itself
+          // stays on the canvas so Fabric.js drag-tracking (_currentTransform)
+          // is never interrupted.  Calling canvas.remove(activeObject) during
+          // an actionHandler causes Fabric to call endCurrentTransform() and
+          // kill the drag immediately — this avoids that problem entirely.
+          this.rebuildArrowGroupInPlace(a, nx1, ny1, nx2, ny2);
+          return true;
         }
       ) as Control['actionHandler'],
     });
 
     grp.controls = { ep1: makeArrowEndpointControl(1), ep2: makeArrowEndpointControl(2) };
+  }
+
+  /**
+   * Rebuild an arrow Group's visual children in-place without removing or
+   * replacing the Group object itself.
+   *
+   * This is used by applyArrowEndpointControls' actionHandler to update the
+   * arrow's appearance on every mouse-move during endpoint dragging.  Because
+   * the Group object stays in canvas._objects throughout the drag, Fabric.js
+   * never fires _discardActiveObject() and the _currentTransform (drag state)
+   * is preserved.
+   */
+  private rebuildArrowGroupInPlace(
+    grp: FabricObject,
+    x1: number, y1: number, x2: number, y2: number,
+  ): void {
+    const ag = grp as AnchoredArrowGroup;
+    const headStart = (ag._arrowHeadStart ?? 'none') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const headEnd   = (ag._arrowHeadEnd   ?? 'open') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const arrowType = (ag._arrowType      ?? 'sharp') as 'sharp' | 'curved' | 'elbow';
+    const group = grp as Group;
+
+    // Read style from existing children so we don't lose per-arrow styling.
+    const children = group.getObjects?.() ?? [];
+    const firstChild = children[0] as FabricObject | undefined;
+    const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
+    const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
+    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined);
+    const opacity = (grp.get('opacity') as number | undefined) ?? 1;
+
+    // Build new child shapes with the updated coordinates.
+    const shapes: FabricObject[] = [];
+
+    if (arrowType === 'curved' || arrowType === 'elbow') {
+      let pathD: string;
+      if (arrowType === 'curved') {
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const dx = x2 - x1, dy = y2 - y1;
+        const segLen = Math.hypot(dx, dy);
+        if (segLen > 0) {
+          const curvature = Math.min(segLen * 0.3, 60);
+          const cx = mx - (dy / segLen) * curvature;
+          const cy = my + (dx / segLen) * curvature;
+          pathD = `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
+        } else {
+          pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
+        }
+      } else {
+        const midX = (x1 + x2) / 2;
+        pathD = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+      }
+      shapes.push(new Path(pathD, {
+        stroke, strokeWidth, fill: 'transparent',
+        selectable: false, evented: false,
+        strokeLineCap: 'round', strokeLineJoin: 'round',
+        strokeDashArray, opacity, strokeUniform: true,
+      }));
+    } else {
+      shapes.push(new Line([x1, y1, x2, y2], {
+        stroke, strokeWidth, fill: 'transparent',
+        selectable: false, evented: false,
+        strokeDashArray, opacity, strokeUniform: true,
+      }));
+    }
+
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const len = 14, spread = 0.4;
+    if (headEnd !== 'none') {
+      const head = this.makeArrowhead(x2, y2, angle, len, spread, stroke, strokeWidth, headEnd, opacity);
+      if (head) shapes.push(head);
+    }
+    if (headStart !== 'none') {
+      const head = this.makeArrowhead(x1, y1, angle + Math.PI, len, spread, stroke, strokeWidth, headStart, opacity);
+      if (head) shapes.push(head);
+    }
+
+    // Replace the Group's children in-place.
+    // group.add() calls enterGroup(obj, true) for each shape, converting the
+    // shape's absolute canvas coordinates into group-local coordinates, exactly
+    // as the original Group constructor does when buildArrowGroup first creates
+    // the group.  The Group object itself is never removed from the canvas.
+    group.removeAll();
+    group.add(...shapes);
+
+    // Update stored endpoint metadata and group center.
+    ag._x1 = x1; ag._y1 = y1;
+    ag._x2 = x2; ag._y2 = y2;
+    const newCenter = grp.getCenterPoint();
+    ag._gcx = newCenter.x;
+    ag._gcy = newCenter.y;
   }
 
   /**
