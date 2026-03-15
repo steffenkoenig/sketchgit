@@ -18,12 +18,13 @@
  */
 
 import {
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricObject, Point, Pattern,
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern,
 } from 'fabric';
 import type { TPointerEventInfo, XY } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
 import { logger } from '../logger';
+import { renderMermaidToDataUrl } from './mermaidRenderer';
 
 /** Shared type for arrow Group objects carrying endpoint + style metadata. */
 type ArrowGroupExt = FabricObject & {
@@ -75,6 +76,9 @@ export class CanvasEngine {
   // ── P067: Remote object locks (clientId → { objectIds, color, origStyles }) ─
   private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number | undefined; strokeDashArray: number[] | undefined }> }>();
 
+  // ── Mermaid: pending placement position when creating a new mermaid object ─
+  private pendingMermaidPos: { x: number; y: number } | null = null;
+
   // ── P085: Pinch-to-zoom touch state ──────────────────────────────────────
   private touchStartDist: number | null = null;
   private touchStartZoom = 1;
@@ -119,7 +123,7 @@ export class CanvasEngine {
     if (!FabricObject.customProperties.includes('_isArrow')) {
       FabricObject.customProperties.push('_isArrow');
     }
-    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_x1', '_y1', '_x2', '_y2', '_fillColor']) {
+    for (const p of ['_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType', '_fillPattern', '_sloppiness', '_origGeom', '_attachedFrom', '_attachedTo', '_x1', '_y1', '_x2', '_y2', '_fillColor', '_isMermaid', '_mermaidCode']) {
       if (!FabricObject.customProperties.includes(p)) {
         FabricObject.customProperties.push(p);
       }
@@ -146,6 +150,17 @@ export class CanvasEngine {
     this.canvas.on('mouse:dblclick', (e: { target?: FabricObject }) => {
       const target = e.target;
       if (!target) return;
+      // Mermaid: double-click focuses the code editor in the properties panel.
+      const mermaidTarget = target as FabricObject & { _isMermaid?: boolean; _mermaidCode?: string };
+      if (mermaidTarget._isMermaid) {
+        const ta = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
+        if (ta) {
+          ta.value = mermaidTarget._mermaidCode ?? '';
+          ta.focus();
+          ta.select();
+        }
+        return;
+      }
       const link = (target as FabricObject & { _link?: string })._link;
       if (link) {
         // Only allow safe URL schemes to prevent javascript: injection.
@@ -330,6 +345,7 @@ export class CanvasEngine {
       '_sloppiness', '_origGeom',
       '_attachedFrom', '_attachedTo',
       '_x1', '_y1', '_x2', '_y2',
+      '_isMermaid', '_mermaidCode',
     ]));
   }
 
@@ -466,6 +482,20 @@ export class CanvasEngine {
       t.selectAll();
       this.isDrawing = false;
       this.markDirty();
+      return;
+    }
+
+    if (this.currentTool === 'mermaid') {
+      // Record placement position and show the mermaid code editor in the
+      // properties panel so the user can enter diagram code before rendering.
+      this.pendingMermaidPos = { x: p.x, y: p.y };
+      this.isDrawing = false;
+      // Populate textarea with starter template and focus it
+      const ta = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
+      if (ta && ta.value.trim() === '') {
+        ta.value = 'graph TD\n    A[Start] --> B[End]';
+      }
+      if (ta) ta.focus();
       return;
     }
 
@@ -843,6 +873,7 @@ export class CanvasEngine {
     else if (k === 'r') this.setTool('rect');
     else if (k === 'e') this.setTool('ellipse');
     else if (k === 't') this.setTool('text');
+    else if (k === 'm') this.setTool('mermaid');
     else if (k === 'x') this.setTool('eraser');
     else if (k === '+' || k === '=') this.zoomIn();
     else if (k === '-') this.zoomOut();
@@ -897,6 +928,70 @@ export class CanvasEngine {
     } else {
       // Drawing tool selected – show panel with relevant sections for that tool.
       this.showPropertiesPanelForShape(t, false);
+    }
+  }
+
+  // ── Mermaid diagram tool ───────────────────────────────────────────────────
+
+  /**
+   * Create a new mermaid diagram object on the canvas at the given position.
+   * Renders the provided mermaid code to an SVG, creates a FabricImage from it,
+   * and adds it to the canvas with the stored `_mermaidCode` for later editing.
+   */
+  async addMermaidObject(left: number, top: number, code: string): Promise<void> {
+    const dataUrl = await renderMermaidToDataUrl(code);
+    if (!dataUrl) {
+      logger.warn({}, 'addMermaidObject: mermaid render failed');
+      return;
+    }
+    const img = await FabricImage.fromURL(dataUrl);
+    ensureObjId(img);
+    Object.assign(img, { _isMermaid: true, _mermaidCode: code });
+    img.set({
+      left,
+      top,
+      stroke: this.strokeColor,
+      strokeWidth: this.strokeWidth,
+      opacity: this.opacityValue / 100,
+      selectable: true,
+      evented: true,
+      strokeUniform: true,
+    });
+    this.pendingMermaidPos = null;
+    this.pushHistory();
+    this.canvas?.add(img);
+    this.canvas?.setActiveObject(img);
+    this.canvas?.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  /**
+   * Re-render the mermaid code for the selected mermaid object (or create a
+   * new one at the pending placement position set by the last canvas click).
+   * Called when the user submits code via the properties panel textarea.
+   */
+  updateMermaidCode(code: string): void {
+    const o = this.canvas?.getActiveObject();
+    const mermaidObj = o as FabricObject & { _isMermaid?: boolean; _mermaidCode?: string };
+
+    const trimmedCode = code.trim();
+    if (!trimmedCode) return;
+
+    if (o && mermaidObj._isMermaid) {
+      // Re-render for an already-placed mermaid image
+      void renderMermaidToDataUrl(trimmedCode).then((dataUrl) => {
+        if (!dataUrl) return;
+        mermaidObj._mermaidCode = trimmedCode;
+        void (o as FabricImage).setSrc(dataUrl).then(() => {
+          this.canvas?.requestRenderAll();
+          this.markDirty();
+          this.onBroadcastDraw(true);
+        });
+      });
+    } else if (this.pendingMermaidPos) {
+      // Create a new mermaid object at the stored click position
+      void this.addMermaidObject(this.pendingMermaidPos.x, this.pendingMermaidPos.y, trimmedCode);
     }
   }
 
@@ -1771,6 +1866,11 @@ export class CanvasEngine {
     const linkInput = document.getElementById('linkInput') as HTMLInputElement | null;
     if (linkInput) linkInput.value = link;
 
+    // Sync mermaid code textarea when a mermaid image is selected
+    const mermaidCode = (o as FabricObject & { _mermaidCode?: string })._mermaidCode ?? '';
+    const mermaidInput = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
+    if (mermaidInput) mermaidInput.value = mermaidCode;
+
     // Sync fill-enabled toggle from the object's actual fill state
     const fillVal2 = o.get('fill');
     const objHasFill = fillVal2 !== 'transparent' && fillVal2 != null;
@@ -1877,7 +1977,8 @@ export class CanvasEngine {
    * via `_origGeom` so that the correct controls remain visible.
    */
   private getObjectShapeType(o: FabricObject): string {
-    const oa = o as FabricObject & { _isArrow?: boolean; type?: string; _origGeom?: string };
+    const oa = o as FabricObject & { _isArrow?: boolean; _isMermaid?: boolean; type?: string; _origGeom?: string };
+    if (oa._isMermaid) return 'mermaid';
     if (oa._isArrow) return 'arrow';
     const t = (oa.type as string | undefined) ?? '';
     if (t === 'rect') return 'rect';
@@ -1913,13 +2014,15 @@ export class CanvasEngine {
     const show = (id: string) => document.getElementById(id)?.classList.remove('hide');
     const hide = (id: string) => document.getElementById(id)?.classList.add('hide');
 
-    const isRect    = shapeType === 'rect';
-    const isEllipse = shapeType === 'ellipse';
-    const isArrow   = shapeType === 'arrow';
-    const isPen     = shapeType === 'pen';
-    const isText    = shapeType === 'text';
-    const hasFill   = isRect || isEllipse;
-    const hasStroke = !isText;
+    const isRect     = shapeType === 'rect';
+    const isEllipse  = shapeType === 'ellipse';
+    const isArrow    = shapeType === 'arrow';
+    const isPen      = shapeType === 'pen';
+    const isText     = shapeType === 'text';
+    const isMermaid  = shapeType === 'mermaid';
+    const hasFill    = isRect || isEllipse;
+    // Mermaid objects support stroke (border) but not text-style (no stroke width/dash exclusion)
+    const hasStroke  = !isText;
 
     // Colors: always visible
     show('pp-color-section');
@@ -1928,14 +2031,14 @@ export class CanvasEngine {
     hasStroke ? show('pp-stroke-width-section') : hide('pp-stroke-width-section');
     hasStroke ? show('pp-stroke-dash-section')  : hide('pp-stroke-dash-section');
 
-    // Fill: rect and ellipse only
+    // Fill: rect and ellipse only (mermaid has its own SVG background)
     hasFill ? show('pp-fill-pattern-section') : hide('pp-fill-pattern-section');
 
     // Border radius: rect only
     isRect ? show('pp-border-radius-section') : hide('pp-border-radius-section');
 
-    // Sloppiness: all shapes except text (and eraser, select)
-    const hasSloppiness = !isText && shapeType !== 'select' && shapeType !== 'eraser';
+    // Sloppiness: all shapes except text, mermaid, eraser, and select
+    const hasSloppiness = !isText && !isMermaid && shapeType !== 'select' && shapeType !== 'eraser';
     hasSloppiness ? show('pp-sloppiness-section') : hide('pp-sloppiness-section');
 
     // Arrow controls: arrow only
@@ -1944,6 +2047,9 @@ export class CanvasEngine {
 
     // Opacity: always visible
     show('pp-opacity-section');
+
+    // Mermaid code editor: mermaid objects and the mermaid tool only
+    isMermaid ? show('pp-mermaid-section') : hide('pp-mermaid-section');
 
     // Layer + link: only when an existing object is selected
     isObjectSelected ? show('pp-layer-section') : hide('pp-layer-section');

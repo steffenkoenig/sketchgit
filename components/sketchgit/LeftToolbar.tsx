@@ -55,6 +55,10 @@ export const LeftToolbar = React.memo(function LeftToolbar({ call }: LeftToolbar
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
         <span className="tt" aria-hidden="true">Text (T)</span>
       </button>
+      <button className="tbtn" id="tmermaid" onClick={() => call("setTool", "mermaid")} aria-label="Mermaid diagram tool (M)" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/><path d="M7 12h2l2-4 2 8 2-4h2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <span className="tt" aria-hidden="true">Mermaid (M)</span>
+      </button>
       <div className="tsep" role="separator"></div>
       <button className="tbtn" id="teraser" onClick={() => call("setTool", "eraser")} aria-label="Eraser tool (X)" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 20H7L3 16l13-13 7 7-3 3"/><line x1="6" y1="20" x2="19" y2="20"/></svg>

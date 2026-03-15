@@ -208,6 +208,8 @@ export function createSketchGitApp() {
     sendBackward: () => canvas.sendBackward(),
     sendToBack: () => canvas.sendToBack(),
     setObjectLink: (url: string) => canvas.setObjectLink(url),
+    // Mermaid diagram tool
+    updateMermaidCode: (code: string) => canvas.updateMermaidCode(code),
     setArrowHeads: (start: string, end: string) => canvas.setArrowHeads(
       start as 'none' | 'open' | 'triangle' | 'triangle-outline',
       end as 'none' | 'open' | 'triangle' | 'triangle-outline',

@@ -62,6 +62,10 @@
     "sendBackward": "Eine Ebene nach hinten",
     "sendToBack": "In Hintergrund",
     "shapeProperties": "Formeigenschaften",
+    "mermaid": "Mermaid (M)",
+    "mermaidCode": "Diagramm-Code",
+    "mermaidPlaceholder": "graph TD\n    A[Start] --> B[Ende]",
+    "mermaidRender": "Diagramm rendern",
     "linkPlaceholder": "https://…"
   },
   "topbar": {

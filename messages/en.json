@@ -62,6 +62,10 @@
     "sendBackward": "Send Backward",
     "sendToBack": "Send to Back",
     "shapeProperties": "Shape properties",
+    "mermaid": "Mermaid (M)",
+    "mermaidCode": "Diagram code",
+    "mermaidPlaceholder": "graph TD\n    A[Start] --> B[End]",
+    "mermaidRender": "Render Diagram",
     "linkPlaceholder": "https://…"
   },
   "topbar": {

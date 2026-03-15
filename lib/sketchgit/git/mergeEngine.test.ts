@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findLCA, getObjLabel, threeWayMerge } from './mergeEngine';
+import { findLCA, getObjLabel, threeWayMerge, mergeTextLineByLine } from './mergeEngine';
 import { Commit } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -266,5 +266,113 @@ describe('threeWayMerge', () => {
         expect(result.theirsData).toBe(theirs);
       }
     });
+  });
+});
+
+// ─── mergeTextLineByLine ──────────────────────────────────────────────────────
+
+describe('mergeTextLineByLine', () => {
+  it('returns ours when ours equals theirs (no change)', () => {
+    const code = 'graph TD\n    A --> B';
+    expect(mergeTextLineByLine(code, code, code)).toBe(code);
+  });
+
+  it('returns theirs when ours is unchanged from base', () => {
+    const base = 'graph TD\n    A --> B';
+    const theirs = 'graph TD\n    A --> B\n    B --> C';
+    expect(mergeTextLineByLine(base, base, theirs)).toBe(theirs);
+  });
+
+  it('returns ours when theirs is unchanged from base', () => {
+    const base = 'graph TD\n    A --> B';
+    const ours = 'graph TD\n    A --> B\n    B --> C';
+    expect(mergeTextLineByLine(base, ours, base)).toBe(ours);
+  });
+
+  it('auto-merges when both sides change different lines', () => {
+    const base = 'graph TD\n    A --> B\n    C --> D';
+    const ours = 'graph TD\n    A --> B\n    C --> E';   // changed line 2
+    const theirs = 'graph TD\n    A --> X\n    C --> D'; // changed line 1
+    const merged = mergeTextLineByLine(base, ours, theirs);
+    expect(merged).toBe('graph TD\n    A --> X\n    C --> E');
+  });
+
+  it('auto-merges when ours added a line and theirs changed an existing line', () => {
+    const base = 'graph TD\n    A --> B';
+    const ours = 'graph TD\n    A --> B\n    B --> C';  // added line
+    const theirs = 'graph TD\n    A --> X';              // changed line 1
+    const merged = mergeTextLineByLine(base, ours, theirs);
+    // Line 0: theirs changed → X; Line 1: ours kept B, theirs deleted → conflict at index
+    // Index-based: line0 both changed (A->B vs A->X) and A-->B ≠ A-->X...
+    // Actually: base[0]=A-->B, ours[0]=A-->B (unchanged), theirs[0]=A-->X (changed)
+    // base[1]=undefined, ours[1]=B-->C (changed), theirs[1]=undefined (unchanged)
+    expect(merged).toBe('graph TD\n    A --> X\n    B --> C');
+  });
+
+  it('returns null when the same line is modified differently on both sides', () => {
+    const base = 'graph TD\n    A --> B';
+    const ours = 'graph TD\n    A --> X';   // changed line 1
+    const theirs = 'graph TD\n    A --> Y'; // changed line 1 differently
+    expect(mergeTextLineByLine(base, ours, theirs)).toBeNull();
+  });
+
+  it('handles both sides making the same change (no conflict)', () => {
+    const base = 'graph TD\n    A --> B';
+    const same = 'graph TD\n    A --> C'; // both changed line 1 to same value
+    expect(mergeTextLineByLine(base, same, same)).toBe(same);
+  });
+
+  it('handles both sides deleting the same line (no conflict)', () => {
+    const base = 'line1\nline2\nline3';
+    const ours = 'line1\nline3';   // deleted line2 (index-based: line2 changed from "line2" to "line3")
+    const theirs = 'line1\nline3'; // same deletion
+    // Both changed line index 1 from "line2" to "line3" and line index 2 from "line3" to undefined
+    // → same change, no conflict
+    expect(mergeTextLineByLine(base, ours, theirs)).toBe(ours);
+  });
+});
+
+// ─── threeWayMerge – mermaid line-level auto-merge ───────────────────────────
+
+describe('threeWayMerge – mermaid _mermaidCode', () => {
+  it('auto-merges when both sides edit different lines of mermaid code', () => {
+    const mermaidBase = 'graph TD\n    A --> B\n    C --> D';
+    // ours changed line 2, theirs changed line 1
+    const mermaidOurs = 'graph TD\n    A --> B\n    C --> E';
+    const mermaidTheirs = 'graph TD\n    A --> X\n    C --> D';
+
+    const baseObj = { type: 'image', _id: 'obj_mer1', _isMermaid: true, _mermaidCode: mermaidBase };
+    const base = canvasWithObjects([baseObj]);
+    const ours = canvasWithObjects([{ ...baseObj, _mermaidCode: mermaidOurs }]);
+    const theirs = canvasWithObjects([{ ...baseObj, _mermaidCode: mermaidTheirs }]);
+
+    const result = threeWayMerge(base, ours, theirs);
+    expect('result' in result).toBe(true);
+    if ('result' in result) {
+      const parsed = JSON.parse(result.result) as { objects: Record<string, unknown>[] };
+      expect(parsed.objects[0]._mermaidCode).toBe('graph TD\n    A --> X\n    C --> E');
+    }
+  });
+
+  it('reports a conflict when both sides changed the same mermaid line differently', () => {
+    const mermaidBase = 'graph TD\n    A --> B';
+    const mermaidOurs = 'graph TD\n    A --> X';
+    const mermaidTheirs = 'graph TD\n    A --> Y';
+
+    const baseObj = { type: 'image', _id: 'obj_mer2', _isMermaid: true, _mermaidCode: mermaidBase };
+    const base = canvasWithObjects([baseObj]);
+    const ours = canvasWithObjects([{ ...baseObj, _mermaidCode: mermaidOurs }]);
+    const theirs = canvasWithObjects([{ ...baseObj, _mermaidCode: mermaidTheirs }]);
+
+    const result = threeWayMerge(base, ours, theirs);
+    expect('conflicts' in result).toBe(true);
+    if ('conflicts' in result) {
+      const conflict = result.conflicts.find((c) => c.id === 'obj_mer2');
+      expect(conflict).toBeDefined();
+      const pc = conflict?.propConflicts.find((p) => p.prop === '_mermaidCode');
+      expect(pc).toBeDefined();
+      expect(pc?.ours).toBe(mermaidOurs);
+      expect(pc?.theirs).toBe(mermaidTheirs);
+    }
   });
 });

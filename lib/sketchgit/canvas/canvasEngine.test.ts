@@ -329,6 +329,7 @@ describe('CanvasEngine – serialisation', () => {
       '_sloppiness', '_origGeom',
       '_attachedFrom', '_attachedTo',
       '_x1', '_y1', '_x2', '_y2',
+      '_isMermaid', '_mermaidCode',
     ]);
     expect(mockCanvasInstance.toJSON).not.toHaveBeenCalled();
   });
