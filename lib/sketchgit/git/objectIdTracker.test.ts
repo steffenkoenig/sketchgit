@@ -94,6 +94,13 @@ describe('extractProps', () => {
     const props = extractProps(obj);
     expect(Object.keys(props)).toEqual(['fill']);
   });
+
+  it('extracts _gcx and _gcy (arrow group center fields, needed for correct delta after merge)', () => {
+    const obj: Record<string, unknown> = { _gcx: 100, _gcy: 200 };
+    const props = extractProps(obj);
+    expect(props._gcx).toBe(100);
+    expect(props._gcy).toBe(200);
+  });
 });
 
 describe('propsEqual', () => {

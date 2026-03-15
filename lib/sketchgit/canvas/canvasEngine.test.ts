@@ -180,6 +180,11 @@ function resetMocks() {
   [Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group,
   ].forEach((f) => (f as unknown as ReturnType<typeof vi.fn>).mockClear());
 
+  // Make requestAnimationFrame synchronous so tests that fire object:moving
+  // can assert on connector-follow results without needing async flushing.
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 0; });
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
   // Clear and restore mockCanvasInstance method state
   mockCanvasInstance.add.mockClear();
   mockCanvasInstance.remove.mockClear();
@@ -2250,5 +2255,181 @@ describe('CanvasEngine – connector snapping and following', () => {
     // Stored center should be updated for future deltas.
     expect(arrowGroup._gcx).toBe(60);
     expect(arrowGroup._gcy).toBe(55);
+  });
+
+  // ── snapLineAttachment: closest candidate wins ──────────────────────────────
+
+  it('snapLineAttachment snaps to the closest shape when two shapes are within SNAP_RADIUS', () => {
+    // Two shapes both within SNAP_RADIUS of x1/y1. Only the closer one should win.
+    const { engine } = makeEngine();
+    engine.init();
+
+    // shapeA: center (20, 0), bbox [15,−5,25,5]. dist from (0,0) to bbox ≈ 15.0
+    const shapeA = makeFabricObject({ _id: 'close-shape', left: 15, top: -5, width: 10, height: 10 });
+    // shapeB: center (22, 0), bbox [17,−5,27,5]. dist from (0,0) to bbox ≈ 17.0
+    const shapeB = makeFabricObject({ _id: 'far-shape',   left: 17, top: -5, width: 10, height: 10 });
+
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const testLine = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({ x1: 0, y1: 0, x2: 999, y2: 999, _id: 'line-closest' }),
+    );
+    // Both shapes are in SNAP_RADIUS for x1/y1 = (0,0). shapeA is slightly closer.
+    mockCanvasInstance.getObjects.mockReturnValue([shapeB, shapeA]); // shapeB first to confirm order doesn't win
+
+    const eng = engine as unknown as { snapLineAttachment: (l: unknown) => void };
+    eng.snapLineAttachment(testLine);
+
+    // The closest shape (shapeA) should be chosen, not the last one in iteration order.
+    expect(testLine._attachedFrom).toBe('close-shape');
+  });
+
+  // ── reSnapOnModified: arrow group selection restoration ─────────────────────
+
+  it('object:modified on an arrow group that was active re-selects the rebuilt group', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const arrowGroup = makeFabricObject({
+      _isArrow: true, _id: 'ag-reselect',
+      _x1: 0, _y1: 0, _x2: 100, _y2: 100,
+      _gcx: 50, _gcy: 50,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+      getObjects: vi.fn().mockReturnValue([]),
+    });
+    // Shape nearby x1/y1 after move.
+    const shape = makeFabricObject({ _id: 'rs-shape', left: 0, top: 0, width: 10, height: 10 });
+    // Group moves so x1/y1 ends up within SNAP_RADIUS of shape.
+    (arrowGroup.getCenterPoint as ReturnType<typeof vi.fn>).mockReturnValue({ x: 55, y: 55 });
+
+    // Track objects in canvas so the find()-by-_id lookup works.
+    const objectsInCanvas: unknown[] = [shape, arrowGroup];
+    mockCanvasInstance.add.mockImplementation((obj: unknown) => objectsInCanvas.push(obj));
+    mockCanvasInstance.remove.mockImplementation((obj: unknown) => {
+      const idx = objectsInCanvas.indexOf(obj);
+      if (idx !== -1) objectsInCanvas.splice(idx, 1);
+    });
+    mockCanvasInstance.getObjects.mockImplementation(() => [...objectsInCanvas]);
+
+    // The arrow group itself is the active object when object:modified fires.
+    mockCanvasInstance.getActiveObject.mockReturnValue(arrowGroup);
+    (Group as unknown as ReturnType<typeof vi.fn>).mockClear();
+    mockCanvasInstance.setActiveObject.mockClear();
+
+    canvasEventHandlers['object:modified']?.({ target: arrowGroup });
+
+    // A rebuild must have occurred.
+    expect(Group).toHaveBeenCalled();
+
+    // setActiveObject should have been called to re-select the rebuilt group
+    // (the newly-added group, not the old arrowGroup that was removed).
+    const setActiveCalls = mockCanvasInstance.setActiveObject.mock.calls as unknown[][];
+    expect(setActiveCalls.length).toBeGreaterThan(0);
+    const lastSetArg = setActiveCalls[setActiveCalls.length - 1]?.[0] as Record<string, unknown>;
+    expect(lastSetArg?._id).toBe('ag-reselect');
+    // The re-selected object must be the newly rebuilt group, not the original.
+    expect(lastSetArg).not.toBe(arrowGroup);
+  });
+
+  // ── reSnapOnModified: sketch-path connector ─────────────────────────────────
+
+  it('object:modified on a sketch-path connector snaps and rebuilds it', () => {
+    // A sketch-path connector (artist mode) was drawn between (0,0) and (100,0).
+    // After being moved so its center is at (60, 0), the logical endpoints become:
+    //   x1 = 60 - (100-0)/2 = 10,  y1 = 0
+    //   x2 = 60 + (100-0)/2 = 110, y2 = 0
+    // A shape is placed at [0,−5,20,5] (center 10,0), so dist(10,0) = 0 < 30 → snaps.
+    const { engine } = makeEngine();
+    engine.init();
+
+    const shape = makeFabricObject({ _id: 'sp-snap-shape', left: 0, top: -5, width: 20, height: 10 });
+
+    // Build a sketch-path-like object (type='path' with _origGeom).
+    const sketchPath = makeFabricObject({
+      type: 'path', _id: 'sp-mod',
+      _origGeom: JSON.stringify({ type: 'line', x1: 0, y1: 0, x2: 100, y2: 0 }),
+      _sloppiness: 'artist',
+      stroke: '#fff', strokeWidth: 2, fill: 'transparent', opacity: 1,
+    });
+    // After drag the path center is at (60, 0).
+    (sketchPath.getCenterPoint as ReturnType<typeof vi.fn>).mockReturnValue({ x: 60, y: 0 });
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape, sketchPath]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    Path.mockClear();
+    mockCanvasInstance.remove.mockClear();
+
+    canvasEventHandlers['object:modified']?.({ target: sketchPath });
+
+    // Old path removed, new path added (rebuilt via rebuildSketchPathForMove).
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(sketchPath);
+    expect(Path).toHaveBeenCalled();
+
+    // The rebuilt path should carry the attachment to sp-snap-shape.
+    const addCalls = mockCanvasInstance.add.mock.calls;
+    const rebuilt = addCalls[addCalls.length - 1]?.[0] as Record<string, unknown>;
+    expect(rebuilt?._attachedFrom).toBe('sp-snap-shape');
+  });
+
+  it('object:modified on a sketch-path connector moved away clears attachment', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    // Shape far from all endpoints.
+    const shape = makeFabricObject({ _id: 'sp-far-shape', left: 0, top: 0, width: 10, height: 10 });
+
+    const sketchPath = makeFabricObject({
+      type: 'path', _id: 'sp-mod-away',
+      _origGeom: JSON.stringify({ type: 'line', x1: 0, y1: 0, x2: 10, y2: 0 }),
+      _sloppiness: 'artist',
+      _attachedFrom: 'sp-far-shape',
+      _attachedFromAnchorX: 5, _attachedFromAnchorY: 0,
+      stroke: '#fff', strokeWidth: 2, fill: 'transparent', opacity: 1,
+    });
+    // Move far away — both endpoints will be at ~(500, 0) and ~(510, 0), > 30 from shape.
+    (sketchPath.getCenterPoint as ReturnType<typeof vi.fn>).mockReturnValue({ x: 505, y: 0 });
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape, sketchPath]);
+    Path.mockClear();
+    mockCanvasInstance.remove.mockClear();
+
+    canvasEventHandlers['object:modified']?.({ target: sketchPath });
+
+    // No snap: path should not be rebuilt.
+    expect(mockCanvasInstance.remove).not.toHaveBeenCalledWith(sketchPath);
+    expect(Path).not.toHaveBeenCalled();
+    // Stale attachment cleared.
+    expect(sketchPath._attachedFrom).toBeUndefined();
+  });
+
+  // ── scheduleAttachmentUpdate: rAF throttling ────────────────────────────────
+
+  it('scheduleAttachmentUpdate processes the last target when multiple object:moving events fire', () => {
+    // With synchronous requestAnimationFrame stub, each fire processes immediately.
+    // Verify the correct shape is processed by checking that attached lines update.
+    const { engine } = makeEngine();
+    engine.init();
+
+    const shape1 = makeFabricObject({ _id: 'throttle-s1', left: 100, top: 100, width: 100, height: 80 });
+    const lineProto = (Line as unknown as { prototype: object }).prototype;
+    const attachedLine = Object.assign(
+      Object.create(lineProto) as Record<string, unknown>,
+      makeFabricObject({
+        x1: 0, y1: 0, x2: 0, y2: 0,
+        _attachedTo: 'throttle-s1',
+        _attachedToAnchorX: 50, _attachedToAnchorY: 0,
+      }),
+    );
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape1, attachedLine]);
+
+    // Two rapid object:moving events — with synchronous RAF each runs immediately.
+    canvasEventHandlers['object:moving']?.({ target: shape1 });
+    canvasEventHandlers['object:moving']?.({ target: shape1 });
+
+    // Line must have been updated (attached endpoint moved with shape).
+    const setArgs = (attachedLine.set as ReturnType<typeof vi.fn>).mock.calls
+      .find((args: unknown[]) => typeof args[0] === 'object' && 'x2' in (args[0] as object));
+    expect(setArgs?.[0]).toMatchObject({ x2: 200, y2: 140 });
   });
 });

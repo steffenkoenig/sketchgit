@@ -23,6 +23,7 @@ export const MERGE_PROPS: readonly string[] = [
   '_attachedFrom', '_attachedTo',
   '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
   '_sloppiness', '_origGeom',
+  '_gcx', '_gcy',
 ];
 
 // ─── Git model ────────────────────────────────────────────────────────────────
