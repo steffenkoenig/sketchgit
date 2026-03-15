@@ -422,7 +422,7 @@ export class MergeCoordinator {
       code.className = 'opt-val-code';
       const truncated = v.length > MERMAID_LINE_DISPLAY_MAX
         ? v.slice(0, MERMAID_LINE_DISPLAY_MAX - 2) + '…'
-        : (v || '(deleted)');
+        : v;
       code.textContent = truncated;
       container.appendChild(code);
       return container;

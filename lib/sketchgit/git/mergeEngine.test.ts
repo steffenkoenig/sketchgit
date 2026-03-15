@@ -526,4 +526,12 @@ describe('computeMermaidLineMergeDetails', () => {
     });
     expect(finalLines.join('\n')).toBe('graph TD\n    A --> Y\n    C --> D');
   });
+
+  it('normalizes empty-string base so both-sides additions are auto-merged, not conflicted', () => {
+    // With '' treated as [''], both sides modifying line 0 (from '' to different values) would
+    // be a conflict. With '' normalized to [], both sides are "appending" (b === undefined) → merged.
+    const { partialLines, lineConflicts } = computeMermaidLineMergeDetails('', 'A --> B', 'C --> D');
+    expect(lineConflicts).toHaveLength(0);
+    expect(partialLines).toEqual(['A --> B', 'C --> D']);
+  });
 });

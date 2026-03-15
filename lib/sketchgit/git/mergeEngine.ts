@@ -120,9 +120,9 @@ export function computeMermaidLineMergeDetails(
   ours: string,
   theirs: string,
 ): { partialLines: (string | null)[]; lineConflicts: MermaidLineConflict[] } {
-  const baseLines = base.split('\n');
-  const oursLines = ours.split('\n');
-  const theirsLines = theirs.split('\n');
+  const baseLines = base === '' ? [] : base.split('\n');
+  const oursLines = ours === '' ? [] : ours.split('\n');
+  const theirsLines = theirs === '' ? [] : theirs.split('\n');
   const maxLen = Math.max(baseLines.length, oursLines.length, theirsLines.length);
 
   const partialLines: (string | null)[] = [];
