@@ -1719,6 +1719,72 @@ describe('CanvasEngine – connector snapping and following', () => {
     expect(lastSetActive).toBe(shape);
   });
 
+  it('arrow group rebuild during shape move does NOT call setActiveObject with the new group', () => {
+    // Bug fix: previously buildArrowGroup always called canvas.setActiveObject(newGroup)
+    // which disrupted Fabric.js drag-tracking for the shape being moved.
+    const { engine } = makeEngine();
+    engine.init();
+
+    const shape = makeFabricObject({ _id: 'shape-drag', left: 0, top: 0, width: 10, height: 10 });
+    const arrowGroup = makeFabricObject({
+      _isArrow: true, _attachedFrom: 'shape-drag',
+      _x1: 0, _y1: 0, _x2: 50, _y2: 50,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+      getObjects: vi.fn().mockReturnValue([]),
+    });
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape, arrowGroup]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(shape);
+    (Group as unknown as ReturnType<typeof vi.fn>).mockClear();
+    mockCanvasInstance.setActiveObject.mockClear();
+
+    canvasEventHandlers['object:moving']?.({ target: shape });
+
+    // The new group should have been added to the canvas.
+    expect(Group).toHaveBeenCalled();
+    const newGroup = (Group as unknown as ReturnType<typeof vi.fn>).mock.results[0]?.value as Record<string, unknown>;
+
+    // setActiveObject must NEVER be called with the new arrow group — only with the
+    // moving shape (to restore drag tracking).
+    const setActiveCalls = mockCanvasInstance.setActiveObject.mock.calls as unknown[][];
+    const calledWithNewGroup = setActiveCalls.some((args) => args[0] === newGroup);
+    expect(calledWithNewGroup).toBe(false);
+  });
+
+  it('object:moving arrow rebuild does NOT nullify this.activeObj (drawing in progress)', () => {
+    // Bug fix: buildArrowGroup used to always set this.activeObj = null.  When called
+    // via rebuildArrowForMove (triggered by object:moving while drawing arrow 2), this
+    // cleared the drawing-line reference, causing onMouseMove and onMouseUp to bail
+    // early and silently discard the in-progress arrow.
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('arrow');
+
+    // Start drawing a second arrow: the engine creates a Line and stores it in activeObj.
+    canvasEventHandlers['mouse:down']?.({ e: new MouseEvent('mousedown'), scenePoint: { x: 50, y: 50 } });
+
+    // Verify activeObj was set by onMouseDown.
+    const eng = engine as unknown as { activeObj: unknown };
+    const drawingLine = eng.activeObj;
+    expect(drawingLine).not.toBeNull();
+
+    // While drawing arrow 2, simulate object:moving for a shape that has arrow 1 attached.
+    const shape = makeFabricObject({ _id: 'attached-shape', left: 10, top: 10, width: 20, height: 20 });
+    const arrowGroup = makeFabricObject({
+      _isArrow: true, _attachedFrom: 'attached-shape',
+      _x1: 0, _y1: 0, _x2: 30, _y2: 30,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+      getObjects: vi.fn().mockReturnValue([]),
+    });
+    mockCanvasInstance.getObjects.mockReturnValue([shape, arrowGroup, drawingLine as Record<string, unknown>]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(shape);
+
+    canvasEventHandlers['object:moving']?.({ target: shape });
+
+    // activeObj must still be the drawing line — NOT null.
+    expect(eng.activeObj).toBe(drawingLine);
+  });
+
   it('object:moving does not rebuild arrow groups that are not attached to the moved shape', () => {
     const { engine } = makeEngine();
     engine.init();

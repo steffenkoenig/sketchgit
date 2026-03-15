@@ -682,6 +682,12 @@ export class CanvasEngine {
     headStart: 'none' | 'open' | 'triangle' | 'triangle-outline',
     headEnd: 'none' | 'open' | 'triangle' | 'triangle-outline',
     arrowType: 'sharp' | 'curved' | 'elbow',
+    /** When false the new group is NOT set as the active canvas selection.
+     *  Pass false from rebuildArrowForMove to avoid calling setActiveObject
+     *  mid-drag, which would disrupt Fabric.js's drag-tracking state and
+     *  prevent further mouse-move events from reaching the object that the
+     *  user is actually dragging. */
+    selectAfter = true,
   ): void {
     if (!this.canvas) return;
     const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = line as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
@@ -761,8 +767,13 @@ export class CanvasEngine {
     );
     ensureObjId(grp);
     this.canvas.add(grp);
-    this.canvas.setActiveObject(grp);
-    this.activeObj = null;
+    if (selectAfter) this.canvas.setActiveObject(grp);
+    // Do NOT clear this.activeObj here — when buildArrowGroup is called mid-drag
+    // (via rebuildArrowForMove → object:moving) this.activeObj may be a Line that
+    // the user is currently drawing.  Nulling it prematurely would cause
+    // subsequent onMouseMove/onMouseUp calls to skip their early-exit checks,
+    // silently discarding the in-progress arrow.  onMouseUp already sets
+    // this.activeObj = null after buildArrowGroup returns (line in onMouseUp).
   }
 
   private makeArrowhead(
@@ -1866,10 +1877,11 @@ export class CanvasEngine {
     tl._attachedToAnchorX = ag._attachedToAnchorX;
     tl._attachedToAnchorY = ag._attachedToAnchorY;
 
-    // Save and restore active selection so dragging the connected shape is not interrupted.
+    // Rebuild without switching the canvas selection (selectAfter=false), then restore
+    // the previously-active object so Fabric.js drag-tracking is not interrupted.
     const prevActive = this.canvas.getActiveObject();
     this.canvas.remove(grp);
-    this.buildArrowGroup(tempLine, headStart, headEnd, arrowType);
+    this.buildArrowGroup(tempLine, headStart, headEnd, arrowType, false);
     if (prevActive && prevActive !== grp) {
       this.canvas.setActiveObject(prevActive);
     }
