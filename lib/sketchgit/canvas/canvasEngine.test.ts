@@ -1519,3 +1519,95 @@ describe('CanvasEngine – sketch path helpers', () => {
     expect(fn('cartoonist', 2)).toBeGreaterThan(fn('artist', 2));
   });
 });
+
+// ─── Bug-fix: toggleFill applies fill immediately to selected object ──────────
+
+describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('toggleFill() enabling fill applies current fillColor to the selected object', () => {
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+    // Set fill color directly on engine state (avoids depending on updateFillColor internals)
+    engine.fillColor = '#ff0000';
+    const obj = makeFabricObject({ fill: 'transparent' });
+    mockCanvasInstance.getActiveObject.mockReturnValue(obj);
+    engine.toggleFill(); // enable fill
+    expect(engine.fillEnabled).toBe(true);
+    expect(obj.set).toHaveBeenCalledWith('fill', '#ff0000');
+    expect(onBroadcastDraw).toHaveBeenCalled();
+  });
+
+  it('toggleFill() disabling fill sets object fill to transparent', () => {
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+    const obj = makeFabricObject({ fill: '#ff0000' });
+    mockCanvasInstance.getActiveObject.mockReturnValue(obj);
+    // Sync engine state: object has a fill so fillEnabled should be true
+    engine['fillEnabled'] = true;
+    (obj.set as ReturnType<typeof vi.fn>).mockClear();
+    engine.toggleFill(); // disable fill
+    expect(engine.fillEnabled).toBe(false);
+    expect(obj.set).toHaveBeenCalledWith('fill', 'transparent');
+    expect(onBroadcastDraw).toHaveBeenCalled();
+  });
+
+  it('toggleFill() with no active object only updates flag and button', () => {
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    engine.toggleFill();
+    expect(engine.fillEnabled).toBe(true);
+    expect(onBroadcastDraw).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Bug-fix: strokeUniform=true on new shapes ────────────────────────────────
+
+describe('CanvasEngine – strokeUniform on new shapes (bug fix)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('rect shape is created with strokeUniform=true', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    canvasEventHandlers['mouse:down']?.({ scenePoint: { x: 10, y: 10 } });
+    const [opts] = (Rect as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [Record<string, unknown>];
+    expect(opts.strokeUniform).toBe(true);
+  });
+
+  it('ellipse shape is created with strokeUniform=true', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('ellipse');
+    canvasEventHandlers['mouse:down']?.({ scenePoint: { x: 10, y: 10 } });
+    const [opts] = (Ellipse as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [Record<string, unknown>];
+    expect(opts.strokeUniform).toBe(true);
+  });
+
+  it('line shape is created with strokeUniform=true', () => {
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('line');
+    canvasEventHandlers['mouse:down']?.({ scenePoint: { x: 10, y: 10 } });
+    const [, opts] = (Line as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [unknown[], Record<string, unknown>];
+    expect(opts.strokeUniform).toBe(true);
+  });
+});
+
+// ─── Bug-fix: applyStrokeUniformToAll called after loadCanvasData ─────────────
+
+describe('CanvasEngine – applyStrokeUniformToAll on canvas load (bug fix)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  it('loadCanvasData calls applyStrokeUniformToAll to set strokeUniform on existing objects', async () => {
+    const obj = makeFabricObject({ strokeUniform: false });
+    mockCanvasInstance.getObjects.mockReturnValue([obj]);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.loadCanvasData(JSON.stringify({ version: '5', objects: [] }));
+    // Wait for the mocked promise to resolve
+    await Promise.resolve();
+    expect(obj.set).toHaveBeenCalledWith('strokeUniform', true);
+  });
+});

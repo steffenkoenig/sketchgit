@@ -342,6 +342,7 @@ export class CanvasEngine {
     // frame render rather than forcing a synchronous repaint.
     // Fabric v7: loadFromJSON is promise-based; use .then() instead of a callback.
     void this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
+      this.applyStrokeUniformToAll();
       this.canvas?.requestRenderAll();
     }).catch((err: unknown) => {
       logger.error({ err }, 'loadCanvasData: failed to load canvas JSON');
@@ -370,6 +371,7 @@ export class CanvasEngine {
     const current = this.getCanvasData();
     this.redoStack.push(current);
     void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
+      this.applyStrokeUniformToAll();
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -385,6 +387,7 @@ export class CanvasEngine {
     const current = this.getCanvasData();
     this.undoStack.push(current);
     void this.canvas?.loadFromJSON(JSON.parse(snapshot) as Record<string, unknown>).then(() => {
+      this.applyStrokeUniformToAll();
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -440,6 +443,7 @@ export class CanvasEngine {
         strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
         strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
         opacity: this.opacityValue / 100,
+        strokeUniform: true,
       });
       this.canvas?.add(this.activeObj);
       return;
@@ -474,6 +478,7 @@ export class CanvasEngine {
       originX: 'left' as const, originY: 'top' as const,
       strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
       opacity: this.opacityValue / 100,
+      strokeUniform: true,
       ...sloppyOpts,
     };
 
@@ -495,6 +500,7 @@ export class CanvasEngine {
         strokeLineCap: sloppyOpts.strokeLineCap,
         strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
         opacity: this.opacityValue / 100,
+        strokeUniform: true,
       };
       this.activeObj = new Line([p.x, p.y, p.x, p.y], lineOpts);
     } else if (this.currentTool === 'arrow') {
@@ -504,6 +510,7 @@ export class CanvasEngine {
         strokeLineCap: sloppyOpts.strokeLineCap,
         strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
         opacity: this.opacityValue / 100,
+        strokeUniform: true,
       };
       this.activeObj = Object.assign(
         new Line([p.x, p.y, p.x, p.y], lineOpts),
@@ -590,6 +597,7 @@ export class CanvasEngine {
             strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
             strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
             opacity: this.opacityValue / 100,
+            strokeUniform: true,
           });
           ensureObjId(finalPath);
           Object.assign(finalPath, { _sloppiness: this.sloppiness });
@@ -685,6 +693,7 @@ export class CanvasEngine {
         strokeLineCap: 'round', strokeLineJoin: 'round',
         strokeDashArray: line.get('strokeDashArray') as number[] | undefined,
         opacity: line.get('opacity') as number | undefined,
+        strokeUniform: true,
       });
       ensureObjId(pathLine);
       shapes.push(pathLine);
@@ -746,20 +755,21 @@ export class CanvasEngine {
         selectable: false, evented: false,
         strokeLineCap: 'round', strokeLineJoin: 'round',
         opacity,
+        strokeUniform: true,
       });
     }
     if (type === 'triangle') {
       // Filled triangle
       return new Polygon(
         [{ x: tipX, y: tipY }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
-        { fill: stroke, stroke, strokeWidth: 1, selectable: false, evented: false, opacity },
+        { fill: stroke, stroke, strokeWidth: 1, selectable: false, evented: false, opacity, strokeUniform: true },
       );
     }
     if (type === 'triangle-outline') {
       // Outlined triangle (unfilled)
       return new Polygon(
         [{ x: tipX, y: tipY }, { x: p1x, y: p1y }, { x: p2x, y: p2y }] as XY[],
-        { fill: 'transparent', stroke, strokeWidth, selectable: false, evented: false, opacity },
+        { fill: 'transparent', stroke, strokeWidth, selectable: false, evented: false, opacity, strokeUniform: true },
       );
     }
     return null;
@@ -935,6 +945,21 @@ export class CanvasEngine {
     if (btn) {
       btn.textContent = this.fillEnabled ? '⊠' : '⊡';
       btn.setAttribute('aria-pressed', this.fillEnabled ? 'true' : 'false');
+    }
+    const o = this.canvas?.getActiveObject();
+    if (o) {
+      if (this.fillEnabled) {
+        const fill = this.createFill(this.fillPattern, this.fillColor);
+        o.set('fill', fill);
+        const ext = o as FabricObject & { _fillPattern?: string; _fillColor?: string };
+        ext._fillPattern = this.fillPattern;
+        ext._fillColor = this.fillColor;
+      } else {
+        o.set('fill', 'transparent');
+      }
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1449,7 +1474,8 @@ export class CanvasEngine {
         newObj = new Line(
           [srcCenter.x - dx, srcCenter.y - dy, srcCenter.x + dx, srcCenter.y + dy],
           { stroke, strokeWidth: sw, fill: 'transparent', ...archOpts,
-            strokeDashArray: strokeDashArr, opacity, selectable: true, evented: true },
+            strokeDashArray: strokeDashArr, opacity, selectable: true, evented: true,
+            strokeUniform: true },
         );
       } else if (gt === 'rect') {
         const g = geom as { width: number; height: number; rx: number };
@@ -1457,7 +1483,7 @@ export class CanvasEngine {
           width: g.width, height: g.height, rx: g.rx, ry: g.rx,
           stroke, strokeWidth: sw, fill: fillArg,
           ...archOpts, strokeDashArray: strokeDashArr,
-          opacity, selectable: true, evented: true,
+          opacity, selectable: true, evented: true, strokeUniform: true,
         });
         applyCenter(newObj);
       } else if (gt === 'ellipse') {
@@ -1466,7 +1492,7 @@ export class CanvasEngine {
           rx: g.rx, ry: g.ry,
           stroke, strokeWidth: sw, fill: fillArg,
           ...archOpts, strokeDashArray: strokeDashArr,
-          opacity, selectable: true, evented: true,
+          opacity, selectable: true, evented: true, strokeUniform: true,
         });
         applyCenter(newObj);
       } else {
@@ -1486,6 +1512,7 @@ export class CanvasEngine {
       strokeLineCap: 'round', strokeLineJoin: 'round',
       strokeDashArray: strokeDashArr,
       opacity, selectable: true, evented: true,
+      strokeUniform: true,
     });
     // Fabric auto-sets left/top to pathOffset (= center of path's bounding box).
     // By switching to originX='center' and overriding left/top with the source
@@ -1525,6 +1552,13 @@ export class CanvasEngine {
     if (type === 'dashed') return [Math.max(6, width * 3), Math.max(3, width * 1.5)];
     if (type === 'dotted') return [Math.max(1, width), Math.max(3, width * 2)];
     return undefined;
+  }
+
+  /** Set strokeUniform=true on every canvas object so stroke width stays constant on resize. */
+  private applyStrokeUniformToAll(): void {
+    this.canvas?.getObjects().forEach((obj) => {
+      if (!obj.strokeUniform) obj.set('strokeUniform', true);
+    });
   }
 
   /** Reverse of getDashArray: infer the dash type from a stored strokeDashArray. */
