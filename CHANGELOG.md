@@ -6,6 +6,46 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.4.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.3.0...sketchgit-next-v0.4.0) (2026-03-15)
+
+
+### Features
+
+* **canvas:** add doodle style for hand-drawn pen look ([c874340](https://github.com/steffenkoenig/sketchgit/commit/c87434073283cb39ced3e5c04c0ee97075f10a62))
+* **canvas:** add extended shape properties for drawing tools ([be749aa](https://github.com/steffenkoenig/sketchgit/commit/be749aac8965e8f0bd9b95827e6f5e12fb1a49c8))
+* **canvas:** add mermaid diagram support with line-by-line merge diff ([d495f35](https://github.com/steffenkoenig/sketchgit/commit/d495f35de0cc9727862a1db928f8c48f698766e9))
+* **canvas:** address review feedback — closest-snap, Path reSnap, selection restore, rAF throttle, MERGE_PROPS ([96a5f55](https://github.com/steffenkoenig/sketchgit/commit/96a5f5503303537e22f15d60b7c0b3bb75055f37))
+* **canvas:** doodle style + rounded corners for all sketch styles ([5f7cbdc](https://github.com/steffenkoenig/sketchgit/commit/5f7cbdce076f55d738d65371a8cc8d3b197cde11))
+* **canvas:** link line/arrow endpoints to shapes so they follow when moved ([7906b49](https://github.com/steffenkoenig/sketchgit/commit/7906b49f320338cd1328ab12503911053c6b02f9))
+* **canvas:** Mermaid diagram support with line-by-line merge diffing and per-line conflict UI ([2e9b72f](https://github.com/steffenkoenig/sketchgit/commit/2e9b72f65d3f0fa1b99b2788578194524827cb55))
+* **canvas:** move shape settings to contextual properties panel ([f305fde](https://github.com/steffenkoenig/sketchgit/commit/f305fde799de316974aec631dab373c0b9c5952b))
+* **canvas:** rounded corners for artist, cartoonist, and doodle styles ([9d82cca](https://github.com/steffenkoenig/sketchgit/commit/9d82ccaa82187cd6797e4fcd5cd780204f25499a))
+* **canvas:** snap existing lines/arrows to shapes when moved (object:modified) ([fb25217](https://github.com/steffenkoenig/sketchgit/commit/fb25217c1398f375dd2aa256f98d5919fa13a825))
+* **canvas:** snap line/arrow endpoints to shape borders not just centers ([75ed67d](https://github.com/steffenkoenig/sketchgit/commit/75ed67dd09693320c6561fab2521dfc0674a27ac))
+* **canvas:** snap/attach existing lines and arrows to shapes after creation ([f48d352](https://github.com/steffenkoenig/sketchgit/commit/f48d352c0b890e10c6284f0c18535ac96a6e31b6))
+* **merge:** show individual conflicting mermaid lines in conflict UI ([439d062](https://github.com/steffenkoenig/sketchgit/commit/439d0622a47ac3c0b43bad44fadede13d9a44308))
+
+
+### Bug Fixes
+
+* apply fill on toggleFill, add strokeUniform to prevent scaling ([02f7d69](https://github.com/steffenkoenig/sketchgit/commit/02f7d69da362d6dd5686a085f7700424c23ec9aa))
+* background fill not applied on toggle; stroke width scales on resize ([4608a28](https://github.com/steffenkoenig/sketchgit/commit/4608a28450ae463691e2b9abdb25923dc3b1bc34))
+* **canvas:** address code review feedback for mermaid implementation ([16dd4e9](https://github.com/steffenkoenig/sketchgit/commit/16dd4e94175056ac56c79902725231b4f46d212a))
+* **canvas:** address code review issues in shape properties feature ([7c33aed](https://github.com/steffenkoenig/sketchgit/commit/7c33aed53edcf470be113faff4f078447d8219f0))
+* **canvas:** address PR review – position fix, URL sanitisation, arrow rebuild, a11y, i18n ([498219d](https://github.com/steffenkoenig/sketchgit/commit/498219d140457f79c17598fce078c2e82655cae9))
+* **canvas:** arrow rebuild mid-drag no longer disrupts shape movement or discards in-progress arrows ([6e463b4](https://github.com/steffenkoenig/sketchgit/commit/6e463b47f9520b13204367cb1187b080eb66ff2b))
+* **canvas:** exclude eraser from e.target guard and add undoStack assertion to test ([c0cfb83](https://github.com/steffenkoenig/sketchgit/commit/c0cfb83900f13a70bad4ceb410b4e8be97c5a2e0))
+* **canvas:** fill-pattern on existing shapes, link save+dblclick, real sloppiness for all shapes ([1d59cbf](https://github.com/steffenkoenig/sketchgit/commit/1d59cbfd94e374bfbccc3a91df769d687bb0d41a))
+* **canvas:** fill-pattern on existing shapes, link serialisation + dblclick, sloppiness for all shapes with real hand-drawn rendering ([d56a86e](https://github.com/steffenkoenig/sketchgit/commit/d56a86ef581399cf51853e15337af2ab12c59c6d))
+* **canvas:** fix mermaid SVG size – diagrams no longer cut off ([44621fb](https://github.com/steffenkoenig/sketchgit/commit/44621fb70b99d4faf95da9b39e4bf5bf96f6196b))
+* **canvas:** prevent new shape creation when interacting with existing objects while a drawing tool is active ([2c3190a](https://github.com/steffenkoenig/sketchgit/commit/2c3190a60d372662d512795e2e4a273f728165cf))
+* **canvas:** skip new-shape creation when mouse:down hits an existing object ([eb6f543](https://github.com/steffenkoenig/sketchgit/commit/eb6f54372fa795e9ac9c9232a9b405b6260cf046))
+* **canvas:** snap line endpoints for artist/cartoonist styles and track movement ([067c798](https://github.com/steffenkoenig/sketchgit/commit/067c7987c5d6c5e68bbd81b5e5eb7f4bb5903f4d))
+* **canvas:** sync engine state on selection, r=3 for sharp, fill gating, opacity in arrowheads ([b2febbb](https://github.com/steffenkoenig/sketchgit/commit/b2febbba1bc7314cbe971dd194929576ebd6ac82))
+* **merge:** address 3 review comments from commit 7bd8f1a ([8f23cb1](https://github.com/steffenkoenig/sketchgit/commit/8f23cb188d934f49d94c5c8e110dd9d5759f7153))
+* **merge:** address 4 review comments on canvasEngine and mergeCoordinator ([7bd8f1a](https://github.com/steffenkoenig/sketchgit/commit/7bd8f1a39783c31783251bdf0020fa4fbd671a8a))
+* **test:** cast Path mock correctly to fix TS2339 type errors in CI ([9c3e545](https://github.com/steffenkoenig/sketchgit/commit/9c3e545a8840dcf20f41d5b4581a1c5a8d5c71d9))
+
 ## [0.3.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.2.0...sketchgit-next-v0.3.0) (2026-03-14)
 
 
