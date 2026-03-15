@@ -26,6 +26,7 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppTopbar } from "./sketchgit/AppTopbar";
 import { LeftToolbar } from "./sketchgit/LeftToolbar";
+import { PropertiesPanel } from "./sketchgit/PropertiesPanel";
 import { ShareModal } from "./sketchgit/ShareModal";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
@@ -133,6 +134,9 @@ export default function SketchGitApp() {
                 aria-haspopup="dialog"
               >{t("modal.commit.confirm")}</button>
             </div>
+
+            {/* Properties panel – shown when a drawing tool is active or a shape is selected */}
+            <PropertiesPanel call={call} />
           </main>
         </div>
 

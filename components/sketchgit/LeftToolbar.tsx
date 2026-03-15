@@ -1,15 +1,13 @@
 "use client";
 /**
- * LeftToolbar – the vertical drawing tool strip.
+ * LeftToolbar – vertical drawing tool strip.
  *
- * P021: Wrapped with React.memo so it only re-renders when its `call` prop
- * changes (which is stable due to useCallback in SketchGitApp.tsx).
+ * P021: Wrapped with React.memo.
+ * P025: Accessible labels and aria attributes.
  *
- * P025: All interactive controls have accessible labels:
- *  - role="toolbar" on the container enables arrow-key navigation (ARIA pattern).
- *  - aria-label on every button provides a programmatic name for screen readers.
- *  - aria-hidden="true" on decorative SVG icons prevents double-announcement.
- *  - <label> elements (visually hidden via .sr-only) on color pickers.
+ * Only drawing tools and zoom controls live here.
+ * All per-shape style settings (stroke, fill, opacity, etc.) have been moved
+ * to the contextual PropertiesPanel which appears when a tool or shape is selected.
  */
 
 import React from "react";
@@ -62,37 +60,6 @@ export const LeftToolbar = React.memo(function LeftToolbar({ call }: LeftToolbar
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 20H7L3 16l13-13 7 7-3 3"/><line x1="6" y1="20" x2="19" y2="20"/></svg>
         <span className="tt" aria-hidden="true">Eraser (X)</span>
       </button>
-      <div className="tsep" role="separator"></div>
-
-      {/* Color pickers with visible labels for screen readers */}
-      <div className="color-dot" id="strokeDot" style={{ background: "#e2e2ef" }}>
-        <label htmlFor="strokeColorInput" className="sr-only">Stroke colour</label>
-        <input
-          type="color"
-          id="strokeColorInput"
-          defaultValue="#e2e2ef"
-          aria-label="Stroke colour"
-          onInput={(e) => call("updateStrokeColor", (e.currentTarget as HTMLInputElement).value)}
-        />
-      </div>
-      <div className="color-dot" id="fillDot" style={{ background: "transparent", borderStyle: "dashed" }}>
-        <label htmlFor="fillColorInput" className="sr-only">Fill colour</label>
-        <input
-          type="color"
-          id="fillColorInput"
-          defaultValue="#1a1a2e"
-          aria-label="Fill colour"
-          onInput={(e) => call("updateFillColor", (e.currentTarget as HTMLInputElement).value)}
-        />
-      </div>
-      <button className="tbtn" id="tfillToggle" onClick={() => call("toggleFill")} aria-label="Toggle fill on/off" aria-pressed="false" style={{ fontSize: "11px", height: "30px", marginTop: "-2px" }}>
-        <span className="tt" aria-hidden="true">Toggle Fill</span>⊡
-      </button>
-
-      <div className="tsep" role="separator"></div>
-      <button className="sz-btn on" id="sz1" onClick={() => call("setStrokeWidth", 1.5)} aria-label="Thin stroke (1.5px)" aria-pressed="true"><div className="sz-line" style={{ height: "1.5px" }} aria-hidden="true"></div></button>
-      <button className="sz-btn" id="sz3" onClick={() => call("setStrokeWidth", 3)} aria-label="Medium stroke (3px)" aria-pressed="false"><div className="sz-line" style={{ height: "3px" }} aria-hidden="true"></div></button>
-      <button className="sz-btn" id="sz5" onClick={() => call("setStrokeWidth", 5)} aria-label="Thick stroke (5px)" aria-pressed="false"><div className="sz-line" style={{ height: "5px" }} aria-hidden="true"></div></button>
       <div className="tsep" role="separator"></div>
       <button className="tbtn" onClick={() => call("zoomIn")} aria-label="Zoom in (+)">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
