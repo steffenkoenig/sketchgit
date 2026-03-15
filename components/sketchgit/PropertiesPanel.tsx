@@ -247,6 +247,33 @@ export const PropertiesPanel = React.memo(function PropertiesPanel({ call }: Pro
         </div>
       </div>
 
+      {/* ── Mermaid code editor (mermaid objects and mermaid tool) ─────────── */}
+      <div className="pp-section hide" id="pp-mermaid-section">
+        <label className="pp-label" htmlFor="mermaidCodeInput">{t("mermaidCode")}</label>
+        <div className="pp-row" style={{ flexDirection: "column", gap: "6px" }}>
+          <textarea
+            id="mermaidCodeInput"
+            rows={5}
+            defaultValue=""
+            placeholder={t("mermaidPlaceholder")}
+            aria-label={t("mermaidCode")}
+            className="pp-input"
+            style={{ resize: "vertical", fontFamily: "Fira Code, monospace", fontSize: "11px", width: "100%" }}
+          />
+          <button
+            className="tbtn"
+            style={{ width: "100%", fontSize: "12px", padding: "4px 8px" }}
+            onClick={() => {
+              const ta = document.getElementById("mermaidCodeInput") as HTMLTextAreaElement | null;
+              if (ta) call("updateMermaidCode", ta.value);
+            }}
+            aria-label={t("mermaidRender")}
+          >
+            {t("mermaidRender")}
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 });

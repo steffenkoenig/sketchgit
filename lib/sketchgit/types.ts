@@ -21,6 +21,8 @@ export const MERGE_PROPS: readonly string[] = [
   'strokeDashArray', 'strokeLineCap', 'strokeLineJoin',
   '_fillPattern', '_fillColor', '_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
   '_attachedFrom', '_attachedTo', '_sloppiness', '_origGeom',
+  // Mermaid diagram content and type flag – compared line-by-line during merge
+  '_isMermaid', '_mermaidCode',
 ];
 
 // ─── Git model ────────────────────────────────────────────────────────────────
@@ -38,12 +40,41 @@ export interface Commit {
 
 // ─── 3-way merge ─────────────────────────────────────────────────────────────
 
+/**
+ * Per-line conflict detail for `_mermaidCode` properties.
+ * Produced by `computeMermaidLineMergeDetails()` and attached to a
+ * `ConflictChoice` so the merge UI can show each conflicting line
+ * individually rather than presenting the whole code string as one choice.
+ */
+export interface MermaidLineConflict {
+  /** 1-based line number in the original diagram code (for display). */
+  lineNumber: number;
+  /** The original base line (undefined when both sides inserted a new line). */
+  base: string | undefined;
+  /** Our version of the line (undefined = we deleted the line). */
+  ours: string | undefined;
+  /** Their version of the line (undefined = they deleted the line). */
+  theirs: string | undefined;
+  chosen: 'ours' | 'theirs';
+}
+
 export interface ConflictChoice {
   prop: string;
   base: unknown;
   ours: unknown;
   theirs: unknown;
   chosen: 'ours' | 'theirs';
+  /**
+   * Only set for `_mermaidCode` conflicts.
+   * Each entry corresponds to one line that both sides changed differently.
+   */
+  mermaidLineConflicts?: MermaidLineConflict[];
+  /**
+   * Only set for `_mermaidCode` conflicts.
+   * The auto-resolved merged lines.  `null` at each position that has a
+   * corresponding entry in `mermaidLineConflicts` (to be filled by the user).
+   */
+  mermaidPartialLines?: (string | null)[];
 }
 
 export interface MergeConflict {
