@@ -423,8 +423,9 @@ export class CanvasEngine {
   private onMouseDown(e: TPointerEventInfo): void {
     if (this.currentTool === 'select') return;
     // If the user clicked on an existing object, let Fabric handle it (move/resize/select)
-    // instead of starting a new shape draw.
-    if (e.target) return;
+    // instead of starting a new shape draw.  The eraser is excluded because its
+    // whole purpose is to act on existing objects.
+    if (e.target && this.currentTool !== 'eraser') return;
     // P037: Snapshot the canvas state before this gesture so Ctrl+Z can restore it.
     this.pushHistory();
     // Fabric v7: scenePoint is supplied directly on the event info object
