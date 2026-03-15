@@ -10,7 +10,7 @@
 
 Please **do not** create a public GitHub issue for security vulnerabilities.
 
-Instead, email **security@example.com** <!-- replace with your actual security contact email before deploying --> with:
+Instead, email **sketchgit-security@skonig.de** <!-- replace with your actual security contact email before deploying --> with:
 - A description of the vulnerability.
 - Steps to reproduce.
 - Your assessment of the impact.
