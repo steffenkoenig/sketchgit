@@ -1978,7 +1978,7 @@ export class CanvasEngine {
       const bodyPath = new Path(pathD, {
         stroke, strokeWidth, fill: 'transparent',
         selectable: false, evented: false,
-        strokeLineCap: 'round', strokeLineJoin: 'round',
+        strokeLineCap, strokeLineJoin,
         strokeDashArray, opacity, strokeUniform: true,
       });
       ensureObjId(bodyPath);
