@@ -1939,7 +1939,7 @@ export class CanvasEngine {
     const sp = path as FabricObject & GeomExt;
     if (!sp._origGeom) return;
     let geom: { type?: string; x1?: number; y1?: number; x2?: number; y2?: number };
-    try { geom = JSON.parse(sp._origGeom) as typeof geom; } catch { return; }
+    try { geom = JSON.parse(sp._origGeom) as typeof geom; } catch { return; /* malformed _origGeom */ }
     if (geom.type !== 'line') return;
 
     path.hasBorders = false;
@@ -1957,7 +1957,7 @@ export class CanvasEngine {
       ): Point => {
         const s = fabricObject as FabricObject & GeomExt;
         let g = { x1: 0, y1: 0, x2: 0, y2: 0 };
-        try { g = JSON.parse(s._origGeom ?? '{}') as typeof g; } catch { /* */ }
+        try { g = JSON.parse(s._origGeom ?? '{}') as typeof g; } catch { /* malformed _origGeom, fall back to origin */ }
         const ax = endpoint === 1 ? (g.x1 ?? 0) : (g.x2 ?? 0);
         const ay = endpoint === 1 ? (g.y1 ?? 0) : (g.y2 ?? 0);
         const center = fabricObject.getCenterPoint();
