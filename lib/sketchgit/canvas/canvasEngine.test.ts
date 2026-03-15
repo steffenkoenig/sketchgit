@@ -2065,7 +2065,7 @@ describe('CanvasEngine – connector snapping and following', () => {
     mockCanvasInstance.getActiveObject.mockReturnValue(null);
     mockCanvasInstance.add.mockClear();
     mockCanvasInstance.remove.mockClear();
-    Path.mockClear();
+    (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
 
     canvasEventHandlers['object:moving']?.({ target: shape });
 
@@ -2094,7 +2094,7 @@ describe('CanvasEngine – connector snapping and following', () => {
     mockCanvasInstance.getActiveObject.mockReturnValue(null);
     mockCanvasInstance.add.mockClear();
     mockCanvasInstance.remove.mockClear();
-    Path.mockClear();
+    (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
 
     const eng = engine as unknown as {
       rebuildSketchPathForMove: (p: unknown, x1: number, y1: number, x2: number, y2: number) => void;
@@ -2356,7 +2356,7 @@ describe('CanvasEngine – connector snapping and following', () => {
 
     mockCanvasInstance.getObjects.mockReturnValue([shape, sketchPath]);
     mockCanvasInstance.getActiveObject.mockReturnValue(null);
-    Path.mockClear();
+    (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
     mockCanvasInstance.remove.mockClear();
 
     canvasEventHandlers['object:modified']?.({ target: sketchPath });
@@ -2390,7 +2390,7 @@ describe('CanvasEngine – connector snapping and following', () => {
     (sketchPath.getCenterPoint as ReturnType<typeof vi.fn>).mockReturnValue({ x: 505, y: 0 });
 
     mockCanvasInstance.getObjects.mockReturnValue([shape, sketchPath]);
-    Path.mockClear();
+    (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
     mockCanvasInstance.remove.mockClear();
 
     canvasEventHandlers['object:modified']?.({ target: sketchPath });
