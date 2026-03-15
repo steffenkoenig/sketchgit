@@ -1936,4 +1936,109 @@ describe('CanvasEngine – connector snapping and following', () => {
     // Closest to bottom edge (y=100, dist=2).
     expect(eng.nearestPointOnBounds(50, 98, 0, 0, 100, 100)).toEqual({ x: 50, y: 100 });
   });
+
+  // ── Artist / cartoonist style snap ─────────────────────────────────────────
+
+  it('tryConvertToSketch preserves attachment properties when converting a snapped Line to a Path', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    // Build a Line-like source object with attachment metadata + origGeom so
+    // tryConvertToSketch can convert it.
+    const lineObj = makeFabricObject({
+      type: 'line',
+      _id: 'conv-line', _sloppiness: 'artist',
+      _origGeom: JSON.stringify({ type: 'line', x1: 0, y1: 0, x2: 100, y2: 0 }),
+      _attachedFrom: 'shape-A', _attachedTo: 'shape-B',
+      _attachedFromAnchorX: -50, _attachedFromAnchorY: 0,
+      _attachedToAnchorX:    50, _attachedToAnchorY: 0,
+      stroke: '#fff', strokeWidth: 2, fill: 'transparent', opacity: 1,
+    });
+
+    mockCanvasInstance.add.mockClear();
+    const eng = engine as unknown as {
+      tryConvertToSketch: (obj: unknown, sloppiness: string) => unknown;
+    };
+    const result = eng.tryConvertToSketch(lineObj, 'artist') as Record<string, unknown> | null;
+
+    expect(result).not.toBeNull();
+    expect(result?._attachedFrom).toBe('shape-A');
+    expect(result?._attachedTo).toBe('shape-B');
+    expect(result?._attachedFromAnchorX).toBe(-50);
+    expect(result?._attachedFromAnchorY).toBe(0);
+    expect(result?._attachedToAnchorX).toBe(50);
+    expect(result?._attachedToAnchorY).toBe(0);
+  });
+
+  it('object:moving on a shape triggers rebuild of an attached sketch-path connector', () => {
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+
+    // Shape that will be moved: 100×80 at (0,0) → center (50,40).
+    const shape = makeFabricObject({ _id: 'sketch-shape', left: 0, top: 0, width: 100, height: 80 });
+
+    // Sketch-path connector attached to the shape's right border (anchorX=+50, anchorY=0).
+    const sketchPath = makeFabricObject({
+      type: 'path',
+      _id: 'sketch-connector',
+      _sloppiness: 'artist',
+      _origGeom: JSON.stringify({ type: 'line', x1: 0, y1: 0, x2: 100, y2: 40 }),
+      _attachedTo: 'sketch-shape',
+      _attachedToAnchorX: 50, _attachedToAnchorY: 0,
+      stroke: '#fff', strokeWidth: 2, fill: 'transparent', opacity: 1,
+    });
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape, sketchPath]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    mockCanvasInstance.add.mockClear();
+    mockCanvasInstance.remove.mockClear();
+    Path.mockClear();
+
+    canvasEventHandlers['object:moving']?.({ target: shape });
+
+    // The old sketch path should be removed from canvas.
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(sketchPath);
+    // A new Path should have been added (the rebuilt sketch path).
+    expect(Path).toHaveBeenCalled();
+    expect(mockCanvasInstance.add).toHaveBeenCalled();
+    expect(onBroadcastDraw).toHaveBeenCalled();
+  });
+
+  it('rebuildSketchPathForMove updates _origGeom and adds rebuilt path preserving attachment IDs', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const sketchPath = makeFabricObject({
+      type: 'path',
+      _id: 'sp-1', _sloppiness: 'artist',
+      _origGeom: JSON.stringify({ type: 'line', x1: 0, y1: 0, x2: 50, y2: 50 }),
+      _attachedFrom: 'shA', _attachedTo: 'shB',
+      _attachedFromAnchorX: -30, _attachedFromAnchorY: 0,
+      _attachedToAnchorX:    30, _attachedToAnchorY: 0,
+      stroke: '#fff', strokeWidth: 2, fill: 'transparent', opacity: 1,
+    });
+
+    mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    mockCanvasInstance.add.mockClear();
+    mockCanvasInstance.remove.mockClear();
+    Path.mockClear();
+
+    const eng = engine as unknown as {
+      rebuildSketchPathForMove: (p: unknown, x1: number, y1: number, x2: number, y2: number) => void;
+    };
+    eng.rebuildSketchPathForMove(sketchPath, 10, 20, 80, 90);
+
+    // Old path removed, new one added.
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(sketchPath);
+    expect(Path).toHaveBeenCalled();
+    expect(mockCanvasInstance.add).toHaveBeenCalled();
+
+    // The rebuilt path should carry attachment metadata (set by copyCustom).
+    const addCalls = mockCanvasInstance.add.mock.calls;
+    const added = addCalls[addCalls.length - 1]?.[0] as Record<string, unknown>;
+    expect(added?._attachedFrom).toBe('shA');
+    expect(added?._attachedTo).toBe('shB');
+    expect(added?._attachedFromAnchorX).toBe(-30);
+    expect(added?._attachedToAnchorX).toBe(30);
+  });
 });

@@ -651,7 +651,10 @@ export class CanvasEngine {
             this.snapLineAttachment(this.activeObj);
             this.buildArrowGroup(this.activeObj as Line, headStart, headEnd, arrowType);
           } else {
-            // For rect / ellipse / line: store origGeom, then convert to sketch path if needed.
+            // For rect / ellipse / line: snap endpoints first (on the Line object, before
+            // conversion) so snapped coordinates are baked into the sketch path geometry.
+            this.snapLineAttachment(this.activeObj);
+            // Then stamp origGeom (captures the snapped endpoints for re-conversion).
             this.stampOrigGeomAndSloppiness(this.activeObj);
 
             if (this.sloppiness !== 'architect') {
@@ -662,8 +665,6 @@ export class CanvasEngine {
                 this.canvas?.add(this.activeObj);
               }
             }
-            // Snap line endpoints to nearby shape centers when near a shape.
-            this.snapLineAttachment(this.activeObj as Line);
             this.canvas?.setActiveObject(this.activeObj);
           }
           this.markDirty();
@@ -1266,14 +1267,13 @@ export class CanvasEngine {
       (o as FabricObject & { _id?: string })._id;
     // Preserve attachment IDs and anchor offsets so the rebuilt arrow continues following
     // its connected shapes at the same border anchor positions.
-    const src = ag as AnchoredArrowGroup;
     const dst = tempLine as AnchoredLine;
-    dst._attachedFrom = src._attachedFrom;
-    dst._attachedTo = src._attachedTo;
-    dst._attachedFromAnchorX = src._attachedFromAnchorX;
-    dst._attachedFromAnchorY = src._attachedFromAnchorY;
-    dst._attachedToAnchorX = src._attachedToAnchorX;
-    dst._attachedToAnchorY = src._attachedToAnchorY;
+    dst._attachedFrom = ag._attachedFrom;
+    dst._attachedTo = ag._attachedTo;
+    dst._attachedFromAnchorX = ag._attachedFromAnchorX;
+    dst._attachedFromAnchorY = ag._attachedFromAnchorY;
+    dst._attachedToAnchorX = ag._attachedToAnchorX;
+    dst._attachedToAnchorY = ag._attachedToAnchorY;
 
     this.canvas.remove(o);
     this.buildArrowGroup(tempLine, headStart, headEnd, arrowType);
@@ -1484,13 +1484,22 @@ export class CanvasEngine {
     const srcCenter = obj.getCenterPoint();
 
     const copyCustom = (dst: FabricObject) => {
-      const d = dst as FabricObject & Ext & { _fillColor?: string };
+      const d = dst as FabricObject & Ext & { _fillColor?: string } & AttachmentProps;
       d._id          = oa._id;
       d._sloppiness  = sloppiness;
       d._origGeom    = geomStr as string;
       d._fillPattern = oa._fillPattern;
       d._fillColor   = objFillColor;
       d._link        = oa._link;
+      // Preserve connector attachment IDs and border-anchor offsets so sketch-path
+      // connectors continue following their attached shapes when shapes move.
+      const oaA = oa as FabricObject & Ext & AttachmentProps;
+      d._attachedFrom      = oaA._attachedFrom;
+      d._attachedTo        = oaA._attachedTo;
+      d._attachedFromAnchorX = oaA._attachedFromAnchorX;
+      d._attachedFromAnchorY = oaA._attachedFromAnchorY;
+      d._attachedToAnchorX   = oaA._attachedToAnchorX;
+      d._attachedToAnchorY   = oaA._attachedToAnchorY;
     };
 
     /** Position `newObj` so its visual center matches the source object's center. */
@@ -1736,9 +1745,10 @@ export class CanvasEngine {
     const center = movedObj.getCenterPoint();
     let changed = false;
 
-    // Collect arrow groups that need rebuilding so we don't modify the objects
-    // list while iterating over it.
+    // Collect arrow groups and sketch paths that need rebuilding so we don't modify
+    // the objects list while iterating over it.
     const arrowsToRebuild: Array<{ grp: FabricObject; x1: number; y1: number; x2: number; y2: number }> = [];
+    const sketchesToRebuild: Array<{ sp: FabricObject; x1: number; y1: number; x2: number; y2: number }> = [];
 
     for (const obj of this.canvas.getObjects()) {
       if (obj instanceof Line) {
@@ -1761,24 +1771,45 @@ export class CanvasEngine {
         }
       } else {
         const ag = obj as AnchoredArrowGroup;
-        if (!ag._isArrow) continue;
-        let x1 = ag._x1 ?? 0;
-        let y1 = ag._y1 ?? 0;
-        let x2 = ag._x2 ?? 0;
-        let y2 = ag._y2 ?? 0;
-        let needsRebuild = false;
-        if (ag._attachedFrom === id) {
-          x1 = center.x + (ag._attachedFromAnchorX ?? 0);
-          y1 = center.y + (ag._attachedFromAnchorY ?? 0);
-          needsRebuild = true;
-        }
-        if (ag._attachedTo === id) {
-          x2 = center.x + (ag._attachedToAnchorX ?? 0);
-          y2 = center.y + (ag._attachedToAnchorY ?? 0);
-          needsRebuild = true;
-        }
-        if (needsRebuild) {
-          arrowsToRebuild.push({ grp: obj, x1, y1, x2, y2 });
+        if (ag._isArrow) {
+          let x1 = ag._x1 ?? 0;
+          let y1 = ag._y1 ?? 0;
+          let x2 = ag._x2 ?? 0;
+          let y2 = ag._y2 ?? 0;
+          let needsRebuild = false;
+          if (ag._attachedFrom === id) {
+            x1 = center.x + (ag._attachedFromAnchorX ?? 0);
+            y1 = center.y + (ag._attachedFromAnchorY ?? 0);
+            needsRebuild = true;
+          }
+          if (ag._attachedTo === id) {
+            x2 = center.x + (ag._attachedToAnchorX ?? 0);
+            y2 = center.y + (ag._attachedToAnchorY ?? 0);
+            needsRebuild = true;
+          }
+          if (needsRebuild) {
+            arrowsToRebuild.push({ grp: obj, x1, y1, x2, y2 });
+            changed = true;
+          }
+        } else {
+          // Handle sketch-path connectors (artist/cartoonist lines stored as Path objects).
+          const sp = obj as AnchoredLine & { _origGeom?: string; _sloppiness?: string; type?: string };
+          if (sp.type !== 'path' || !sp._origGeom) continue;
+          if (sp._attachedFrom !== id && sp._attachedTo !== id) continue;
+          let geom: { type: string; x1: number; y1: number; x2: number; y2: number };
+          try { geom = JSON.parse(sp._origGeom) as typeof geom; }
+          catch { continue; }
+          if (geom.type !== 'line') continue;
+          let { x1, y1, x2, y2 } = geom;
+          if (sp._attachedFrom === id) {
+            x1 = center.x + (sp._attachedFromAnchorX ?? 0);
+            y1 = center.y + (sp._attachedFromAnchorY ?? 0);
+          }
+          if (sp._attachedTo === id) {
+            x2 = center.x + (sp._attachedToAnchorX ?? 0);
+            y2 = center.y + (sp._attachedToAnchorY ?? 0);
+          }
+          sketchesToRebuild.push({ sp: obj, x1, y1, x2, y2 });
           changed = true;
         }
       }
@@ -1786,6 +1817,9 @@ export class CanvasEngine {
 
     for (const { grp, x1, y1, x2, y2 } of arrowsToRebuild) {
       this.rebuildArrowForMove(grp, x1, y1, x2, y2);
+    }
+    for (const { sp, x1, y1, x2, y2 } of sketchesToRebuild) {
+      this.rebuildSketchPathForMove(sp, x1, y1, x2, y2);
     }
 
     if (changed) {
@@ -1837,6 +1871,44 @@ export class CanvasEngine {
     this.canvas.remove(grp);
     this.buildArrowGroup(tempLine, headStart, headEnd, arrowType);
     if (prevActive && prevActive !== grp) {
+      this.canvas.setActiveObject(prevActive);
+    }
+  }
+
+  /**
+   * Rebuild a sketch-path connector (artist/cartoonist Line stored as a Path) with
+   * updated endpoint coordinates when an attached shape is moved.
+   * Updates `_origGeom` on the existing Path, regenerates it via `tryConvertToSketch`,
+   * and replaces it on the canvas without disturbing the active selection.
+   */
+  private rebuildSketchPathForMove(
+    pathObj: FabricObject,
+    x1: number, y1: number, x2: number, y2: number,
+  ): void {
+    if (!this.canvas) return;
+    const sp = pathObj as AnchoredLine & { _origGeom?: string; _sloppiness?: string };
+
+    // Update origGeom with the new snapped endpoint coordinates.
+    sp._origGeom = JSON.stringify({ type: 'line', x1, y1, x2, y2 });
+
+    const sloppiness = (sp._sloppiness as 'architect' | 'artist' | 'cartoonist') ?? 'artist';
+    const rebuilt = this.tryConvertToSketch(pathObj, sloppiness);
+    if (!rebuilt) return;
+
+    // tryConvertToSketch positions the result at the source object's getCenterPoint()
+    // (the old center). For a moved connector the correct center is the midpoint of
+    // the new endpoints — override it here.
+    rebuilt.set({
+      left: (x1 + x2) / 2,
+      top: (y1 + y2) / 2,
+      originX: 'center', originY: 'center',
+    });
+    rebuilt.setCoords();
+
+    const prevActive = this.canvas.getActiveObject();
+    this.canvas.remove(pathObj);
+    this.canvas.add(rebuilt);
+    if (prevActive && prevActive !== pathObj) {
       this.canvas.setActiveObject(prevActive);
     }
   }
