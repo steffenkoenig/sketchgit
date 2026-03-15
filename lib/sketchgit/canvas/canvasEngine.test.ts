@@ -741,6 +741,50 @@ describe('CanvasEngine – mouse events', () => {
     expect(mockCanvasInstance.selection).toBe(false);
   });
 
+  it('mouse:down on an existing object with a drawing tool does NOT create a new shape', () => {
+    // Regression: when a drawing tool was active and the user clicked on an
+    // existing object (to move/resize it), a new shape was incorrectly created.
+    // The fix: if e.target is set (and tool !== eraser), onMouseDown returns early.
+    const existingObj = makeFabricObject();
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('rect');
+    (Rect as unknown as ReturnType<typeof vi.fn>).mockClear();
+    mockCanvasInstance.add.mockClear();
+    const e = engine as unknown as { undoStack: string[]; redoStack: string[] };
+    const stackLengthBefore = e.undoStack.length;
+    // Fire mouse:down with a target (clicking on existing object)
+    canvasEventHandlers['mouse:down']?.({
+      e: makeMouseEvent('mousedown'),
+      scenePoint: defaultScenePoint,
+      target: existingObj,
+    });
+    expect(Rect).not.toHaveBeenCalled();
+    expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+    // pushHistory() must also be skipped so the undo stack is not polluted
+    expect(e.undoStack.length).toBe(stackLengthBefore);
+  });
+
+  it('mouse:down on an existing object with "eraser" tool STILL sets isDrawing (eraser acts on objects)', () => {
+    // The eraser must NOT be affected by the e.target guard — its whole purpose
+    // is to act on existing objects.
+    const existingObj = makeFabricObject();
+    (existingObj.containsPoint as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    mockCanvasInstance.getObjects.mockReturnValue([existingObj]);
+    const { engine } = makeEngine();
+    engine.init();
+    engine.setTool('eraser');
+    // mousedown over an existing object
+    canvasEventHandlers['mouse:down']?.({
+      e: makeMouseEvent('mousedown'),
+      scenePoint: defaultScenePoint,
+      target: existingObj,
+    });
+    // mousemove should erase the object because isDrawing was set
+    canvasEventHandlers['mouse:move']?.({ e: makeMouseEvent('mousemove'), scenePoint: defaultScenePoint });
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(existingObj);
+  });
+
   it('mouse:wheel zooms the canvas', () => {
     const { engine } = makeEngine();
     engine.init();
