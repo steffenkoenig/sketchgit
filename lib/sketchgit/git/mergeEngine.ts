@@ -125,8 +125,14 @@ export function mergeTextLineByLine(
         if (o !== undefined) result.push(o);
       } else if (o === undefined && t === undefined) {
         // Both deleted the line – skip it
+      } else if (b === undefined) {
+        // Both appended new (different) content at the same position beyond the
+        // base.  There is no canonical order, so include both in a deterministic
+        // order (ours first) so neither side's addition is lost.
+        if (o !== undefined) result.push(o);
+        if (t !== undefined) result.push(t);
       } else {
-        // True line-level conflict: same position, different content
+        // True line-level conflict: same existing position, different content
         return null;
       }
     }

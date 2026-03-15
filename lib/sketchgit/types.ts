@@ -21,8 +21,8 @@ export const MERGE_PROPS: readonly string[] = [
   'strokeDashArray', 'strokeLineCap', 'strokeLineJoin',
   '_fillPattern', '_fillColor', '_link', '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
   '_attachedFrom', '_attachedTo', '_sloppiness', '_origGeom',
-  // Mermaid diagram content – compared line-by-line during merge
-  '_mermaidCode',
+  // Mermaid diagram content and type flag – compared line-by-line during merge
+  '_isMermaid', '_mermaidCode',
 ];
 
 // ─── Git model ────────────────────────────────────────────────────────────────

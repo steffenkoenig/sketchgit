@@ -957,7 +957,6 @@ export class CanvasEngine {
       strokeUniform: true,
     });
     this.pendingMermaidPos = null;
-    this.pushHistory();
     this.canvas?.add(img);
     this.canvas?.setActiveObject(img);
     this.canvas?.requestRenderAll();

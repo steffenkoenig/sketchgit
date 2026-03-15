@@ -320,6 +320,16 @@ describe('mergeTextLineByLine', () => {
     expect(merged).toBe('graph TD\n    A --> X\n    B --> C');
   });
 
+  it('auto-merges when both sides append different new lines at the end', () => {
+    // Both sides extended the base by appending a new line at the same index.
+    // The index-based algorithm includes both in a deterministic order (ours first).
+    const base = 'graph TD\n    A --> B';
+    const ours = 'graph TD\n    A --> B\n    B --> C';   // appended B-->C
+    const theirs = 'graph TD\n    A --> B\n    C --> D'; // appended C-->D
+    const merged = mergeTextLineByLine(base, ours, theirs);
+    expect(merged).toBe('graph TD\n    A --> B\n    B --> C\n    C --> D');
+  });
+
   it('returns null when the same line is modified differently on both sides', () => {
     const base = 'graph TD\n    A --> B';
     const ours = 'graph TD\n    A --> X';   // changed line 1
