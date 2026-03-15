@@ -44,6 +44,8 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
     remove: vi.fn(),
     getObjects: vi.fn().mockReturnValue([]),
     getActiveObject: vi.fn().mockReturnValue(null),
+    getActiveObjects: vi.fn().mockReturnValue([]),
+    discardActiveObject: vi.fn(),
     setActiveObject: vi.fn(),
     renderAll: vi.fn(),
     requestRenderAll: vi.fn(), // P022
@@ -215,6 +217,9 @@ function resetMocks() {
   mockCanvasInstance.getObjects.mockReturnValue([]);
   mockCanvasInstance.getActiveObject.mockReset();
   mockCanvasInstance.getActiveObject.mockReturnValue(null);
+  mockCanvasInstance.getActiveObjects.mockReset();
+  mockCanvasInstance.getActiveObjects.mockReturnValue([]);
+  mockCanvasInstance.discardActiveObject.mockClear();
   mockCanvasInstance.getZoom.mockReset();
   mockCanvasInstance.getZoom.mockReturnValue(1);
   mockCanvasInstance.toJSON.mockReset();
@@ -560,21 +565,37 @@ describe('CanvasEngine – keyboard shortcuts', () => {
 
   it('Delete removes active object and broadcasts', () => {
     const activeObj = makeFabricObject();
-    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    mockCanvasInstance.getActiveObjects.mockReturnValue([activeObj]);
     const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     pressKey(engine, 'Delete');
     expect(mockCanvasInstance.remove).toHaveBeenCalledWith(activeObj);
+    expect(mockCanvasInstance.discardActiveObject).toHaveBeenCalled();
     expect(onBroadcastDraw).toHaveBeenCalled();
   });
 
   it('Backspace removes active object', () => {
     const activeObj = makeFabricObject();
-    mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
+    mockCanvasInstance.getActiveObjects.mockReturnValue([activeObj]);
     const { engine } = makeEngine();
     engine.init();
     pressKey(engine, 'Backspace');
     expect(mockCanvasInstance.remove).toHaveBeenCalledWith(activeObj);
+    expect(mockCanvasInstance.discardActiveObject).toHaveBeenCalled();
+  });
+
+  it('Backspace removes all objects in a multi-selection', () => {
+    const obj1 = makeFabricObject();
+    const obj2 = makeFabricObject();
+    const obj3 = makeFabricObject();
+    mockCanvasInstance.getActiveObjects.mockReturnValue([obj1, obj2, obj3]);
+    const { engine, onBroadcastDraw } = makeEngine();
+    engine.init();
+    pressKey(engine, 'Backspace');
+    expect(mockCanvasInstance.remove).toHaveBeenCalledTimes(1);
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(obj1, obj2, obj3);
+    expect(mockCanvasInstance.discardActiveObject).toHaveBeenCalled();
+    expect(onBroadcastDraw).toHaveBeenCalled();
   });
 
   it('ignores keystrokes in INPUT elements', () => {

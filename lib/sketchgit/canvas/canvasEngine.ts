@@ -969,10 +969,11 @@ export class CanvasEngine {
       e.preventDefault();
       this.redo();
     } else if (k === 'delete' || k === 'backspace') {
-      const obj = this.canvas?.getActiveObject();
-      if (obj) {
+      const objs = this.canvas?.getActiveObjects();
+      if (objs && objs.length > 0) {
         this.pushHistory();
-        this.canvas?.remove(obj);
+        this.canvas?.remove(...objs);
+        this.canvas?.discardActiveObject();
         this.markDirty();
         this.onBroadcastDraw(true);
       }
