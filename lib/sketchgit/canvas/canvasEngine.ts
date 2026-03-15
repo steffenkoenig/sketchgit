@@ -47,7 +47,7 @@ export class CanvasEngine {
   strokeDashType: 'solid' | 'dashed' | 'dotted' = 'solid';
   borderRadiusEnabled = false;
   opacityValue = 100;
-  sloppiness: 'architect' | 'artist' | 'cartoonist' = 'architect';
+  sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle' = 'architect';
   fillPattern: 'filled' | 'striped' | 'crossed' = 'filled';
   arrowHeadStart: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'none';
   arrowHeadEnd: 'none' | 'open' | 'triangle' | 'triangle-outline' = 'open';
@@ -1026,9 +1026,27 @@ export class CanvasEngine {
     el?.classList.add('on');
     el?.setAttribute('aria-pressed', 'true');
     const o = this.canvas?.getActiveObject();
-    if (o && o.isType('rect')) {
-      const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
+    if (!o) return;
+    const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
+    if (o.isType('rect')) {
       (o as Rect).set({ rx: r, ry: r });
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    } else {
+      // For sketch paths (artist/cartoonist/doodle) representing a rect: update
+      // the stored original geometry and regenerate the sketch path.
+      const oe = o as FabricObject & { _origGeom?: string; _sloppiness?: string };
+      if (!oe._origGeom) return;
+      let geom: Record<string, unknown>;
+      try { geom = JSON.parse(oe._origGeom) as Record<string, unknown>; }
+      catch { return; }
+      if (geom.type !== 'rect') return;
+      geom.rx = r;
+      oe._origGeom = JSON.stringify(geom);
+      const sloppiness = (oe._sloppiness ?? this.sloppiness) as 'architect' | 'artist' | 'cartoonist' | 'doodle';
+      const replacement = this.tryConvertToSketch(o, sloppiness);
+      if (replacement) this.replaceActiveObject(o, replacement);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -1050,9 +1068,9 @@ export class CanvasEngine {
     }
   }
 
-  setSloppiness(type: 'architect' | 'artist' | 'cartoonist'): void {
+  setSloppiness(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): void {
     this.sloppiness = type;
-    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist', 'sloppy-doodle'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('on');
@@ -1277,11 +1295,11 @@ export class CanvasEngine {
 
   /** Maximum jitter in CSS pixels for the given sloppiness level. */
   private static sloppinessAmplitude(
-    sloppiness: 'architect' | 'artist' | 'cartoonist',
+    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
     strokeWidth: number,
   ): number {
     if (sloppiness === 'architect') return 0;
-    const base = sloppiness === 'cartoonist' ? 7 : 3.5;
+    const base = sloppiness === 'cartoonist' ? 7 : sloppiness === 'doodle' ? 5 : 3.5;
     return Math.max(base, strokeWidth * 1.2);
   }
 
@@ -1341,20 +1359,52 @@ export class CanvasEngine {
     if (t === 'rect') {
       const { left: l, top: to, width: w, height: h } =
         geom as { left: number; top: number; width: number; height: number };
-      // Four corners, each slightly offset
+      const rx = (geom.rx as number | undefined) ?? 0;
+      const r = Math.min(rx, w / 2, h / 2);
+
+      if (r > 0) {
+        // Rounded-corner rect: 8 approach points (2 per corner) with jitter applied.
+        // Indices 0-15 for approach points, 16-23 for corner arc control points.
+        const pts: [number, number][] = [
+          [l + r + j(0),     to + j(1)],           // top side start (after TL arc)
+          [l + w - r + j(2), to + j(3)],            // top side end   (before TR arc)
+          [l + w + j(4),     to + r + j(5)],        // right side start (after TR arc)
+          [l + w + j(6),     to + h - r + j(7)],   // right side end   (before BR arc)
+          [l + w - r + j(8), to + h + j(9)],        // bottom side start (after BR arc)
+          [l + r + j(10),    to + h + j(11)],       // bottom side end   (before BL arc)
+          [l + j(12),        to + h - r + j(13)],  // left side start (after BL arc)
+          [l + j(14),        to + r + j(15)],       // left side end   (before TL arc)
+        ];
+        // Control points at each corner (jittered toward actual corner)
+        const cps: [number, number][] = [
+          [l + w + j(16), to + j(17)],        // TR corner
+          [l + w + j(18), to + h + j(19)],   // BR corner
+          [l + j(20),     to + h + j(21)],   // BL corner
+          [l + j(22),     to + j(23)],        // TL corner
+        ];
+        const pt = (p: [number, number]) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+        const cp = (p: [number, number]) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+        return `M ${pt(pts[0])} `
+             + `L ${pt(pts[1])} Q ${cp(cps[0])} ${pt(pts[2])} `  // TR arc
+             + `L ${pt(pts[3])} Q ${cp(cps[1])} ${pt(pts[4])} `  // BR arc
+             + `L ${pt(pts[5])} Q ${cp(cps[2])} ${pt(pts[6])} `  // BL arc
+             + `L ${pt(pts[7])} Q ${cp(cps[3])} ${pt(pts[0])} Z`; // TL arc
+      }
+
+      // Sharp corners: four corners, each slightly offset
       const c: [number, number][] = [
         [l + j(0),     to + j(1)],
         [l + w + j(2), to + j(3)],
         [l + w + j(4), to + h + j(5)],
         [l + j(6),     to + h + j(7)],
       ];
-      const cp = (a: [number, number], b: [number, number], i: number) =>
+      const jitteredMidpoint = (a: [number, number], b: [number, number], i: number) =>
         `${((a[0] + b[0]) / 2 + j(i)).toFixed(1)} ${((a[1] + b[1]) / 2 + j(i + 1)).toFixed(1)}`;
       return `M ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} `
-           + `Q ${cp(c[0], c[1], 8)} ${c[1][0].toFixed(1)} ${c[1][1].toFixed(1)} `
-           + `Q ${cp(c[1], c[2], 10)} ${c[2][0].toFixed(1)} ${c[2][1].toFixed(1)} `
-           + `Q ${cp(c[2], c[3], 12)} ${c[3][0].toFixed(1)} ${c[3][1].toFixed(1)} `
-           + `Q ${cp(c[3], c[0], 14)} ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} Z`;
+           + `Q ${jitteredMidpoint(c[0], c[1], 8)} ${c[1][0].toFixed(1)} ${c[1][1].toFixed(1)} `
+           + `Q ${jitteredMidpoint(c[1], c[2], 10)} ${c[2][0].toFixed(1)} ${c[2][1].toFixed(1)} `
+           + `Q ${jitteredMidpoint(c[2], c[3], 12)} ${c[3][0].toFixed(1)} ${c[3][1].toFixed(1)} `
+           + `Q ${jitteredMidpoint(c[3], c[0], 14)} ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} Z`;
     }
 
     if (t === 'ellipse') {
@@ -1386,7 +1436,7 @@ export class CanvasEngine {
   }
 
   /**
-   * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist),
+   * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist/doodle),
    * or restores it to its native Fabric shape (architect).
    * Returns the replacement object, or `null` if conversion is not applicable
    * (e.g. arrow groups, text, pen paths without _origGeom).
@@ -1395,7 +1445,7 @@ export class CanvasEngine {
    */
   private tryConvertToSketch(
     obj: FabricObject,
-    sloppiness: 'architect' | 'artist' | 'cartoonist',
+    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
   ): FabricObject | null {
     if (!this.canvas) return null;
 
@@ -1502,12 +1552,20 @@ export class CanvasEngine {
       return newObj;
     }
 
-    // artist / cartoonist → sketch path
+    // artist / cartoonist / doodle → sketch path
     const amp = CanvasEngine.sloppinessAmplitude(sloppiness, sw);
     const d   = this.makeSketchyPath(geom, amp, seed);
     if (!d) return null;
 
-    const newPath = new Path(d, {
+    // doodle: draw a second pass with a different seed offset to create a
+    // characteristic "double-drawn with a pen" appearance.
+    let pathData = d;
+    if (sloppiness === 'doodle') {
+      const d2 = this.makeSketchyPath(geom, amp * 0.6, seed + 1000);
+      if (d2) pathData = `${d} ${d2}`;
+    }
+
+    const newPath = new Path(pathData, {
       stroke, strokeWidth: sw, fill: fillArg,
       strokeLineCap: 'round', strokeLineJoin: 'round',
       strokeDashArray: strokeDashArr,
@@ -1568,9 +1626,9 @@ export class CanvasEngine {
     return da[0] <= (da[1] ?? 0) ? 'dotted' : 'dashed';
   }
 
-  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
+  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
     if (type === 'architect') return { strokeLineCap: 'butt', strokeLineJoin: 'miter' };
-    // Both artist and cartoonist use rounded joins; cartoonist uses a slightly thicker effective stroke (handled by opacity)
+    // artist, cartoonist, and doodle all use rounded joins
     return { strokeLineCap: 'round', strokeLineJoin: 'round' };
   }
 
@@ -1756,8 +1814,8 @@ export class CanvasEngine {
 
     // Sync sloppiness buttons from the object's stored sloppiness
     const objSloppiness = ((o as FabricObject & { _sloppiness?: string })._sloppiness
-      ?? 'architect') as 'architect' | 'artist' | 'cartoonist';
-    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist'].forEach((id) => {
+      ?? 'architect') as 'architect' | 'artist' | 'cartoonist' | 'doodle';
+    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist', 'sloppy-doodle'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('on');
@@ -1765,6 +1823,32 @@ export class CanvasEngine {
     });
     document.getElementById(`sloppy-${objSloppiness}`)?.classList.add('on');
     document.getElementById(`sloppy-${objSloppiness}`)?.setAttribute('aria-pressed', 'true');
+
+    // Sync border-radius buttons from the selected rect (native or sketch)
+    const shapeTypeForBr = this.getObjectShapeType(o);
+    if (shapeTypeForBr === 'rect') {
+      let objRx: number;
+      if (o.isType('rect')) {
+        objRx = (o.get('rx') as number) ?? 0;
+      } else {
+        // Sketch path: read rx from stored _origGeom
+        const origGeomStr = (o as FabricObject & { _origGeom?: string })._origGeom;
+        try {
+          const g = JSON.parse(origGeomStr ?? '') as { rx?: number };
+          objRx = g.rx ?? 0;
+        } catch { objRx = 0; }
+      }
+      const brType = objRx > 3 ? 'rounded' : 'sharp';
+      ['br-sharp', 'br-rounded'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('on');
+        el.setAttribute('aria-pressed', 'false');
+      });
+      document.getElementById(`br-${brType}`)?.classList.add('on');
+      document.getElementById(`br-${brType}`)?.setAttribute('aria-pressed', 'true');
+      this.borderRadiusEnabled = brType === 'rounded';
+    }
 
     // Sync arrow type and arrowhead buttons from the selected arrow group
     const oa = o as ArrowGroupExt;
@@ -1789,15 +1873,29 @@ export class CanvasEngine {
   /**
    * Returns a canonical shape-type string for a Fabric object.
    * This is used to determine which properties-panel sections to show.
+   * Sketch paths (artist/cartoonist/doodle) preserve their original shape type
+   * via `_origGeom` so that the correct controls remain visible.
    */
   private getObjectShapeType(o: FabricObject): string {
-    const oa = o as FabricObject & { _isArrow?: boolean; type?: string };
+    const oa = o as FabricObject & { _isArrow?: boolean; type?: string; _origGeom?: string };
     if (oa._isArrow) return 'arrow';
     const t = (oa.type as string | undefined) ?? '';
     if (t === 'rect') return 'rect';
     if (t === 'ellipse') return 'ellipse';
     if (t === 'line') return 'line';
-    if (t === 'path' || t === 'polyline') return 'pen';
+    if (t === 'path' || t === 'polyline') {
+      // A sketch path generated from a rect/ellipse/line stores the original geometry
+      // in _origGeom so we can show the correct properties-panel sections.
+      if (oa._origGeom) {
+        try {
+          const g = JSON.parse(oa._origGeom) as { type?: string };
+          if (g.type === 'rect') return 'rect';
+          if (g.type === 'ellipse') return 'ellipse';
+          if (g.type === 'line') return 'line';
+        } catch { /* fall through */ }
+      }
+      return 'pen';
+    }
     if (t === 'i-text' || t === 'text') return 'text';
     return 'unknown';
   }
