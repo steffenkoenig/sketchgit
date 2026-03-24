@@ -274,6 +274,9 @@ export function createSketchGitApp() {
       );
     },
 
+    // Returns the current canvas state as a JSON string for direct export.
+    getCanvasJson: (): string => canvas.getCanvasData(),
+
     // P020: Resource cleanup on React component unmount.
     destroy(): void {
       document.removeEventListener('click', outsideClickHandler); // remove backdrop handler
