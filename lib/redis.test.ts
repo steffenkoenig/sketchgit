@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
   const instance = { on: vi.fn(), disconnect: vi.fn() };
   class MockRedis {
     static Cluster = class { constructor(..._args: unknown[]) { return instance; } };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     constructor(_url?: unknown, _opts?: unknown) { return instance as any; }
     on = instance.on;
     disconnect = instance.disconnect;

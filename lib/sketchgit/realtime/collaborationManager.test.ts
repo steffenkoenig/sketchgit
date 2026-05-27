@@ -544,7 +544,7 @@ describe('CollaborationManager – destroy', () => {
 describe('P067 CollaborationManager – object-lock relay', () => {
   let collab: CollaborationManager;
   let ws: ReturnType<typeof makeMockWs>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let cb: CollabCallbacks & { applyRemoteLock: any; clearRemoteLock: any };
 
   beforeEach(() => {
