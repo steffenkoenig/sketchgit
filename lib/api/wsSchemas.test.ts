@@ -12,6 +12,8 @@ import {
   WsFollowAcceptSchema,
   WsFollowStopSchema,
   WsFullsyncRequestSchema,
+  WsObjectLockSchema,
+  WsObjectUnlockSchema,
   InboundWsMessageSchema,
   WsViewSyncSchema,
   MAX_WS_PAYLOAD_BYTES,
@@ -215,6 +217,33 @@ describe('WsFullsyncRequestSchema', () => {
 
   it('rejects fullsync-request with invalid type', () => {
     expect(WsFullsyncRequestSchema.safeParse({ type: 'invalid-request' }).success).toBe(false);
+  });
+});
+
+describe('WsObjectLockSchema / WsObjectUnlockSchema', () => {
+  it('accepts valid object-lock message', () => {
+    expect(
+      WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: ['obj1', 'obj2'] }).success
+    ).toBe(true);
+  });
+
+  it('accepts valid object-lock message with color', () => {
+    expect(
+      WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'], color: '#00ff00' }).success
+    ).toBe(true);
+  });
+
+  it('rejects object-lock with missing objectIds', () => {
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock' }).success).toBe(false);
+  });
+
+  it('rejects object-lock with too many objectIds', () => {
+    const objectIds = Array.from({ length: 501 }, (_, i) => `obj${i}`);
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds }).success).toBe(false);
+  });
+
+  it('accepts valid object-unlock message', () => {
+    expect(WsObjectUnlockSchema.safeParse({ type: 'object-unlock' }).success).toBe(true);
   });
 });
 
