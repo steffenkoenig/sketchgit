@@ -262,7 +262,9 @@
     "renderError": "Ein Fehler ist beim Rendern der Seite aufgetreten.",
     "canvasError": "Zeichenflächenfehler — klicken, um es erneut zu versuchen.",
     "timelineError": "Zeitleistenfehler",
-    "modalError": "Modalfehler"
+    "modalError": "Modalfehler",
+    "errorLogged": "Wir haben dieses Problem erfasst und arbeiten an einer Lösung.",
+    "retry": "Wiederholen"
   },
   "auth": {
     "orContinueAnonymously": "anonym fortfahren",

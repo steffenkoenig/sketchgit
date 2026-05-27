@@ -262,7 +262,9 @@
     "renderError": "An error occurred while rendering the page.",
     "canvasError": "Canvas error — click to retry.",
     "timelineError": "Timeline error",
-    "modalError": "Modal error"
+    "modalError": "Modal error",
+    "errorLogged": "We've logged this issue and are working to resolve it.",
+    "retry": "Retry"
   },
   "auth": {
     "orContinueAnonymously": "continue anonymously",

@@ -8,7 +8,7 @@ type ErrorFallbackProps = {
   inline?: boolean;
 };
 
-export function ErrorFallback({ resetError, titleKey, inline }: ErrorFallbackProps) {
+export function ErrorFallback({ error, resetError, titleKey, inline }: ErrorFallbackProps) {
   const t = useTranslations();
 
   if (inline) {
@@ -43,13 +43,18 @@ export function ErrorFallback({ resetError, titleKey, inline }: ErrorFallbackPro
       </div>
       <h1 className="mb-2 text-xl font-bold">{t(titleKey)}</h1>
       <p className="mb-6 text-zinc-600 dark:text-zinc-400">
-        We've logged this issue and are working to resolve it.
+        {t("errors.errorLogged")}
       </p>
+      {process.env.NODE_ENV === "development" && error && (
+        <pre className="mb-6 max-w-md overflow-auto rounded bg-zinc-100 p-4 text-left text-xs text-red-600 dark:bg-zinc-800">
+          {error.message}
+        </pre>
+      )}
       <button
         onClick={resetError}
         className="rounded bg-black px-6 py-2 font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
       >
-        Retry
+        {t("errors.retry")}
       </button>
     </div>
   );

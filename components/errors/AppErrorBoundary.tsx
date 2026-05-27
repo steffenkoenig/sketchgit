@@ -24,10 +24,10 @@ export class AppErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    void logger.error("AppErrorBoundary caught error", {
+    logger.error({
       error,
       componentStack: errorInfo.componentStack
-    });
+    }, "AppErrorBoundary caught error");
     // Fire room-event CLIENT_ERROR if we had access to roomId, but at App level we might not.
   }
 

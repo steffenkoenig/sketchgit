@@ -129,7 +129,6 @@ export default function SketchGitApp() {
               <div id="cursor-layer" aria-hidden="true"></div>
             </CanvasErrorBoundary>
             <div id="dirty" className="hide" role="status" aria-live="polite">
-            <div id="dirty" className="hide" role="status" aria-live="polite">
               <div className="yd" aria-hidden="true"></div>
               <span>{t("toolbar.uncommittedChanges")}</span>
               <button

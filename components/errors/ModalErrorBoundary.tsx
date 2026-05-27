@@ -24,10 +24,10 @@ export class ModalErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    void logger.warn("ModalErrorBoundary caught error", {
+    logger.error({
       error,
       componentStack: errorInfo.componentStack
-    });
+    }, "ModalErrorBoundary caught error");
   }
 
   resetError() {

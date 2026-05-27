@@ -24,10 +24,10 @@ export class CanvasErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    void logger.warn("CanvasErrorBoundary caught error", {
+    logger.error({
       error,
       componentStack: errorInfo.componentStack
-    });
+    }, "CanvasErrorBoundary caught error");
   }
 
   resetError() {

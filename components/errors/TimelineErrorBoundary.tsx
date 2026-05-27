@@ -24,10 +24,10 @@ export class TimelineErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    void logger.warn("TimelineErrorBoundary caught error", {
+    logger.error({
       error,
       componentStack: errorInfo.componentStack
-    });
+    }, "TimelineErrorBoundary caught error");
   }
 
   resetError() {
