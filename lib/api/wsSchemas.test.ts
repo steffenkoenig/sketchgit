@@ -264,6 +264,13 @@ describe('InboundWsMessageSchema discriminated union', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts follow and sync schema types', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0] }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-request' }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-accept' }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-stop' }).success).toBe(true);
+  });
+
   it('rejects unknown type', () => {
     expect(InboundWsMessageSchema.safeParse({ type: 'unknown-type' }).success).toBe(false);
   });
