@@ -9,6 +9,7 @@ import {
   WsPingSchema,
   WsPongSchema,
   InboundWsMessageSchema,
+  WsViewSyncSchema,
 } from './wsSchemas';
 
 describe('WsDrawSchema', () => {
@@ -104,6 +105,48 @@ describe('WsPingSchema / WsPongSchema', () => {
 
   it('accepts pong', () => {
     expect(WsPongSchema.safeParse({ type: 'pong' }).success).toBe(true);
+  });
+});
+
+describe('WsViewSyncSchema', () => {
+  it('accepts valid view-sync message with only required fields', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0] };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(true);
+  });
+
+  it('accepts valid view-sync message with all fields', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0], branch: 'main', headSha: 'abc12345' };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(true);
+  });
+
+  it('rejects missing vpt', () => {
+    const msg = { type: 'view-sync' };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+  });
+
+  it('rejects vpt with incorrect number of elements', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0] };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+
+    const msg2 = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0, 0] };
+    expect(WsViewSyncSchema.safeParse(msg2).success).toBe(false);
+  });
+
+  it('rejects vpt with non-finite numbers', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, Infinity, 0, 0] };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+  });
+
+  it('rejects branch exceeding maximum length', () => {
+    const branch = 'a'.repeat(101);
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0], branch };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+  });
+
+  it('rejects headSha exceeding maximum length', () => {
+    const headSha = 'a'.repeat(65);
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0], headSha };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
   });
 });
 
