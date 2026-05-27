@@ -7,7 +7,15 @@ export function useRegister() {
   const t = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const rawCallbackUrl = searchParams.get("callbackUrl") ?? "/";
+  // P-SEC: Validate callbackUrl to prevent open redirect attacks.
+  // Only allow relative paths that start with "/" but not "//" or "/\" (which would be treated as external URLs).
+  const callbackUrl =
+    rawCallbackUrl.startsWith("/") &&
+    !rawCallbackUrl.startsWith("//") &&
+    !rawCallbackUrl.startsWith("/\\")
+      ? rawCallbackUrl
+      : "/";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

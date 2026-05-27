@@ -61,7 +61,7 @@ export async function GET(
   if (!invitation.room.isPublic) {
     if (!authSession) {
       // Redirect to sign-in with callbackUrl pointing back here
-      const callbackUrl = encodeURIComponent(req.url);
+      const callbackUrl = encodeURIComponent(url.pathname + url.search);
       const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
       return NextResponse.redirect(`${baseUrl}/auth/signin?callbackUrl=${callbackUrl}`);
     }
