@@ -9,7 +9,7 @@ Currently, access to a SketchGit room is governed entirely by URL obscurity (unl
 ## Proposed Changes
 1. **Schema Update**: Update the database schema to store an optional, securely hashed password (e.g., using bcrypt or Argon2) for each room.
 2. **Authentication Flow**: Implement an interstitial password prompt page that intercepts users attempting to join a password-protected room.
-3. **Session Management**: Issue secure, HttpOnly, signed cookies or short-lived JWTs to authenticate a user's session specifically for the accessed room, allowing them to reconnect without repeatedly entering the password.
+3. **Session Management**: Issue secure, HttpOnly, signed cookies or short-lived JWTs to authenticate a user's session specifically for the accessed room. To support multi-room sessions seamlessly (e.g. opening different rooms in multiple browser tabs), cookies must be path-scoped (e.g., `Path=/rooms/[roomId]`) or the JWT/session token must store a map of authorized room IDs, preventing tabs from overwriting each other's sessions.
 4. **UI Enhancements**: Add options in the room creation and settings interfaces to enable, disable, or change the room password.
 5. **API & WebSocket Security**: Ensure all HTTP API routes and WebSocket connections strictly validate the room-specific authentication token before permitting any data exchange.
 
@@ -22,7 +22,7 @@ Security just got an upgrade in SketchGit! We are introducing Room Password Prot
 - Database schema updated to support storing hashed passwords.
 - Interstitial password prompt UI developed.
 - Backend logic implemented to hash incoming passwords and verify them against stored hashes.
-- Session management implemented to persist access to the specific room during the user's active session.
+- Session management implemented to persist access to the specific room, utilizing path-scoped cookies or multi-room token mappings to support concurrent multi-room sessions.
 - Room settings UI updated to allow setting/removing the password.
 
 ### Testing

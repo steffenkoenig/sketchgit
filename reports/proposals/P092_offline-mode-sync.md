@@ -7,7 +7,7 @@ To enable users to continue working on SketchGit whiteboards when their internet
 Currently, SketchGit relies on a continuous real-time connection. If a user loses their internet connection, they are unable to make further edits, and any unsaved progress might be lost. This creates a frustrating experience for users with unstable connections, such as those traveling or working in areas with poor coverage. The platform needs a robust mechanism to queue local changes and resolve conflicts upon reconnection.
 
 ## Proposed Changes
-1. **Local Storage**: Utilize IndexedDB or local storage to securely save the current canvas state and a queue of offline actions.
+1. **IndexedDB Storage**: Utilize IndexedDB exclusively (avoiding standard `localStorage`) to securely save the current canvas state and the queue of offline actions. This prevents blocking the UI thread and avoids storage quota issues (since localStorage is limited to ~5MB).
 2. **Offline Detection**: Implement robust client-side network detection to smoothly transition the UI into "Offline Mode".
 3. **Action Queueing**: When offline, intercept user drawing actions and append them to a local operational transform (OT) or delta queue rather than attempting to send them over the WebSocket.
 4. **Background Sync**: Upon reconnection, initiate a background synchronization process that sends the queued actions to the server, handling any necessary conflict resolution strategies to merge changes with those made by other users.
@@ -20,7 +20,7 @@ Don't let a spotty internet connection interrupt your creative flow! SketchGit i
 
 ### Implementation
 - Client-side offline detection implemented.
-- Local storage mechanism (e.g., IndexedDB) integrated to save canvas state and queued actions.
+- Asynchronous IndexedDB storage mechanism integrated to save canvas state and queued actions.
 - Synchronization logic implemented to replay queued actions to the server upon reconnection.
 - Conflict resolution logic defined and implemented on the backend.
 - UI updated to display connection status and sync progress.
