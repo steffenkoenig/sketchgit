@@ -24,6 +24,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { CanvasErrorBoundary } from "./errors/CanvasErrorBoundary";
+import { TimelineErrorBoundary } from "./errors/TimelineErrorBoundary";
+import { ModalErrorBoundary } from "./errors/ModalErrorBoundary";
 import { AppTopbar } from "./sketchgit/AppTopbar";
 import { LeftToolbar } from "./sketchgit/LeftToolbar";
 import { PropertiesPanel } from "./sketchgit/PropertiesPanel";
@@ -117,12 +120,14 @@ export default function SketchGitApp() {
 
           {/* P025: main landmark wraps the primary drawing area */}
           <main id="canvas-wrap" aria-label="Drawing canvas area">
-            <canvas
-              id="c"
-              aria-label="Sketch canvas — draw here using the toolbar tools on the left"
-              role="img"
-            />
-            <div id="cursor-layer" aria-hidden="true"></div>
+            <CanvasErrorBoundary>
+              <canvas
+                id="c"
+                aria-label="Sketch canvas — draw here using the toolbar tools on the left"
+                role="img"
+              />
+              <div id="cursor-layer" aria-hidden="true"></div>
+            </CanvasErrorBoundary>
             <div id="dirty" className="hide" role="status" aria-live="polite">
               <div className="yd" aria-hidden="true"></div>
               <span>{t("toolbar.uncommittedChanges")}</span>
@@ -142,16 +147,18 @@ export default function SketchGitApp() {
 
         {/* P025: complementary landmark for the timeline panel */}
         <aside id="timeline" aria-label="Version timeline">
-          <div id="tlbar">
+          <TimelineErrorBoundary>
+            <div id="tlbar">
             <span className="tl-label" aria-hidden="true">{t("timeline.title")}</span>
             <div className="tl-actions">
               <button className="topbtn" onClick={() => call("tlScrollLeft")} aria-label="Scroll timeline left">◀</button>
               <button className="topbtn" onClick={() => call("tlScrollRight")} aria-label="Scroll timeline right">▶</button>
             </div>
           </div>
-          <div id="tlscroll" role="region" aria-label="Commit graph" tabIndex={0}>
-            <svg id="tlsvg" aria-label="Git commit graph" role="img"></svg>
-          </div>
+            <div id="tlscroll" role="region" aria-label="Commit graph" tabIndex={0}>
+              <svg id="tlsvg" aria-label="Git commit graph" role="img"></svg>
+            </div>
+          </TimelineErrorBoundary>
         </aside>
       </div>
 
@@ -226,6 +233,7 @@ export default function SketchGitApp() {
       </div>
 
       {/* P025: All modals use role="dialog", aria-modal, aria-labelledby */}
+      <ModalErrorBoundary>
       <div className="overlay" id="commitModal" role="dialog" aria-modal="true" aria-labelledby="commitModalTitle">
         <div className="modal">
           <h2 id="commitModalTitle">{t("modal.commit.title")}</h2>
@@ -237,7 +245,9 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+      </ModalErrorBoundary>
 
+      <ModalErrorBoundary>
       <div className="overlay" id="branchModal" role="dialog" aria-modal="true" aria-labelledby="branchModalTitle">
         <div className="modal">
           <h2 id="branchModalTitle">{t("modal.branch.title")}</h2>
@@ -248,7 +258,9 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+      </ModalErrorBoundary>
 
+      <ModalErrorBoundary>
       <div className="overlay" id="branchCreateModal" role="dialog" aria-modal="true" aria-labelledby="branchCreateModalTitle">
         <div className="modal">
           <h2 id="branchCreateModalTitle">{t("modal.branchCreate.title")}</h2>
@@ -261,7 +273,9 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+      </ModalErrorBoundary>
 
+      <ModalErrorBoundary>
       <div className="overlay" id="mergeModal" role="dialog" aria-modal="true" aria-labelledby="mergeModalTitle">
         <div className="modal">
           <h2 id="mergeModalTitle">{t("modal.merge.title")}</h2>
@@ -274,7 +288,9 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+      </ModalErrorBoundary>
 
+      <ModalErrorBoundary>
       <div className="overlay" id="conflictModal" role="dialog" aria-modal="true" aria-labelledby="conflictModalTitle">
         <div className="modal" style={{ maxWidth: "640px" }}>
           <h2 id="conflictModalTitle">{t("modal.conflict.title")}</h2>
@@ -293,7 +309,9 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+      </ModalErrorBoundary>
 
+      <ModalErrorBoundary>
       <div className="overlay" id="nameModal" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
         <div className="modal">
           <h2 id="nameModalTitle">{t("modal.name.title")}</h2>
@@ -304,10 +322,12 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+      </ModalErrorBoundary>
 
       <div id="toast" role="status" aria-live="assertive" aria-atomic="true"></div>
 
       {/* P025: Accessible confirmation modal – replaces window.confirm() for destructive actions */}
+      <ModalErrorBoundary>
       <div className="overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
         <div className="modal">
           <h2 id="confirmModalTitle">⚠ Confirm Action</h2>
@@ -327,6 +347,7 @@ export default function SketchGitApp() {
           </div>
         </div>
       </div>
+      </ModalErrorBoundary>
 
       {/* P091: Share links modal – opened from topbar or commit popup */}
       <ShareModal

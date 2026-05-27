@@ -258,7 +258,13 @@
     "SHARE_LINK_EXPIRED": "This share link has expired.",
     "SHARE_LINK_EXHAUSTED": "This share link has reached its use limit.",
     "SHARE_LINK_INVALID": "This share link is invalid or has been revoked.",
-    "SHARE_LINK_FORBIDDEN": "Your share link does not grant permission for this action."
+    "SHARE_LINK_FORBIDDEN": "Your share link does not grant permission for this action.",
+    "renderError": "An error occurred while rendering the page.",
+    "canvasError": "Canvas error — click to retry.",
+    "timelineError": "Timeline error",
+    "modalError": "Modal error",
+    "errorLogged": "We've logged this issue and are working to resolve it.",
+    "retry": "Retry"
   },
   "auth": {
     "orContinueAnonymously": "continue anonymously",
