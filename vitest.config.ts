@@ -10,10 +10,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['lib/test/setup.ts'],
-    include: ['lib/**/*.test.ts', 'app/**/*.test.ts'],
+    include: ['lib/**/*.test.ts', 'app/**/*.test.ts', '*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['lib/**/*.ts', 'app/api/**/*.ts'],
+      include: ['lib/**/*.ts', 'app/api/**/*.ts', 'proxy.ts'],
       exclude: ['lib/**/*.test.ts', 'app/**/*.test.ts', 'lib/db/prisma.ts', 'lib/auth.ts', 'lib/sketchgit/createSketchGitApp.ts'],
       thresholds: {
         lines: 70,
