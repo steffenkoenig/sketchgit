@@ -81,6 +81,11 @@ describe('validateCommitMessage()', () => {
     expect(validateCommitMessage(validSha, { canvas: 42 }, log)).toBe(false);
   });
 
+  it('rejects a commit with a missing canvas', () => {
+    const log = vi.fn();
+    expect(validateCommitMessage(validSha, {}, log)).toBe(false);
+  });
+
   it('rejects a canvas that exceeds MAX_CANVAS_CHARS', () => {
     const log = vi.fn();
     // MAX_CANVAS_CHARS + 1 char limit, so we construct a JSON string that is exactly MAX_CANVAS_CHARS + 1 chars long
@@ -141,6 +146,15 @@ describe('validateCommitMessage()', () => {
     expect(validateCommitMessage(validSha, {
       canvas: validCanvas,
       parents: ['abcdef01', 'invalid!!'],
+    }, log)).toBe(false);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('invalid parent sha'));
+  });
+
+  it('rejects parents array containing a non-string element', () => {
+    const log = vi.fn();
+    expect(validateCommitMessage(validSha, {
+      canvas: validCanvas,
+      parents: ['abcdef01', 123],
     }, log)).toBe(false);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('invalid parent sha'));
   });
