@@ -220,6 +220,7 @@ describe('WsFullsyncRequestSchema', () => {
   });
 });
 
+
 describe('WsObjectLockSchema / WsObjectUnlockSchema', () => {
   it('accepts valid object-lock message', () => {
     expect(
@@ -269,6 +270,11 @@ describe('InboundWsMessageSchema discriminated union', () => {
     expect(InboundWsMessageSchema.safeParse({ type: 'follow-request' }).success).toBe(true);
     expect(InboundWsMessageSchema.safeParse({ type: 'follow-accept' }).success).toBe(true);
     expect(InboundWsMessageSchema.safeParse({ type: 'follow-stop' }).success).toBe(true);
+  });
+
+  it('accepts object-lock and object-unlock messages', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'] }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'object-unlock' }).success).toBe(true);
   });
 
   it('rejects unknown type', () => {
