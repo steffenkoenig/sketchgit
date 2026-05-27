@@ -146,21 +146,16 @@ async function initRedis(): Promise<void> {
   // to locally-connected WebSocket clients.
   await redisSub.psubscribe(`${REDIS_CHANNEL_PREFIX}*`);
 
+  const { handleRedisPmessage } = await import("./lib/server/redisPmessage.js");
   redisSub.on("pmessage", (_pattern: string, channel: string, data: string) => {
-    const roomId = channel.slice(REDIS_CHANNEL_PREFIX.length);
-    let envelope: { from: string; instanceId: string; payload: WsMessage };
-    try {
-      envelope = JSON.parse(data) as { from: string; instanceId: string; payload: WsMessage };
-    } catch {
-      logger.warn({ channel }, "redis: failed to parse pmessage payload");
-      return;
-    }
-    // Skip messages this instance published itself – those clients already
-    // received the message via the synchronous local broadcast in broadcastRoom().
-    if (envelope.instanceId === SERVER_INSTANCE_ID) return;
-    // Relay to locally-connected clients only (excluding the original sender
-    // whose clientId is embedded in the envelope to prevent echo-loops).
-    broadcastLocalRoom(roomId, envelope.payload, envelope.from);
+    handleRedisPmessage(
+      channel,
+      data,
+      REDIS_CHANNEL_PREFIX,
+      SERVER_INSTANCE_ID,
+      logger,
+      broadcastLocalRoom
+    );
   });
 
   redisReady = true;

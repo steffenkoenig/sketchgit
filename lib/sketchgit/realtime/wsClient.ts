@@ -268,7 +268,9 @@ export class WsClient {
 
     ws.addEventListener('close', (ev) => {
       this._clearHeartbeat();
-      document.getElementById('liveInd')?.style.setProperty('display', 'none');
+      if (typeof document !== 'undefined') {
+        document.getElementById('liveInd')?.style.setProperty('display', 'none');
+      }
 
       if (this.intentionalClose) return; // clean disconnect, do not retry
 
