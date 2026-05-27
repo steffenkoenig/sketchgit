@@ -1122,9 +1122,8 @@ export class CanvasEngine {
       o.set('stroke', v);
       this.canvas?.requestRenderAll();
       // BUG-010 – programmatic obj.set() doesn't fire object:modified, so we
-      // must explicitly mark the canvas dirty and broadcast the change to peers.
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      // explicitly fire it here to let the canvas handlers run (dirty, broadcast, history).
+      this.canvas?.fire('object:modified', { target: o });
     }
   }
 
@@ -1146,9 +1145,8 @@ export class CanvasEngine {
       o.set('fill', this.createFill(pattern ?? 'filled', v));
       (o as FabricObject & { _fillColor?: string })._fillColor = v;
       this.canvas?.requestRenderAll();
-      // BUG-010 – same fix: mark dirty and broadcast so peers see the change.
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      // BUG-010 – same fix: explicitly fire object:modified.
+      this.canvas?.fire('object:modified', { target: o });
     }
   }
 
@@ -1171,8 +1169,7 @@ export class CanvasEngine {
         o.set('fill', 'transparent');
       }
       this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      this.canvas?.fire('object:modified', { target: o });
     }
   }
 
@@ -1200,8 +1197,7 @@ export class CanvasEngine {
         o.set('strokeDashArray', this.getDashArray(this.strokeDashType, w));
       }
       this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      this.canvas?.fire('object:modified', { target: o });
     }
   }
 
@@ -1222,8 +1218,7 @@ export class CanvasEngine {
       const dashArray = this.getDashArray(type, w);
       o.set('strokeDashArray', dashArray ?? null);
       this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      this.canvas?.fire('object:modified', { target: o });
     }
   }
 
@@ -1244,8 +1239,7 @@ export class CanvasEngine {
     if (o.isType('rect')) {
       (o as Rect).set({ rx: r, ry: r });
       this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      this.canvas?.fire('object:modified', { target: o });
     } else {
       // For sketch paths (artist/cartoonist/doodle) representing a rect: update
       // the stored original geometry and regenerate the sketch path.
@@ -1261,8 +1255,7 @@ export class CanvasEngine {
       const replacement = this.tryConvertToSketch(o, sloppiness);
       if (replacement) this.replaceActiveObject(o, replacement);
       this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      this.canvas?.fire('object:modified', { target: o });
     }
   }
 
@@ -1276,8 +1269,7 @@ export class CanvasEngine {
     if (o) {
       o.set('opacity', this.opacityValue / 100);
       this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      this.canvas?.fire('object:modified', { target: o });
     }
   }
 
@@ -1305,8 +1297,7 @@ export class CanvasEngine {
       o.set(this.getSloppinessOptions(type));
     }
     this.canvas?.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   setFillPattern(type: 'filled' | 'striped' | 'crossed'): void {
@@ -1333,8 +1324,7 @@ export class CanvasEngine {
         ext._fillPattern = type;
         ext._fillColor = this.fillColor;
         this.canvas?.requestRenderAll();
-        this.markDirty();
-        this.onBroadcastDraw(true);
+        this.canvas?.fire('object:modified', { target: o });
       }
     }
   }
@@ -1345,8 +1335,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.bringObjectToFront(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   bringForward(): void {
@@ -1355,8 +1344,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.bringObjectForward(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   sendBackward(): void {
@@ -1365,8 +1353,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.sendObjectBackwards(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   sendToBack(): void {
@@ -1375,16 +1362,14 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.sendObjectToBack(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   setObjectLink(url: string): void {
     const o = this.canvas?.getActiveObject();
     if (!o) return;
     (o as FabricObject & { _link?: string })._link = url.trim() || undefined;
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
     // Visual feedback: update the link input in the properties panel
     const input = document.getElementById('linkInput') as HTMLInputElement | null;
     if (input) input.value = url.trim();

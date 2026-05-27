@@ -67,6 +67,7 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
     bringObjectForward: vi.fn(),
     sendObjectBackwards: vi.fn(),
     sendObjectToBack: vi.fn(),
+    fire: vi.fn(),
   };
 
   return { mockCanvasInstance, canvasEventHandlers, makeFabricObject };
