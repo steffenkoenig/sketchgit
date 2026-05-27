@@ -8,6 +8,7 @@ import {
   WsProfileSchema,
   WsPingSchema,
   WsPongSchema,
+  WsFullsyncRequestSchema,
   InboundWsMessageSchema,
 } from './wsSchemas';
 
@@ -121,6 +122,25 @@ describe('WsBranchUpdateSchema', () => {
   });
 });
 
+describe('WsFullsyncRequestSchema', () => {
+  it('accepts valid fullsync-request message without senderId', () => {
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'fullsync-request' }).success).toBe(true);
+  });
+
+  it('accepts valid fullsync-request message with senderId', () => {
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'fullsync-request', senderId: 'abc12345' }).success).toBe(true);
+  });
+
+  it('rejects fullsync-request when senderId exceeds 64 characters', () => {
+    const longSenderId = 'a'.repeat(65);
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'fullsync-request', senderId: longSenderId }).success).toBe(false);
+  });
+
+  it('rejects fullsync-request with invalid type', () => {
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'invalid-request' }).success).toBe(false);
+  });
+});
+
 describe('InboundWsMessageSchema discriminated union', () => {
   it('dispatches to correct schema by type', () => {
     const result = InboundWsMessageSchema.safeParse({ type: 'ping' });
@@ -130,6 +150,11 @@ describe('InboundWsMessageSchema discriminated union', () => {
 
   it('accepts branch-update messages', () => {
     const result = InboundWsMessageSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts fullsync-request messages', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'fullsync-request' });
     expect(result.success).toBe(true);
   });
 
