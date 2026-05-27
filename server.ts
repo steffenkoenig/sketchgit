@@ -29,6 +29,7 @@ import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, ad
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
 import { validateCommitMessage } from "./lib/server/commitValidation.js";
 import { verifyScopeCookie, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
+import { checkDbHealth } from "./lib/db/health.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -341,16 +342,6 @@ function getRoom(roomId: string): Map<string, ClientState> {
 function sendTo(ws: WebSocket, payload: WsMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
-  }
-}
-
-// P023 – lightweight DB health probe (SELECT 1)
-async function checkDbHealth(): Promise<boolean> {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -758,7 +749,7 @@ void app.prepare()
         // Orchestrators use this to decide whether to restart the container; a DB
         // outage should NOT trigger a restart (the process itself is healthy).
         if (req.url === "/api/health") {
-          const dbOk = await checkDbHealth();
+          const dbOk = await checkDbHealth(prisma);
           const payload = JSON.stringify({
             status: "ok",
             uptime: process.uptime(),
@@ -780,7 +771,7 @@ void app.prepare()
         // P023 – readiness probe: 503 until the HTTP server is listening AND the
         // database is reachable.  Only then is the instance ready for traffic.
         if (req.url === "/api/ready") {
-          const canAcceptTraffic = isReady && (await checkDbHealth());
+          const canAcceptTraffic = isReady && (await checkDbHealth(prisma));
           res.writeHead(canAcceptTraffic ? 200 : 503, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ready: canAcceptTraffic }));
           return;
