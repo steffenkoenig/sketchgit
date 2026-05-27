@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MERGE_PROPS } from './types';
+import { BRANCH_COLORS } from './types';
 
 describe('types', () => {
   describe('MERGE_PROPS', () => {
@@ -31,6 +32,20 @@ describe('types', () => {
       // Just a sanity check that we aren't unexpectedly missing a ton of props
       expect(MERGE_PROPS.length).toBeGreaterThan(30);
       expect(MERGE_PROPS.length).toBeLessThan(100);
+    });
+  });
+});
+
+describe('BRANCH_COLORS', () => {
+  it('is an array of 8 colors', () => {
+    expect(Array.isArray(BRANCH_COLORS)).toBe(true);
+    expect(BRANCH_COLORS.length).toBe(8);
+  });
+
+  it('contains valid hex color strings', () => {
+    const hexColorRegex = /^#([0-9A-Fa-f]{3}){1,2}$/i;
+    BRANCH_COLORS.forEach(color => {
+      expect(color).toMatch(hexColorRegex);
     });
   });
 });
