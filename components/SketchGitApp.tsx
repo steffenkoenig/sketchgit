@@ -92,7 +92,7 @@ export default function SketchGitApp() {
   // data is unchanged.
   const sessionForTopbar = useMemo(
     () => session ?? null,
-    [session?.user?.name, session?.user?.email, session?.user?.image], // eslint-disable-line
+    [session?.user?.name, session?.user?.email, session?.user?.image],
   );
 
   // Derive the current room ID from the URL — mirrors AppTopbar's own resolution.

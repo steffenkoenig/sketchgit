@@ -1720,7 +1720,7 @@ describe('CanvasEngine – sketch path helpers', () => {
   });
 
   it('makeSketchyPath: rounded rect path contains Q commands and closes', () => {
-    const eng = (CanvasEngine as unknown as Record<string, unknown>);
+    const _eng = (CanvasEngine as unknown as Record<string, unknown>);
     const engine = new CanvasEngine(vi.fn(), vi.fn());
     const makeSketchyPath = (engine as unknown as Record<string, unknown>).makeSketchyPath as
       (geom: Record<string, unknown>, amp: number, seed: number) => string;
@@ -1855,7 +1855,7 @@ describe('CanvasEngine – connector snapping and following', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('object:moving on a shape triggers rebuild of an attached arrow group', () => {
-    const { engine, onBroadcastDraw } = makeEngine();
+    const { engine, onBroadcastDraw: _onBroadcastDraw } = makeEngine();
     engine.init();
 
     // A shape that will be moved.
