@@ -1888,8 +1888,6 @@ describe('CanvasEngine – connector snapping and following', () => {
     expect(arrowGroup.add).toHaveBeenCalled();
 
     // The newly added group should carry the same _attachedFrom ID.
-    const addCalls = mockCanvasInstance.add.mock.calls;
-    const lastAdded = addCalls[addCalls.length - 1]?.[0] as Record<string, unknown>;
     expect((arrowGroup as any)._attachedFrom).toBe('shape-1');
   });
 
@@ -1947,7 +1945,6 @@ describe('CanvasEngine – connector snapping and following', () => {
 
     // setActiveObject must NEVER be called with the new arrow group — only with the
     // moving shape (to restore drag tracking).
-    const setActiveCalls = mockCanvasInstance.setActiveObject.mock.calls as unknown[][];
     expect(mockCanvasInstance.setActiveObject).not.toHaveBeenCalled();
   });
 
@@ -2410,8 +2407,6 @@ describe('CanvasEngine – connector snapping and following', () => {
     expect(arrowGroup.add).toHaveBeenCalled();
 
     // The rebuilt group should have _attachedFrom set to 'snap-shape'.
-    const addCalls = mockCanvasInstance.add.mock.calls;
-    const rebuilt = addCalls[addCalls.length - 1]?.[0] as Record<string, unknown>;
     expect((arrowGroup as any)._attachedFrom).toBe('snap-shape');
   });
 
