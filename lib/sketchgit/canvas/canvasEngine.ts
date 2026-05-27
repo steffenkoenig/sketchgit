@@ -2971,7 +2971,7 @@ export class CanvasEngine {
     const isRect     = shapeType === 'rect';
     const isEllipse  = shapeType === 'ellipse';
     const isArrow    = shapeType === 'arrow';
-    const isPen      = shapeType === 'pen';
+    const _isPen     = shapeType === 'pen';
     const isText     = shapeType === 'text';
     const isMermaid  = shapeType === 'mermaid';
     const hasFill    = isRect || isEllipse;
