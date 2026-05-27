@@ -2,9 +2,6 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 
-declare const process: { env: { NODE_ENV: string } };
-
-
 type ErrorFallbackProps = {
   error: Error;
   resetError: () => void;
