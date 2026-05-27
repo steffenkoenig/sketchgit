@@ -37,6 +37,7 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
   }
 
   const mockCanvasInstance = {
+    fire: vi.fn(),
     on: vi.fn((event: string, handler: (e: unknown) => void) => {
       canvasEventHandlers[event] = handler;
     }),
@@ -1613,14 +1614,14 @@ describe('CanvasEngine – setFillPattern on existing shapes (bug fix)', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('applies fill pattern when selected object has a non-transparent fill (fillEnabled=false)', () => {
-    const { engine, onBroadcastDraw } = makeEngine();
+    const { engine } = makeEngine();
     engine.init();
     expect(engine.fillEnabled).toBe(false);
     const obj = makeFabricObject({ fill: '#ff0000', _fillPattern: 'filled' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
     engine.setFillPattern('striped');
     expect(obj.set).toHaveBeenCalledWith('fill', expect.anything());
-    expect(onBroadcastDraw).toHaveBeenCalled();
+    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
   });
 
   it('does NOT apply fill pattern when object has transparent fill and fillEnabled=false', () => {
@@ -1763,7 +1764,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('toggleFill() enabling fill applies current fillColor to the selected object', () => {
-    const { engine, onBroadcastDraw } = makeEngine();
+    const { engine } = makeEngine();
     engine.init();
     // Set fill color directly on engine state (avoids depending on updateFillColor internals)
     engine.fillColor = '#ff0000';
@@ -1772,11 +1773,11 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // enable fill
     expect(engine.fillEnabled).toBe(true);
     expect(obj.set).toHaveBeenCalledWith('fill', '#ff0000');
-    expect(onBroadcastDraw).toHaveBeenCalled();
+    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
   });
 
   it('toggleFill() disabling fill sets object fill to transparent', () => {
-    const { engine, onBroadcastDraw } = makeEngine();
+    const { engine } = makeEngine();
     engine.init();
     const obj = makeFabricObject({ fill: '#ff0000' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
@@ -1786,7 +1787,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // disable fill
     expect(engine.fillEnabled).toBe(false);
     expect(obj.set).toHaveBeenCalledWith('fill', 'transparent');
-    expect(onBroadcastDraw).toHaveBeenCalled();
+    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
   });
 
   it('toggleFill() with no active object only updates flag and button', () => {
@@ -1855,7 +1856,7 @@ describe('CanvasEngine – connector snapping and following', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('object:moving on a shape triggers rebuild of an attached arrow group', () => {
-    const { engine, onBroadcastDraw: _onBroadcastDraw } = makeEngine();
+    const { engine } = makeEngine();
     engine.init();
 
     // A shape that will be moved.
