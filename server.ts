@@ -1289,7 +1289,13 @@ void app.prepare()
             // BUG-009 – use `continue` so the rest of the batch is still processed.
             continue;
           }
-          await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId);
+          try {
+            await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId);
+          } catch (err) {
+            logger.error({ err, clientId, roomId }, "ws: error processing message in batch");
+            sendTo(client, { type: "error", code: "INTERNAL_ERROR" });
+            continue;
+          }
         }
       }));
 
