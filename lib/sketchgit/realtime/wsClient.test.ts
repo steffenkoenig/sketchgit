@@ -46,12 +46,39 @@ class MockWebSocket {
 // Install mock before WsClient is imported so it captures the global.
 globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 
+// ── Logger mock ───────────────────────────────────────────────────────────────
+vi.mock('../logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+// ── PollingFallback mock ──────────────────────────────────────────────────────
+vi.mock('./pollingFallback', () => ({ PollingFallback: vi.fn() }));
+
 import { WsClient } from './wsClient';
+import { logger } from '../logger';
+import { PollingFallback } from './pollingFallback';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeClient() {
   return new WsClient();
+}
+
+/** Create a fresh mock PollingFallback instance and inject it into PollingFallback mock. */
+function makePollingMock(active = false) {
+  const instance = {
+    _active: active,
+    start: vi.fn().mockImplementation(function(this: typeof instance) { this._active = true; }),
+    stop:  vi.fn().mockImplementation(function(this: typeof instance) { this._active = false; }),
+    isActive: vi.fn().mockImplementation(function(this: typeof instance) { return this._active; }),
+    postCommit: vi.fn().mockResolvedValue(undefined),
+  };
+  // Must use a regular function (not arrow) as the mock implementation so it
+  // can be called with `new` in WsClient.startPolling().
+  vi.mocked(PollingFallback).mockImplementation(function() {
+    return instance;
+  } as unknown as typeof PollingFallback);
+  return instance;
 }
 
 /** Fire only the 0-ms "open" timer created by MockWebSocket. */
@@ -250,6 +277,163 @@ describe('WsClient', () => {
 
     // A new MockWebSocket should have been created.
     expect(MockWebSocket.lastInstance).not.toBe(firstWs);
+  });
+
+  // ── Error handler ────────────────────────────────────────────────────────
+
+  it('logs a warning via logger.warn on WebSocket error (no fields when ErrorEvent is bare)', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+
+    const ws = MockWebSocket.lastInstance!;
+    // Emit a bare ErrorEvent (no message / error – typical for WS connect failures)
+    ws._emit('error', new Event('error'));
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      {},
+      '[WsClient] WebSocket error – will retry on close',
+    );
+  });
+
+  it('includes message and error fields in logger.warn when ErrorEvent carries details', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+
+    const ws = MockWebSocket.lastInstance!;
+    const underlyingError = new Error('connection refused');
+    const ev = new ErrorEvent('error', { message: 'WebSocket error', error: underlyingError });
+    ws._emit('error', ev);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      { message: 'WebSocket error', error: 'connection refused' },
+      '[WsClient] WebSocket error – will retry on close',
+    );
+  });
+});
+
+// ─── NEXT_PUBLIC_WS_URL override ─────────────────────────────────────────────
+
+describe('WsClient._buildUrl NEXT_PUBLIC_WS_URL override', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    MockWebSocket.lastInstance = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.NEXT_PUBLIC_WS_URL;
+  });
+
+  it('uses NEXT_PUBLIC_WS_URL as the WebSocket base when set', () => {
+    process.env.NEXT_PUBLIC_WS_URL = 'wss://my-ws-server.railway.app/ws';
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#a78bfa');
+
+    const ws = MockWebSocket.lastInstance!;
+    expect(ws.url).toBe(
+      'wss://my-ws-server.railway.app/ws?room=room1&name=Alice&color=%23a78bfa',
+    );
+  });
+
+  it('falls back to the same-host /ws path when NEXT_PUBLIC_WS_URL is not set', () => {
+    delete process.env.NEXT_PUBLIC_WS_URL;
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#ff0000');
+
+    const ws = MockWebSocket.lastInstance!;
+    // jsdom default origin is http://localhost:3000 so protocol → ws: (includes port)
+    expect(ws.url).toMatch(/^ws:\/\/localhost(:\d+)?\/ws\?room=room1/);
+  });
+});
+
+// ─── Polling fallback integration ────────────────────────────────────────────
+
+describe('WsClient polling fallback', () => {
+  let polling: ReturnType<typeof makePollingMock>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    polling = makePollingMock();
+    MockWebSocket.lastInstance = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('isPolling() is false initially', () => {
+    const client = makeClient();
+    expect(client.isPolling()).toBe(false);
+  });
+
+  it('startPolling() activates polling and passes initial SHAs', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    const shas = new Set(['sha1', 'sha2']);
+    client.startPolling(shas);
+
+    expect(client.isPolling()).toBe(true);
+    expect(polling.start).toHaveBeenCalledWith(shas);
+  });
+
+  it('stopPolling() deactivates polling', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    client.startPolling(new Set());
+    client.stopPolling();
+
+    expect(client.isPolling()).toBe(false);
+    expect(polling.stop).toHaveBeenCalled();
+  });
+
+  it('connect() stops any active polling before opening a new socket', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    client.startPolling(new Set());
+    expect(client.isPolling()).toBe(true);
+
+    // Calling connect() again (e.g. manual reconnect) should stop polling.
+    client.connect('room1', 'Alice', '#blue');
+    expect(polling.stop).toHaveBeenCalled();
+  });
+
+  it('disconnect() stops polling', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    client.startPolling(new Set());
+    client.disconnect();
+
+    expect(polling.stop).toHaveBeenCalled();
+  });
+
+  it('send({ type: "commit" }) is routed to postCommit() when polling is active', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    client.startPolling(new Set());
+
+    const ws = MockWebSocket.lastInstance!;
+    const commitMsg = { type: 'commit' as const, sha: 'sha1', commit: { branch: 'main', message: 'test', canvas: '{}', parents: [] } };
+    client.send(commitMsg);
+
+    // Should NOT go to the WebSocket
+    expect(ws.send).not.toHaveBeenCalled();
+    // Should be routed to postCommit
+    expect(polling.postCommit).toHaveBeenCalledWith('sha1', commitMsg.commit);
+  });
+
+  it('send() of non-commit messages is NOT routed to REST when polling', () => {
+    const client = makeClient();
+    client.connect('room1', 'Alice', '#blue');
+    openSocket(); // open the WS connection
+    client.startPolling(new Set());
+
+    const ws = MockWebSocket.lastInstance!;
+    client.send({ type: 'pong' });
+
+    // Non-commit message still goes through WS
+    expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'pong' }));
+    expect(polling.postCommit).not.toHaveBeenCalled();
   });
 });
 

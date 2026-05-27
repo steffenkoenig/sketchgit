@@ -319,6 +319,23 @@ export class CollaborationManager {
       this.followingClientId = null;
       this.presenterClientId = null;
     }
+
+    if (status === 'offline') {
+      // WebSocket has permanently failed – start REST polling so the app
+      // continues to receive new commits and can persist its own work.
+      const gitState = this.cb.getGitState();
+      const knownShas = new Set(Object.keys(gitState.commits));
+      this.ws.startPolling(knownShas);
+
+      const peerStatus = document.getElementById('peerStatus');
+      if (peerStatus) {
+        peerStatus.textContent = '📡 Polling mode – real-time features paused';
+        peerStatus.className = 'peer-status polling';
+      }
+    } else if (status === 'connecting') {
+      // A new WS connection attempt is starting – stop any active polling.
+      this.ws.stopPolling();
+    }
   }
 
   // ─── Cursor rendering ─────────────────────────────────────────────────────

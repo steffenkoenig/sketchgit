@@ -45,6 +45,7 @@ export const ApiErrorCode = {
   SHARE_LINK_FORBIDDEN: "SHARE_LINK_FORBIDDEN",
   // ── Server ────────────────────────────────────────────────────────────────
   INTERNAL_ERROR: "INTERNAL_ERROR",
+  WS_UNAVAILABLE: "WS_UNAVAILABLE",
 } as const;
 
 /** Union type of all valid error code string literals. */

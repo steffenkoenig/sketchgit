@@ -20,7 +20,7 @@ describe('logger', () => {
   it('warn is output when activeLevel is "warn"', () => {
     setLogLevel('warn');
     logger.warn('this should appear');
-    expect(console.warn).toHaveBeenCalledWith('[sketchgit:warn]', 'this should appear', {});
+    expect(console.warn).toHaveBeenCalledWith('[sketchgit:warn]', 'this should appear');
   });
 
   it('error calls the registered errorHook', () => {

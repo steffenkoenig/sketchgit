@@ -18,6 +18,9 @@ function makeMockWs() {
     connect: vi.fn(),
     disconnect: vi.fn(),
     isConnected: vi.fn().mockReturnValue(true),
+    startPolling: vi.fn(),
+    stopPolling: vi.fn(),
+    isPolling: vi.fn().mockReturnValue(false),
   };
   return ws;
 }
