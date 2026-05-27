@@ -2418,17 +2418,8 @@ export class CanvasEngine {
           this._attachmentRafId = null;
           this._attachmentRafTarget = null;
         }
-        // Rebuild the arrow at the snapped coordinates.  Track whether the group was
-        // active so we can re-select the rebuilt group, preserving selection after snap.
-        const wasActive = this.canvas.getActiveObject() === obj;
-        const agId = (ag as FabricObject & { _id?: string })._id;
-        this.rebuildArrowForMove(obj, snapX1, snapY1, snapX2, snapY2);
-        if (wasActive && agId) {
-          const newGrp = this.canvas.getObjects().find(
-            (o) => (o as FabricObject & { _id?: string })._id === agId,
-          );
-          if (newGrp) this.canvas.setActiveObject(newGrp);
-        }
+        // Rebuild the arrow at the snapped coordinates.
+        this.rebuildArrowGroupInPlace(obj, snapX1, snapY1, snapX2, snapY2);
       } else {
         // No snap: just persist the new group center so the next delta is correct.
         ag._gcx = newCenter.x;
@@ -2662,7 +2653,7 @@ export class CanvasEngine {
     }
 
     for (const { grp, x1, y1, x2, y2 } of arrowsToRebuild) {
-      this.rebuildArrowForMove(grp, x1, y1, x2, y2);
+      this.rebuildArrowGroupInPlace(grp, x1, y1, x2, y2);
     }
     for (const { sp, x1, y1, x2, y2 } of sketchesToRebuild) {
       this.rebuildSketchPathForMove(sp, x1, y1, x2, y2);
@@ -2672,53 +2663,6 @@ export class CanvasEngine {
       this.canvas.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(false); // throttled — endpoint moves are frequent
-    }
-  }
-
-  /**
-   * Rebuild an arrow Group with updated endpoint coordinates without changing
-   * the canvas selection (used when a connected shape is being moved).
-   * Preserves the group's _id, _attachedFrom, _attachedTo, and anchor offsets.
-   */
-  private rebuildArrowForMove(
-    grp: FabricObject,
-    x1: number, y1: number, x2: number, y2: number,
-  ): void {
-    if (!this.canvas) return;
-    const ag = grp as AnchoredArrowGroup;
-
-    const headStart = (ag._arrowHeadStart ?? 'none') as 'none' | 'open' | 'triangle' | 'triangle-outline';
-    const headEnd   = (ag._arrowHeadEnd   ?? 'open') as 'none' | 'open' | 'triangle' | 'triangle-outline';
-    const arrowType = (ag._arrowType      ?? 'sharp') as 'sharp' | 'curved' | 'elbow';
-
-    const children = (grp as Group).getObjects?.() ?? [];
-    const firstChild = children[0] as FabricObject | undefined;
-    const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
-    const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
-    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined);
-    const opacity = (grp.get('opacity') as number | undefined) ?? 1;
-
-    const tempLine = new Line([x1, y1, x2, y2], {
-      stroke, strokeWidth, strokeDashArray,
-      opacity, selectable: false, evented: false,
-    });
-    // Preserve the group's ID, attachment IDs, and anchor offsets.
-    (tempLine as FabricObject & { _id?: string })._id = (grp as FabricObject & { _id?: string })._id;
-    const tl = tempLine as AnchoredLine;
-    tl._attachedFrom = ag._attachedFrom;
-    tl._attachedTo = ag._attachedTo;
-    tl._attachedFromAnchorX = ag._attachedFromAnchorX;
-    tl._attachedFromAnchorY = ag._attachedFromAnchorY;
-    tl._attachedToAnchorX = ag._attachedToAnchorX;
-    tl._attachedToAnchorY = ag._attachedToAnchorY;
-
-    // Rebuild without switching the canvas selection (selectAfter=false), then restore
-    // the previously-active object so Fabric.js drag-tracking is not interrupted.
-    const prevActive = this.canvas.getActiveObject();
-    this.canvas.remove(grp);
-    this.buildArrowGroup(tempLine, headStart, headEnd, arrowType, false);
-    if (prevActive && prevActive !== grp) {
-      this.canvas.setActiveObject(prevActive);
     }
   }
 
