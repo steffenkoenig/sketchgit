@@ -542,6 +542,34 @@ describe('CollaborationManager – destroy', () => {
 
     vi.useRealTimers();
   });
+
+  it('cancels lock-expire timers and presenter interval', () => {
+    vi.useFakeTimers();
+    setupDom();
+    const ws = makeMockWs();
+    const cb = makeCallbacks();
+    const collab = new CollaborationManager(ws as unknown as WsClient, cb);
+
+    // Add a lock expire timer
+    const lockSpy = vi.fn();
+    const timerId = setTimeout(lockSpy, 5000);
+    (collab as any).lockExpireTimers.set('p1', timerId);
+
+    // Start presenter mode
+    collab.startPresenting();
+    expect(collab.isPresenting).toBe(true);
+
+    collab.destroy();
+
+    expect(collab.isPresenting).toBe(false);
+    expect((collab as any).lockExpireTimers.size).toBe(0);
+
+    vi.runAllTimers();
+    expect(lockSpy).not.toHaveBeenCalled();
+    expect(ws.sendBatched).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
 });
 
 describe('P067 CollaborationManager – object-lock relay', () => {
