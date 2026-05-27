@@ -1614,7 +1614,7 @@ describe('CanvasEngine – setFillPattern on existing shapes (bug fix)', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('applies fill pattern when selected object has a non-transparent fill (fillEnabled=false)', () => {
-    const { engine, onBroadcastDraw } = makeEngine();
+    const { engine, _onBroadcastDraw } = makeEngine();
     engine.init();
     expect(engine.fillEnabled).toBe(false);
     const obj = makeFabricObject({ fill: '#ff0000', _fillPattern: 'filled' });
@@ -1764,7 +1764,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('toggleFill() enabling fill applies current fillColor to the selected object', () => {
-    const { engine, onBroadcastDraw } = makeEngine();
+    const { engine, _onBroadcastDraw } = makeEngine();
     engine.init();
     // Set fill color directly on engine state (avoids depending on updateFillColor internals)
     engine.fillColor = '#ff0000';
@@ -1777,7 +1777,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
   });
 
   it('toggleFill() disabling fill sets object fill to transparent', () => {
-    const { engine, onBroadcastDraw } = makeEngine();
+    const { engine, _onBroadcastDraw } = makeEngine();
     engine.init();
     const obj = makeFabricObject({ fill: '#ff0000' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
