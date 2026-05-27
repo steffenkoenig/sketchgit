@@ -133,7 +133,7 @@ jobs:
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
       - name: Run Trivy image vulnerability scan
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           image-ref: sketchgit:scan
@@ -144,7 +144,7 @@ jobs:
           severity: CRITICAL,HIGH
 
       - name: Run Trivy filesystem scan (npm deps)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           scan-type: fs
