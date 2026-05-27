@@ -7,7 +7,7 @@
 
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { loadPreferences, savePreferences, setBranchInUrl } from './userPreferences';
+import { loadPreferences, loadLastRoomId, savePreferences, setBranchInUrl } from './userPreferences';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,37 @@ describe('userPreferences', () => {
       expect(prefs?.color).toBe('');
       expect(prefs?.lastRoomId).toBe('');
       expect(prefs?.lastBranchName).toBe('');
+    });
+  });
+
+  // ── loadLastRoomId ───────────────────────────────────────────────────────
+
+  describe('loadLastRoomId()', () => {
+    it('returns empty string when localStorage is empty', () => {
+      expect(loadLastRoomId()).toBe('');
+    });
+
+    it('returns empty string when lastRoomId is not set in stored JSON', () => {
+      localStorage.setItem(KEY, JSON.stringify({ name: 'Bob' }));
+      expect(loadLastRoomId()).toBe('');
+    });
+
+    it('returns stored lastRoomId even if name is unset', () => {
+      localStorage.setItem(KEY, JSON.stringify({ lastRoomId: 'room-abc' }));
+      expect(loadLastRoomId()).toBe('room-abc');
+    });
+
+    it('returns stored lastRoomId when preferences are fully populated', () => {
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({ name: 'Alice', color: '#fff', lastRoomId: 'room-xyz' })
+      );
+      expect(loadLastRoomId()).toBe('room-xyz');
+    });
+
+    it('returns empty string if stored value is malformed JSON', () => {
+      localStorage.setItem(KEY, '{not valid json}');
+      expect(loadLastRoomId()).toBe('');
     });
   });
 
