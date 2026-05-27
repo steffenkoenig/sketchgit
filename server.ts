@@ -260,10 +260,25 @@ const PING_INTERVAL_MS = 25_000;
 // Server-to-server / CLI tools typically omit it (we allow those through).
 // Origins are normalised via `new URL(...).origin` so that trailing slashes
 // or differences in case do not cause legitimate upgrades to be rejected.
-// Treat an empty/whitespace-only WS_ALLOWED_ORIGINS as unset so we always
-// fall back to NEXTAUTH_URL rather than producing an empty allow-list that
-// would reject all browser upgrades.
-const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.WS_ALLOWED_ORIGINS, env.NEXTAUTH_URL);
+const ALLOWED_ORIGINS: Set<string> = (() => {
+  // Treat an empty/whitespace-only WS_ALLOWED_ORIGINS as unset so we always
+  // fall back to NEXTAUTH_URL rather than producing an empty allow-list that
+  // would reject all browser upgrades.
+  const raw = process.env.WS_ALLOWED_ORIGINS?.trim() || env.NEXTAUTH_URL;
+  return new Set(
+    raw
+      .split(",")
+      .map((o) => {
+        const trimmed = o.trim();
+        try {
+          return new URL(trimmed).origin;
+        } catch {
+          return trimmed;
+        }
+      })
+      .filter(Boolean),
+  );
+})();
 
 // P023 – readiness flag: false until the HTTP server is fully listening
 let isReady = false;
