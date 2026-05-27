@@ -1023,9 +1023,14 @@ void app.prepare()
           // First fetch the invitation to validate it (expiry, roomId).
           const invitation = await prisma.roomInvitation.findUnique({
             where: { token: inviteToken },
-            select: { roomId: true, expiresAt: true, maxUses: true },
+            select: { roomId: true, expiresAt: true, maxUses: true, useCount: true },
           });
-          if (invitation && invitation.roomId === roomId && invitation.expiresAt > new Date()) {
+          if (
+            invitation &&
+            invitation.roomId === roomId &&
+            invitation.expiresAt > new Date() &&
+            invitation.useCount < invitation.maxUses
+          ) {
             // BUG-004 – use updateMany with a conditional WHERE to atomically
             // increment useCount only when still below maxUses, preventing a
             // TOCTOU race where concurrent connections could both pass the
@@ -1034,17 +1039,22 @@ void app.prepare()
               where: { token: inviteToken, useCount: { lt: invitation.maxUses } },
               data: { useCount: { increment: 1 } },
             });
-            if (updated.count > 0) {
-              // Also add as a room member so future connections don't need the token
-              if (client.userId) {
-                await prisma.roomMembership.upsert({
-                  where: { roomId_userId: { roomId, userId: client.userId } },
-                  update: {},
-                  create: { roomId, userId: client.userId, role: "EDITOR" },
-                });
-              }
-              access = { allowed: true, role: "EDITOR" };
+            if (updated.count === 0) {
+              // Another concurrent connection consumed the last use; deny access
+              sendTo(client, { type: "error", code: "INVITATION_EXHAUSTED", detail: "Invitation limit reached" });
+              ws.close(1008, "Invitation exhausted");
+              return;
             }
+
+            // Also add as a room member so future connections don't need the token
+            if (client.userId) {
+              await prisma.roomMembership.upsert({
+                where: { roomId_userId: { roomId, userId: client.userId } },
+                update: {},
+                create: { roomId, userId: client.userId, role: "EDITOR" },
+              });
+            }
+            access = { allowed: true, role: "EDITOR" };
           }
         }
 
