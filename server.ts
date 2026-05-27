@@ -32,6 +32,7 @@ import { verifyScopeCookie, mapPermissionToRole } from "./lib/server/shareLinkTo
 import { checkDbHealth } from "./lib/db/health.js";
 import { parseAllowedOrigins } from "./lib/server/allowedOrigins.js";
 import { parseCookies } from "./lib/server/cookieHelpers.js";
+import { getGlobalPresence } from "./lib/server/presence.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -362,34 +363,7 @@ const REDIS_PRESENCE_TTL_SECONDS = 30;
  * P035 – Return the merged list of clients from all server instances for a room.
  * Falls back to the local client list when Redis is unavailable.
  */
-async function getGlobalPresence(
-  roomId: string,
-  localClients: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>,
-): Promise<Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>> {
-  if (!redisPub || !redisReady) return localClients;
 
-  try {
-    const key = `${REDIS_PRESENCE_PREFIX}${roomId}`;
-    const allFields = await redisPub.hgetall(key);
-    if (!allFields) return localClients;
-
-    const seen = new Set<string>();
-    const merged: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }> = [];
-    for (const value of Object.values(allFields)) {
-      const clients = JSON.parse(value) as Array<{ clientId: string; name: string; color: string; userId: string | null; branch?: string; headSha?: string | null }>;
-      for (const c of clients) {
-        if (!seen.has(c.clientId)) {
-          seen.add(c.clientId);
-          merged.push({ ...c, branch: c.branch ?? 'main', headSha: c.headSha ?? null });
-        }
-      }
-    }
-    return merged;
-  } catch (err) {
-    logger.warn({ roomId, err }, "redis: getGlobalPresence failed, falling back to local");
-    return localClients;
-  }
-}
 
 function pushPresence(roomId: string): void {
   const room = rooms.get(roomId);
@@ -417,7 +391,7 @@ function pushPresence(roomId: string): void {
     pipeline.expire(key, REDIS_PRESENCE_TTL_SECONDS);
     // Fetch global merged list, then broadcast
     void pipeline.exec().then(() =>
-      getGlobalPresence(roomId, localClients).then((clients) => {
+      getGlobalPresence(roomId, localClients, redisPub, redisReady, logger).then((clients) => {
         broadcastLocalRoom(roomId, { type: "presence", roomId, clients });
       }).catch((err) => {
         logger.warn({ roomId, err }, "redis: presence merge failed");
