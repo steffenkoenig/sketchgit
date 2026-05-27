@@ -30,14 +30,9 @@ export class GitModel {
     return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   }
 
-  /** @deprecated Use generateSha() instead. */
-  _sha(): string {
-    return this.generateSha();
-  }
-
   /** Create the initial commit for a fresh canvas. */
   init(canvasJson: string): string {
-    const sha = this._sha();
+    const sha = this.generateSha();
     this.commits[sha] = {
       sha,
       parent: null,
@@ -67,7 +62,7 @@ export class GitModel {
       return null;
     }
     const parent = this.currentSHA();
-    const sha = this._sha();
+    const sha = this.generateSha();
     this.commits[sha] = {
       sha,
       parent,
@@ -143,7 +138,7 @@ export class GitModel {
 
     if ('result' in mergeResult) {
       // Clean merge – create the merge commit now
-      const sha = this._sha();
+      const sha = this.generateSha();
       this.commits[sha] = {
         sha,
         parent: targetSHA,
