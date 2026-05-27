@@ -8,7 +8,7 @@ const mockCanvasInstance = {
 };
 
 // Use a real class-like constructor so `new StaticCanvas(...)` works correctly.
-vi.mock('fabric', () => {
+vi.mock('fabric/node', () => {
   function StaticCanvas() { return mockCanvasInstance; }
   return { StaticCanvas };
 });

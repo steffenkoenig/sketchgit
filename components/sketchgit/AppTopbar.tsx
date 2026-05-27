@@ -16,9 +16,9 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Session } from "next-auth";
 import { signIn, signOut } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import type { SketchGitCall } from "@/components/sketchgit/types";
+import { showToast } from "@/lib/sketchgit/ui/toast";
 // Note: native <button> elements with .topbtn CSS class are used throughout instead of the
 // shadcn/ui <Button> component because shadcn requires its own CSS variable definitions
 // (--primary, --border, etc.) which are not part of this app's CSS variable system.
@@ -27,6 +27,7 @@ type AppTopbarProps = {
   call: SketchGitCall;
   session: Session | null;
   sessionStatus: "loading" | "authenticated" | "unauthenticated";
+  getCanvasJson: () => string | null;
 };
 
 /* ── Inline SVG icon helpers ─────────────────────────────────────────────── */
@@ -189,15 +190,84 @@ function usePortalDropdown(align: "left" | "right" = "left") {
 
 /* ── ExportDropdown ──────────────────────────────────────────────────────── */
 
-function ExportDropdown({ exportBase, roomId }: { exportBase: string; roomId: string }) {
+function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null }) {
   const t = useTranslations();
   const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("left");
+  const [busy, setBusy] = React.useState(false);
 
   const items = [
     { format: "png", label: t("toolbar.exportPng"), icon: <IconPng /> },
     { format: "svg", label: t("toolbar.exportSvg"), icon: <IconSvg /> },
     { format: "pdf", label: t("toolbar.exportPdf"), icon: <IconPdf /> },
   ];
+
+  async function doExport(format: string) {
+    if (busy) return;
+    setBusy(true);
+    setOpen(false);
+    try {
+      // Read the live room ID from the URL bar at click time.
+      // useSearchParams() from Next.js is frozen at the server-rendered URL
+      // and does not update when the canvas engine calls history.replaceState()
+      // after the WebSocket welcome message — so we bypass it here to always
+      // use the actual current room ID.
+      const params = new URLSearchParams(window.location.search);
+      const roomId = params.get("room") || "default";
+      const theme = document.documentElement.classList.contains("theme-light") ? "light" : "dark";
+      const base = `/api/rooms/${encodeURIComponent(roomId)}/export`;
+
+      // Prefer POST with the live canvas JSON so the export succeeds even when
+      // the room has not been persisted to the database (e.g. dbEnsureRoom
+      // failed transiently on the WebSocket server).
+      const canvasJsonStr = getCanvasJson();
+
+      let res: Response;
+      if (canvasJsonStr !== null) {
+        let canvasJson: unknown;
+        try {
+          canvasJson = JSON.parse(canvasJsonStr);
+        } catch {
+          showToast(t("errors.EXPORT_FAILED"), true);
+          return;
+        }
+        res = await fetch(base, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ canvasJson, format, theme }),
+        });
+      } else {
+        // Canvas engine not yet initialised — fall back to the DB-based GET.
+        res = await fetch(`${base}?format=${format}&theme=${theme}`);
+      }
+
+      if (!res.ok) {
+        const body: unknown = await res.json().catch(() => null);
+        const msg =
+          body !== null &&
+          typeof body === "object" &&
+          "message" in body &&
+          typeof (body as Record<string, unknown>).message === "string"
+            ? (body as { message: string }).message
+            : res.statusText;
+        showToast(`⚠ ${msg}`, true);
+        return;
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `canvas-${roomId}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      showToast(t("errors.EXPORT_FAILED"), true);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="tb-dropdown">
@@ -208,26 +278,26 @@ function ExportDropdown({ exportBase, roomId }: { exportBase: string; roomId: st
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={t("topbar.export")}
+        disabled={busy}
       >
         <IconExport />
-        {t("topbar.export")}
+        {busy ? "…" : t("topbar.export")}
         <IconChevronDown />
       </button>
       {open && createPortal(
         <div ref={menuRef} className="tb-dropdown-menu open" style={menuStyle} role="menu">
           {items.map(({ format, label, icon }) => (
-            <a
+            <button
               key={format}
-              href={`${exportBase}?format=${format}`}
-              download={`canvas-${roomId}.${format}`}
               className="tb-dropdown-item"
               role="menuitem"
               aria-label={label}
-              onClick={() => setOpen(false)}
+              disabled={busy}
+              onClick={() => { void doExport(format); }}
             >
               {icon}
               {label}
-            </a>
+            </button>
           ))}
         </div>,
         document.body
@@ -354,12 +424,7 @@ function ThemeToggle() {
 
 /* ── AppTopbar ───────────────────────────────────────────────────────────── */
 
-export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus }: AppTopbarProps) {
-  // P039: Resolve the current room ID from the URL query param for export links.
-  const searchParams = useSearchParams();
-  const roomId = searchParams.get("room") ?? "default";
-  const exportBase = `/api/rooms/${encodeURIComponent(roomId)}/export`;
-
+export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus, getCanvasJson }: AppTopbarProps) {
   // P050: translation helper
   const t = useTranslations();
 
@@ -449,7 +514,7 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
       )}
 
       {/* P039: Export dropdown – PNG / SVG / PDF */}
-      <ExportDropdown exportBase={exportBase} roomId={roomId} />
+      <ExportDropdown getCanvasJson={getCanvasJson} />
 
       {/* Auth section */}
       <div className="sep" role="separator" aria-orientation="vertical"></div>
