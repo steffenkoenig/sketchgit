@@ -258,7 +258,11 @@
     "SHARE_LINK_EXPIRED": "Dieser Freigabe-Link ist abgelaufen.",
     "SHARE_LINK_EXHAUSTED": "Dieser Freigabe-Link hat sein Nutzungslimit erreicht.",
     "SHARE_LINK_INVALID": "Dieser Freigabe-Link ist ungültig oder wurde widerrufen.",
-    "SHARE_LINK_FORBIDDEN": "Ihr Freigabe-Link erlaubt diese Aktion nicht."
+    "SHARE_LINK_FORBIDDEN": "Ihr Freigabe-Link erlaubt diese Aktion nicht.",
+    "renderError": "Ein Fehler ist beim Rendern der Seite aufgetreten.",
+    "canvasError": "Zeichenflächenfehler — klicken, um es erneut zu versuchen.",
+    "timelineError": "Zeitleistenfehler",
+    "modalError": "Modalfehler"
   },
   "auth": {
     "orContinueAnonymously": "anonym fortfahren",
