@@ -100,6 +100,7 @@ export interface ConflictMergeResult {
   baseData: string;
   oursData: string;
   theirsData: string;
+  mergedCanvasProps: Record<string, unknown>;
   /** Populated by GitModel.merge() before returning. */
   branchNames?: BranchNames;
 }
@@ -119,6 +120,7 @@ export interface PendingMerge {
   conflicts: MergeConflict[];
   cleanObjects: (Record<string, unknown> | null)[];
   oursData: string;
+  mergedCanvasProps: Record<string, unknown>;
   branchNames: BranchNames;
   resolved: boolean;
 }

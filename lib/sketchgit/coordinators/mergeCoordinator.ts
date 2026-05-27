@@ -107,8 +107,8 @@ export class MergeCoordinator {
   applyMergeResolution(): void {
     if (!this.pendingMerge) return;
     const { git, canvas, ws } = this.ctx;
-    const { conflicts, cleanObjects, oursData, branchNames } = this.pendingMerge;
-    const baseParsed = JSON.parse(oursData) as Record<string, unknown>;
+    const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = this.pendingMerge;
+    const baseCanvasProps = mergedCanvasProps || (JSON.parse(oursData) as Record<string, unknown>);
 
     const finalObjects = [...cleanObjects];
     let conflictIdx = 0;
@@ -141,8 +141,8 @@ export class MergeCoordinator {
       }
     });
 
-    baseParsed.objects = finalObjects.filter(Boolean);
-    const mergedData = JSON.stringify(baseParsed);
+    baseCanvasProps.objects = finalObjects.filter(Boolean);
+    const mergedData = JSON.stringify(baseCanvasProps);
 
     const { targetBranch, sourceBranch, targetSHA, sourceSHA } = branchNames;
     const sha = git.generateSha();

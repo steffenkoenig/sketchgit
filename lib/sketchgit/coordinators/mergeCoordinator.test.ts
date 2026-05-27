@@ -141,6 +141,7 @@ describe('MergeCoordinator', () => {
       ],
       cleanObjects: [null],
       oursData: '{"objects":[{"_id":"obj1","fill":"red"}]}',
+      mergedCanvasProps: {},
       branchNames: {
         ours: 'main', theirs: 'feature',
         targetBranch: 'main', sourceBranch: 'feature',
@@ -183,6 +184,7 @@ describe('MergeCoordinator', () => {
       ],
       cleanObjects: [null],
       oursData: '{"objects":[]}',
+      mergedCanvasProps: {},
       branchNames: {
         ours: 'main', theirs: 'feature',
         targetBranch: 'main', sourceBranch: 'feature',
