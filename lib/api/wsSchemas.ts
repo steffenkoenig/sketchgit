@@ -8,6 +8,8 @@ const MAX_CANVAS_BYTES = 512 * 1024; // 512 KB
 const sha = z.string().min(8).max(MAX_SHA_LEN);
 const branch = z.string().min(1).max(MAX_BRANCH_LEN);
 
+// ─── Canvas event schemas (used by REST API endpoints) ────────────────────────
+
 export const WsDrawSchema = z.object({
   type: z.literal("draw"),
   canvas: z.string().min(2).max(MAX_CANVAS_BYTES),
@@ -31,8 +33,8 @@ const WsCommitPayloadSchema = z.object({
 });
 
 /**
- * Commit message as sent by clients:
- * `{ type: 'commit', sha, commit: { branch, message, canvas, ... } }`
+ * Commit payload for REST POST /api/rooms/[roomId]/commits:
+ * `{ clientId, sha, commit: { branch, message, canvas, ... } }`
  */
 export const WsCommitSchema = z.object({
   type: z.literal("commit"),
@@ -98,22 +100,30 @@ export const WsFullsyncRequestSchema = z.object({
   senderId: z.string().max(64).optional(),
 });
 
+/** Peer-to-peer fullsync response carrying git state. */
+export const WsFullsyncSchema = z.object({
+  type: z.literal("fullsync"),
+  targetId: z.string().max(64).optional(),
+  commits: z.record(z.string(), z.unknown()),
+  branches: z.record(z.string(), z.string()),
+  HEAD: z.string().max(MAX_BRANCH_LEN),
+  detached: z.string().max(MAX_SHA_LEN).nullable(),
+});
+
+// ─── Inbound WS schema (messages clients still send over the WebSocket) ────────
+//
+// After the REST-based refactor, most client events (draw, commit, branch-update,
+// cursor, profile, object-lock/unlock, follow-*, view-sync) are submitted via
+// POST REST API endpoints.  The WebSocket is now receive-only for clients, with
+// three exceptions:
+//   - pong       – heartbeat response to server ping
+//   - fullsync-request – request git state from a peer
+//   - fullsync   – peer-to-peer git state response
+
 export const InboundWsMessageSchema = z.discriminatedUnion("type", [
-  WsDrawSchema,
-  WsDrawDeltaSchema,
-  WsCommitSchema,
-  WsBranchUpdateSchema,
-  WsCursorSchema,
-  WsProfileSchema,
-  WsPingSchema,
   WsPongSchema,
-  WsObjectLockSchema,
-  WsObjectUnlockSchema,
-  WsViewSyncSchema,
-  WsFollowRequestSchema,
-  WsFollowAcceptSchema,
-  WsFollowStopSchema,
   WsFullsyncRequestSchema,
+  WsFullsyncSchema,
 ]);
 
 export type InboundWsMessage = z.infer<typeof InboundWsMessageSchema>;

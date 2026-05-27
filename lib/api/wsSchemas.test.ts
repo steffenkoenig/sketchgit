@@ -8,7 +8,15 @@ import {
   WsProfileSchema,
   WsPingSchema,
   WsPongSchema,
+  WsFollowRequestSchema,
+  WsFollowAcceptSchema,
+  WsFollowStopSchema,
+  WsFullsyncRequestSchema,
+  WsObjectLockSchema,
+  WsObjectUnlockSchema,
   InboundWsMessageSchema,
+  WsViewSyncSchema,
+  MAX_WS_PAYLOAD_BYTES,
 } from './wsSchemas';
 
 describe('WsDrawSchema', () => {
@@ -107,6 +115,48 @@ describe('WsPingSchema / WsPongSchema', () => {
   });
 });
 
+describe('WsViewSyncSchema', () => {
+  it('accepts valid view-sync message with only required fields', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0] };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(true);
+  });
+
+  it('accepts valid view-sync message with all fields', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0], branch: 'main', headSha: 'abc12345' };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(true);
+  });
+
+  it('rejects missing vpt', () => {
+    const msg = { type: 'view-sync' };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+  });
+
+  it('rejects vpt with incorrect number of elements', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0] };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+
+    const msg2 = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0, 0] };
+    expect(WsViewSyncSchema.safeParse(msg2).success).toBe(false);
+  });
+
+  it('rejects vpt with non-finite numbers', () => {
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, Infinity, 0, 0] };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+  });
+
+  it('rejects branch exceeding maximum length', () => {
+    const branch = 'a'.repeat(101);
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0], branch };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+  });
+
+  it('rejects headSha exceeding maximum length', () => {
+    const headSha = 'a'.repeat(65);
+    const msg = { type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0], headSha };
+    expect(WsViewSyncSchema.safeParse(msg).success).toBe(false);
+  });
+});
+
 describe('WsBranchUpdateSchema', () => {
   it('accepts valid branch-update message', () => {
     expect(WsBranchUpdateSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' }).success).toBe(true);
@@ -121,16 +171,120 @@ describe('WsBranchUpdateSchema', () => {
   });
 });
 
-describe('InboundWsMessageSchema discriminated union', () => {
-  it('dispatches to correct schema by type', () => {
-    const result = InboundWsMessageSchema.safeParse({ type: 'ping' });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.type).toBe('ping');
+describe('WsFollowRequestSchema', () => {
+  it('accepts valid follow-request message', () => {
+    expect(WsFollowRequestSchema.safeParse({ type: 'follow-request' }).success).toBe(true);
   });
 
-  it('accepts branch-update messages', () => {
-    const result = InboundWsMessageSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' });
+  it('rejects invalid message', () => {
+    expect(WsFollowRequestSchema.safeParse({ type: 'other' }).success).toBe(false);
+  });
+});
+
+describe('WsFollowAcceptSchema', () => {
+  it('accepts valid follow-accept message', () => {
+    expect(WsFollowAcceptSchema.safeParse({ type: 'follow-accept' }).success).toBe(true);
+  });
+
+  it('rejects invalid message', () => {
+    expect(WsFollowAcceptSchema.safeParse({ type: 'other' }).success).toBe(false);
+  });
+});
+
+describe('WsFollowStopSchema', () => {
+  it('accepts valid follow-stop message', () => {
+    expect(WsFollowStopSchema.safeParse({ type: 'follow-stop' }).success).toBe(true);
+  });
+
+  it('rejects invalid message', () => {
+    expect(WsFollowStopSchema.safeParse({ type: 'other' }).success).toBe(false);
+  });
+});
+
+describe('WsFullsyncRequestSchema', () => {
+  it('accepts valid fullsync-request message without senderId', () => {
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'fullsync-request' }).success).toBe(true);
+  });
+
+  it('accepts valid fullsync-request message with senderId', () => {
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'fullsync-request', senderId: 'abc12345' }).success).toBe(true);
+  });
+
+  it('rejects fullsync-request when senderId exceeds 64 characters', () => {
+    const longSenderId = 'a'.repeat(65);
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'fullsync-request', senderId: longSenderId }).success).toBe(false);
+  });
+
+  it('rejects fullsync-request with invalid type', () => {
+    expect(WsFullsyncRequestSchema.safeParse({ type: 'invalid-request' }).success).toBe(false);
+  });
+});
+
+
+describe('WsObjectLockSchema / WsObjectUnlockSchema', () => {
+  it('accepts valid object-lock message', () => {
+    expect(
+      WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: ['obj1', 'obj2'] }).success
+    ).toBe(true);
+  });
+
+  it('accepts valid object-lock message with color', () => {
+    expect(
+      WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'], color: '#00ff00' }).success
+    ).toBe(true);
+  });
+
+  it('rejects object-lock with missing objectIds', () => {
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock' }).success).toBe(false);
+  });
+
+  it('rejects object-lock with too many objectIds', () => {
+    const objectIds = Array.from({ length: 501 }, (_, i) => `obj${i}`);
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds }).success).toBe(false);
+  });
+
+  it('rejects if an objectId exceeds 64 characters', () => {
+    const longId = 'a'.repeat(65);
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: [longId] }).success).toBe(false);
+  });
+
+  it('rejects if color exceeds 20 characters', () => {
+    const longColor = 'a'.repeat(21);
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'], color: longColor }).success).toBe(false);
+  });
+
+  it('accepts valid object-unlock message', () => {
+    expect(WsObjectUnlockSchema.safeParse({ type: 'object-unlock' }).success).toBe(true);
+  });
+});
+
+describe('InboundWsMessageSchema discriminated union', () => {
+  it('accepts pong (heartbeat echo still uses WS)', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'pong' });
     expect(result.success).toBe(true);
+    if (result.success) expect(result.data.type).toBe('pong');
+  });
+
+  it('accepts fullsync-request (peer-to-peer sync still uses WS)', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'fullsync-request', senderId: 'abc12345' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts fullsync-request messages', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'fullsync-request' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts follow and sync schema types', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0] }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-request' }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-accept' }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-stop' }).success).toBe(true);
+  });
+
+  it('accepts object-lock and object-unlock messages', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'] }).success).toBe(true);
+    expect(InboundWsMessageSchema.safeParse({ type: 'object-unlock' }).success).toBe(true);
   });
 
   it('rejects unknown type', () => {
@@ -140,8 +294,10 @@ describe('InboundWsMessageSchema discriminated union', () => {
   it('rejects missing type', () => {
     expect(InboundWsMessageSchema.safeParse({ canvas: '{}' }).success).toBe(false);
   });
+});
 
-  it('rejects commit missing required fields', () => {
-    expect(InboundWsMessageSchema.safeParse({ type: 'commit', sha: 'abc12345' }).success).toBe(false);
+describe('MAX_WS_PAYLOAD_BYTES', () => {
+  it('is exactly 512 KB', () => {
+    expect(MAX_WS_PAYLOAD_BYTES).toBe(512 * 1024);
   });
 });

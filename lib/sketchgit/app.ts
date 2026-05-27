@@ -88,13 +88,7 @@ export function createSketchGitApp() {
         // Keep the address bar in sync with the restored branch.
         setBranchInUrl(preferredBranch);
         // Announce the restored branch to peers/server.
-        ws.send({
-          type: 'profile',
-          name: ws.name,
-          color: ws.color,
-          branch: preferredBranch,
-          headSha: branchSha ?? null,
-        });
+        collab.sendProfile(ws.name, ws.color, preferredBranch, branchSha ?? null);
       }
     },
     receiveCommit: (sha, commit) => {
@@ -273,6 +267,9 @@ export function createSketchGitApp() {
         new CustomEvent('sketchgit:openShareModal', { detail: {} }),
       );
     },
+
+    // Returns the current canvas state as a JSON string for direct export.
+    getCanvasJson: (): string => canvas.getCanvasData(),
 
     // P020: Resource cleanup on React component unmount.
     destroy(): void {

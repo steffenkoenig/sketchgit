@@ -13,11 +13,14 @@ export default [
       "app/**/*.tsx",
       "components/**/*.ts",
       "components/**/*.tsx",
+      "hooks/**/*.ts",
+      "hooks/**/*.tsx",
       "lib/sketchgit/**/*.ts",
     ],
     languageOptions: {
       globals: {
         ...globals.browser,
+        process: "readonly",
       },
     },
   },

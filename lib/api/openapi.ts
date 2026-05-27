@@ -17,7 +17,7 @@ import { RegisterSchema } from "@/app/api/auth/register/route";
 import { ResetPasswordSchema } from "@/app/api/auth/reset-password/route";
 import { PatchRoomSchema } from "@/app/api/rooms/[roomId]/route";
 import { CommitsQuerySchema } from "@/app/api/rooms/[roomId]/commits/route";
-import { ExportQuerySchema } from "@/app/api/rooms/[roomId]/export/route";
+import { ExportQuerySchema } from "@/lib/api/exportSchema";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

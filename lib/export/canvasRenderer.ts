@@ -6,13 +6,14 @@
  *
  * P076 – Added renderToPDF() using pdf-lib (pure-JS, no native bindings).
  *
- * Fabric.js v7 `StaticCanvas` is documented to work in Node.js when no
- * actual canvas painting is required (SVG export). PNG export relies on
- * canvas.toDataURL() which Fabric.js may stub in a Node.js environment
- * without node-canvas — it returns an empty data URL in that case.
- * The route tests mock this module to avoid the headless rendering limitation.
+ * Fabric.js v7 ships a dedicated Node.js entry point (`fabric/node`) that
+ * provides a `StaticCanvas` backed by the `canvas` npm package.  Importing
+ * the default `fabric` entry point in a server context throws
+ * "document is not defined" because it targets browsers.  All three export
+ * formats (SVG, PNG, PDF) require the Node.js entry point.
+ * The route tests mock this module to isolate rendering from API logic.
  */
-import { StaticCanvas } from 'fabric';
+import { StaticCanvas } from 'fabric/node';
 import { PDFDocument } from 'pdf-lib';
 
 const DEFAULT_WIDTH = 1920;

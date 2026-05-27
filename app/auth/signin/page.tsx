@@ -6,22 +6,28 @@
  * Supports email + password credentials and GitHub OAuth.
  * Anonymous users can dismiss the page and return to the canvas.
  */
-import { Suspense, useState, FormEvent } from "react";
+import { Suspense, FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { useAuthForm } from "../../../hooks/useAuthForm";
 
 function SignInForm() {
   const t = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const rawCallbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const callbackUrl = rawCallbackUrl.startsWith("/") && !rawCallbackUrl.startsWith("//") && !rawCallbackUrl.startsWith("/\\")
+    ? rawCallbackUrl
+    : "/";
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const {
+    email, setEmail,
+    password, setPassword,
+    error, setError,
+    loading, setLoading
+  } = useAuthForm();
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
