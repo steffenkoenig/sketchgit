@@ -228,6 +228,7 @@ describe('MergeCoordinator', () => {
       ],
       cleanObjects: [null],
       oursData: '{"objects":[{"_id":"obj1","fill":"red"}]}',
+      mergedCanvasProps: {},
       branchNames: {
         ours: 'main', theirs: 'feature',
         targetBranch: 'main', sourceBranch: 'feature',
@@ -276,6 +277,28 @@ describe('MergeCoordinator', () => {
       const commit = sent.commit as Record<string, unknown>;
       expect(commit.isMerge).toBe(true);
       expect((commit.parents as string[])).toHaveLength(2);
+    });
+
+    it('applies mergedCanvasProps (BUG-019 preservation of canvas-level props)', () => {
+      // Setup payload with specific canvas background property
+      const customPayload = {
+        ...conflictPayload,
+        mergedCanvasProps: { background: '#abcdef', someCanvasSetting: true },
+      };
+      ctx = makeCtx({ conflicts: customPayload });
+      coord = new MergeCoordinator(ctx, refresh);
+      coord.openMergeModal();
+      coord.doMerge();
+
+      coord.applyMergeResolution();
+
+      // Check canvas data passed to loadCanvasData contains background & someCanvasSetting
+      expect(ctx.canvas.loadCanvasData).toHaveBeenCalledWith(
+        expect.stringContaining('"background":"#abcdef"')
+      );
+      expect(ctx.canvas.loadCanvasData).toHaveBeenCalledWith(
+        expect.stringContaining('"someCanvasSetting":true')
+      );
     });
   });
 

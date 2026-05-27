@@ -67,12 +67,13 @@ export class MergeCoordinator {
       ws.send({ type: 'commit', sha: result.sha, commit: git.commits[result.sha] });
     } else if ('conflicts' in result) {
       const conflictResult = result.conflicts;
-      const { conflicts, cleanObjects, oursData, branchNames } = conflictResult;
+      const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = conflictResult;
       this._openConflictModal(
         conflicts as MergeConflict[],
         cleanObjects as (Record<string, unknown> | null)[],
         oursData as string,
         branchNames as BranchNames,
+        mergedCanvasProps as Record<string, unknown>,
       );
       showToast(`⚡ ${conflicts.length} conflict(s) — please resolve`, true);
     }
@@ -170,8 +171,9 @@ export class MergeCoordinator {
     cleanObjects: (Record<string, unknown> | null)[],
     oursData: string,
     branchNames: BranchNames,
+    mergedCanvasProps: Record<string, unknown>,
   ): void {
-    this.pendingMerge = { conflicts, cleanObjects, oursData, branchNames, resolved: false };
+    this.pendingMerge = { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps, resolved: false };
 
     const list = document.getElementById('conflictList');
     if (!list) return;
@@ -341,8 +343,8 @@ export class MergeCoordinator {
       });
     });
     if (this.pendingMerge) {
-      const { conflicts, cleanObjects, oursData, branchNames } = this.pendingMerge;
-      this._openConflictModal(conflicts, cleanObjects, oursData, branchNames);
+      const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = this.pendingMerge;
+      this._openConflictModal(conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps);
     }
   }
 
