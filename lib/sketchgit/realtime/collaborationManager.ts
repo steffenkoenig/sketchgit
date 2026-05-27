@@ -743,6 +743,8 @@ export class CollaborationManager {
     this.lockExpireTimers.clear();
     // BUG-008 / P080 – stop presenter mode (clears view-sync interval and UI state).
     this._stopPresenting();
+    this.followingClientId = null;
+    this.presenterClientId = null;
     // Remove all remote cursor DOM elements.
     for (const elId of Object.values(this.remoteCursors)) {
       document.getElementById(elId)?.remove();
