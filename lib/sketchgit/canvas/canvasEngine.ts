@@ -2341,6 +2341,14 @@ export class CanvasEngine {
 
     const ag = obj as AnchoredArrowGroup;
     if (ag._isArrow) {
+      // BUG-021: Cancel any pending connector-follow rAF from the object:moving
+      // phase so it doesn't run with a stale reference to the removed arrow group.
+      if (this._attachmentRafId !== null) {
+        cancelAnimationFrame(this._attachmentRafId);
+        this._attachmentRafId = null;
+        this._attachmentRafTarget = null;
+      }
+
       // Determine where the arrow endpoints are after the group was moved.
       // _gcx/_gcy is the group center when _x1/_y1/_x2/_y2 were last set;
       // the difference gives the movement delta.
@@ -2448,6 +2456,14 @@ export class CanvasEngine {
     let geom: { type: string; x1: number; y1: number; x2: number; y2: number };
     try { geom = JSON.parse(sp._origGeom) as typeof geom; } catch { return; }
     if (geom.type !== 'line') return;
+
+    // BUG-021: Cancel any pending connector-follow rAF from the object:moving
+    // phase so it doesn't run with a stale reference to the removed sketch path.
+    if (this._attachmentRafId !== null) {
+      cancelAnimationFrame(this._attachmentRafId);
+      this._attachmentRafId = null;
+      this._attachmentRafTarget = null;
+    }
 
     // Derive current logical endpoint positions from the path's new center and the
     // half-deltas stored in _origGeom.  This mirrors how tryConvertToSketch positions
