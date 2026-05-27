@@ -31,6 +31,7 @@ import { validateCommitMessage } from "./lib/server/commitValidation.js";
 import { verifyScopeCookie, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
 import { checkDbHealth } from "./lib/db/health.js";
 import { parseAllowedOrigins } from "./lib/server/allowedOrigins.js";
+import { parseCookies } from "./lib/server/cookieHelpers.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -304,21 +305,6 @@ function safeCommitMessage(value: string | null | undefined): string {
   return (value ?? "").trim().slice(0, 500) || "(no message)";
 }
 
-function parseCookies(cookieHeader: string | undefined): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const part of (cookieHeader ?? "").split(";")) {
-    const idx = part.indexOf("=");
-    if (idx < 0) continue;
-    const key = part.slice(0, idx).trim();
-    const val = part.slice(idx + 1).trim();
-    try {
-      map[key] = decodeURIComponent(val);
-    } catch {
-      map[key] = val;
-    }
-  }
-  return map;
-}
 
 function getRoom(roomId: string): Map<string, ClientState> {
   if (!rooms.has(roomId)) rooms.set(roomId, new Map());
