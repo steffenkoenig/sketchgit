@@ -152,9 +152,11 @@ Integrate `license-checker-rseidelsohn` into the CI pipeline. Create a formal po
    import { execSync } from 'child_process';
    try {
      console.log('Running license check on production dependencies...');
-     const output = execSync('npx license-checker-rseidelsohn --production --json', { encoding: 'utf-8' });
+     const output = execSync(
+       'npx license-checker-rseidelsohn --production --failOn "GPL-2.0;GPL-3.0;AGPL-3.0;SSPL-1.0;BUSL-1.1" --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;CC0-1.0;Unlicense;0BSD;LGPL-2.1;MPL-2.0;Python-2.0;CC-BY-4.0"',
+       { encoding: 'utf-8' }
+     );
      console.log('License check completed successfully.');
-     // Optional: Add custom parsing and reporting logic here
    } catch (error) {
      console.error('License check failed:', error.message);
      process.exit(1);
