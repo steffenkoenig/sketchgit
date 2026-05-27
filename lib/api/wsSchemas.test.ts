@@ -8,6 +8,7 @@ import {
   WsProfileSchema,
   WsPingSchema,
   WsPongSchema,
+  WsFollowAcceptSchema,
   InboundWsMessageSchema,
 } from './wsSchemas';
 
@@ -97,6 +98,17 @@ describe('WsProfileSchema', () => {
   });
 });
 
+describe('WsFollowAcceptSchema', () => {
+  it('accepts follow-accept message', () => {
+    expect(WsFollowAcceptSchema.safeParse({ type: 'follow-accept' }).success).toBe(true);
+  });
+
+  it('rejects invalid type', () => {
+    expect(WsFollowAcceptSchema.safeParse({ type: 'follow-request' }).success).toBe(false);
+    expect(WsFollowAcceptSchema.safeParse({ type: 'invalid' }).success).toBe(false);
+  });
+});
+
 describe('WsPingSchema / WsPongSchema', () => {
   it('accepts ping', () => {
     expect(WsPingSchema.safeParse({ type: 'ping' }).success).toBe(true);
@@ -130,6 +142,11 @@ describe('InboundWsMessageSchema discriminated union', () => {
 
   it('accepts branch-update messages', () => {
     const result = InboundWsMessageSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts follow-accept messages', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'follow-accept' });
     expect(result.success).toBe(true);
   });
 
