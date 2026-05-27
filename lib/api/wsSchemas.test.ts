@@ -275,16 +275,16 @@ describe('InboundWsMessageSchema discriminated union', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts follow and sync schema types', () => {
-    expect(InboundWsMessageSchema.safeParse({ type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0] }).success).toBe(true);
-    expect(InboundWsMessageSchema.safeParse({ type: 'follow-request' }).success).toBe(true);
-    expect(InboundWsMessageSchema.safeParse({ type: 'follow-accept' }).success).toBe(true);
-    expect(InboundWsMessageSchema.safeParse({ type: 'follow-stop' }).success).toBe(true);
+  it('rejects follow and sync schema types (since they are now REST API endpoints)', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'view-sync', vpt: [1, 0, 0, 1, 0, 0] }).success).toBe(false);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-request' }).success).toBe(false);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-accept' }).success).toBe(false);
+    expect(InboundWsMessageSchema.safeParse({ type: 'follow-stop' }).success).toBe(false);
   });
 
-  it('accepts object-lock and object-unlock messages', () => {
-    expect(InboundWsMessageSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'] }).success).toBe(true);
-    expect(InboundWsMessageSchema.safeParse({ type: 'object-unlock' }).success).toBe(true);
+  it('rejects object-lock and object-unlock messages (since they are now REST API endpoints)', () => {
+    expect(InboundWsMessageSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'] }).success).toBe(false);
+    expect(InboundWsMessageSchema.safeParse({ type: 'object-unlock' }).success).toBe(false);
   });
 
   it('rejects unknown type', () => {

@@ -67,12 +67,13 @@ export class MergeCoordinator {
       collab.sendCommit(result.sha, git.commits[result.sha]);
     } else if ('conflicts' in result) {
       const conflictResult = result.conflicts;
-      const { conflicts, cleanObjects, oursData, branchNames } = conflictResult;
+      const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = conflictResult;
       this._openConflictModal(
         conflicts as MergeConflict[],
         cleanObjects as (Record<string, unknown> | null)[],
         oursData as string,
         branchNames as BranchNames,
+        mergedCanvasProps as Record<string, unknown>,
       );
       showToast(`⚡ ${conflicts.length} conflict(s) — please resolve`, true);
     }
@@ -107,8 +108,8 @@ export class MergeCoordinator {
   applyMergeResolution(): void {
     if (!this.pendingMerge) return;
     const { git, canvas, collab } = this.ctx;
-    const { conflicts, cleanObjects, oursData, branchNames } = this.pendingMerge;
-    const baseParsed = JSON.parse(oursData) as Record<string, unknown>;
+    const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = this.pendingMerge;
+    const baseCanvasProps = mergedCanvasProps || (JSON.parse(oursData) as Record<string, unknown>);
 
     const finalObjects = [...cleanObjects];
     let conflictIdx = 0;
@@ -141,8 +142,8 @@ export class MergeCoordinator {
       }
     });
 
-    baseParsed.objects = finalObjects.filter(Boolean);
-    const mergedData = JSON.stringify(baseParsed);
+    baseCanvasProps.objects = finalObjects.filter(Boolean);
+    const mergedData = JSON.stringify(baseCanvasProps);
 
     const { targetBranch, sourceBranch, targetSHA, sourceSHA } = branchNames;
     const sha = git.generateSha();
@@ -170,8 +171,9 @@ export class MergeCoordinator {
     cleanObjects: (Record<string, unknown> | null)[],
     oursData: string,
     branchNames: BranchNames,
+    mergedCanvasProps: Record<string, unknown>,
   ): void {
-    this.pendingMerge = { conflicts, cleanObjects, oursData, branchNames, resolved: false };
+    this.pendingMerge = { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps, resolved: false };
 
     const list = document.getElementById('conflictList');
     if (!list) return;
@@ -341,8 +343,8 @@ export class MergeCoordinator {
       });
     });
     if (this.pendingMerge) {
-      const { conflicts, cleanObjects, oursData, branchNames } = this.pendingMerge;
-      this._openConflictModal(conflicts, cleanObjects, oursData, branchNames);
+      const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = this.pendingMerge;
+      this._openConflictModal(conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps);
     }
   }
 

@@ -65,7 +65,7 @@ describe('PollingFallback', () => {
     await Promise.resolve();
 
     expect(received).toHaveLength(1);
-    expect((received[0] as { sha: string }).sha).toBe('sha2');
+    expect((received[0] as any).sha).toBe('sha2');
     fb.stop();
   });
 
@@ -117,7 +117,7 @@ describe('PollingFallback', () => {
     await Promise.resolve();
 
     // sha-abc should only be dispatched once
-    const count = received.filter((m) => (m as { sha: string }).sha === 'sha-abc').length;
+    const count = received.filter((m) => (m as any).sha === 'sha-abc').length;
     expect(count).toBe(1);
 
     fb.stop();

@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleRedisPmessage } from './redisPmessage.js';
 
 describe('redis pmessage handler', () => {
-  let broadcastLocalRoom: ReturnType<typeof vi.fn>;
-  let logger: { warn: ReturnType<typeof vi.fn> };
+  let broadcastLocalRoom: any;
+  let logger: any;
 
   const SERVER_INSTANCE_ID = 'test-instance-1';
   const REDIS_CHANNEL_PREFIX = 'sketchgit:room:';
