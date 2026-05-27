@@ -14,6 +14,7 @@ import {
   WsFullsyncRequestSchema,
   InboundWsMessageSchema,
   WsViewSyncSchema,
+  MAX_WS_PAYLOAD_BYTES,
 } from './wsSchemas';
 
 describe('WsDrawSchema', () => {
@@ -244,5 +245,11 @@ describe('InboundWsMessageSchema discriminated union', () => {
 
   it('rejects commit missing required fields', () => {
     expect(InboundWsMessageSchema.safeParse({ type: 'commit', sha: 'abc12345' }).success).toBe(false);
+  });
+});
+
+describe('MAX_WS_PAYLOAD_BYTES', () => {
+  it('is exactly 512 KB', () => {
+    expect(MAX_WS_PAYLOAD_BYTES).toBe(512 * 1024);
   });
 });
