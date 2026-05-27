@@ -259,14 +259,14 @@ describe('WsObjectLockSchema / WsObjectUnlockSchema', () => {
 });
 
 describe('InboundWsMessageSchema discriminated union', () => {
-  it('dispatches to correct schema by type', () => {
-    const result = InboundWsMessageSchema.safeParse({ type: 'ping' });
+  it('accepts pong (heartbeat echo still uses WS)', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'pong' });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.type).toBe('ping');
+    if (result.success) expect(result.data.type).toBe('pong');
   });
 
-  it('accepts branch-update messages', () => {
-    const result = InboundWsMessageSchema.safeParse({ type: 'branch-update', branch: 'main', headSha: 'abc12345' });
+  it('accepts fullsync-request (peer-to-peer sync still uses WS)', () => {
+    const result = InboundWsMessageSchema.safeParse({ type: 'fullsync-request', senderId: 'abc12345' });
     expect(result.success).toBe(true);
   });
 
@@ -293,10 +293,6 @@ describe('InboundWsMessageSchema discriminated union', () => {
 
   it('rejects missing type', () => {
     expect(InboundWsMessageSchema.safeParse({ canvas: '{}' }).success).toBe(false);
-  });
-
-  it('rejects commit missing required fields', () => {
-    expect(InboundWsMessageSchema.safeParse({ type: 'commit', sha: 'abc12345' }).success).toBe(false);
   });
 });
 

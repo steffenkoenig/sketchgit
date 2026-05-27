@@ -6,13 +6,18 @@ import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
 import {
-  ensureRoom,
   getRoomPublicFlag,
   getRoomMembership,
   getCommitPage,
+  checkRoomAccess,
+  saveCommitWithDelta,
+  appendRoomEvent,
   loadRoomSnapshot,
-  saveCommit,
 } from "@/lib/db/roomRepository";
+import { broadcastToRoom } from "@/lib/server/wsRoomBroadcaster";
+import { validateCommitMessage } from "@/lib/server/commitValidation";
+import { WsCommitSchema } from "@/lib/api/wsSchemas";
+import { createRoomSnapshotCache } from "@/lib/cache/roomSnapshotCache";
 
 export const CommitsQuerySchema = z.object({
   cursor: z.string().max(64).optional(),
@@ -24,56 +29,15 @@ export const CommitsQuerySchema = z.object({
     .transform((v) => v === "true"),
 });
 
-const MAX_SHA_LEN = 64;
-const MAX_BRANCH_LEN = 100;
-const MAX_MSG_LEN = 500;
-const MAX_CANVAS_BYTES = 512 * 1024;
-
-/**
- * Schema for REST commit creation (mirrors WsCommitPayloadSchema + sha).
- * Used by the polling fallback client when WS is unavailable.
- */
-export const CommitPostSchema = z.object({
-  sha: z.string().min(8).max(MAX_SHA_LEN),
-  commit: z.object({
-    parent: z.string().max(MAX_SHA_LEN).nullable().optional(),
-    parents: z.array(z.string().max(MAX_SHA_LEN)).max(10),
-    branch: z.string().min(1).max(MAX_BRANCH_LEN),
-    message: z.string().max(MAX_MSG_LEN),
-    canvas: z.string().min(2).max(MAX_CANVAS_BYTES),
-    isMerge: z.boolean().optional().default(false),
-    ts: z.number().int().positive().optional(),
-  }),
+/** POST body schema – mirrors WsCommitSchema with clientId added. */
+export const CommitRequestSchema = WsCommitSchema.extend({
+  clientId: z.string().min(1).max(64),
+  senderName: z.string().max(100).optional(),
+  senderColor: z.string().max(20).optional(),
 });
 
-// ─── Shared access-control helper ────────────────────────────────────────────
-
-type AccessDenied = { ok: false; response: ReturnType<typeof apiError> };
-type AccessGranted = { ok: true; authSession: ReturnType<typeof getAuthSession> | null };
-type AccessResult = AccessDenied | AccessGranted;
-
-async function checkRoomAccess(roomId: string): Promise<AccessResult> {
-  const room = await getRoomPublicFlag(roomId);
-  if (!room) {
-    return { ok: false, response: apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404) };
-  }
-
-  if (!room.isPublic) {
-    const session = await auth();
-    const authSession = getAuthSession(session);
-    if (!authSession) {
-      return { ok: false, response: apiError(ApiErrorCode.UNAUTHENTICATED, "Authentication required", 401) };
-    }
-    const membership = await getRoomMembership(roomId, authSession.user.id);
-    if (!membership) {
-      return { ok: false, response: apiError(ApiErrorCode.FORBIDDEN, "Forbidden", 403) };
-    }
-    return { ok: true, authSession };
-  }
-  return { ok: true, authSession: null };
-}
-
-// ─── GET /api/rooms/[roomId]/commits ─────────────────────────────────────────
+// Snapshot cache shared with server.ts (module singleton)
+const roomCache = createRoomSnapshotCache();
 
 export async function GET(
   req: NextRequest,
@@ -87,8 +51,24 @@ export async function GET(
   if (!v.success) return v.response;
   const { cursor, take, canvas } = v.data;
 
-  const access = await checkRoomAccess(roomId);
-  if (!access.ok) return access.response;
+  // Use getRoomPublicFlag to return 404 for non-existent rooms (commits are only
+  // available for rooms that already exist — no creation-on-join for GET).
+  const room = await getRoomPublicFlag(roomId);
+  if (!room) {
+    return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
+  }
+
+  if (!room.isPublic) {
+    const session = await auth();
+    const authSession = getAuthSession(session);
+    if (!authSession) {
+      return apiError(ApiErrorCode.UNAUTHENTICATED, "Authentication required", 401);
+    }
+    const membership = await getRoomMembership(roomId, authSession.user.id);
+    if (!membership) {
+      return apiError(ApiErrorCode.FORBIDDEN, "Forbidden", 403);
+    }
+  }
 
   // ?canvas=true – return full CommitRecord objects (including canvas data)
   // for the REST polling fallback.  Uses loadRoomSnapshot which handles
@@ -124,49 +104,91 @@ export async function GET(
   );
 }
 
-// ─── POST /api/rooms/[roomId]/commits ────────────────────────────────────────
-
 /**
- * REST fallback for persisting a commit when the WebSocket server is
- * unavailable (e.g. Vercel deployment without a dedicated WS backend).
+ * POST /api/rooms/[roomId]/commits
  *
- * Accepts the same commit payload that WsClient.send({ type: 'commit' })
- * would normally carry over the WebSocket connection.
+ * Persist a new commit to the database and broadcast it to all connected room
+ * members via WebSocket.
+ *
+ * Body: `{ clientId, senderName?, senderColor?, sha, commit: { branch, message, canvas, ... } }`
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ roomId: string }> }
+  { params }: { params: Promise<{ roomId: string }> },
 ) {
   const { roomId } = await params;
-
-  const access = await checkRoomAccess(roomId);
-  if (!access.ok) return access.response;
 
   const body: unknown = await req.json().catch(() => null);
   if (body === null) {
     return apiError(ApiErrorCode.INVALID_JSON, "Invalid JSON", 400);
   }
-  const v = validate(CommitPostSchema, body);
+
+  const v = validate(CommitRequestSchema, body);
   if (!v.success) return v.response;
 
-  const { sha, commit } = v.data;
+  const { clientId, senderName, senderColor, sha, commit } = v.data;
 
-  // Ensure the room record exists (idempotent, creates on first access).
-  await ensureRoom(roomId, access.authSession?.user.id ?? null);
+  // Access control
+  const session = await auth();
+  const authSession = getAuthSession(session);
+  const access = await checkRoomAccess(roomId, authSession?.user.id ?? null);
+  if (!access.allowed) {
+    return apiError(ApiErrorCode.FORBIDDEN, "Access denied", 403);
+  }
+  if (access.role === "VIEWER") {
+    return apiError(ApiErrorCode.FORBIDDEN, "Read-only access", 403);
+  }
 
-  await saveCommit(
+  // Validate the commit payload (P057)
+  const isValid = validateCommitMessage(sha, commit, (msg) => console.error("[commits/route] validation:", msg));
+  if (!isValid) {
+    return apiError(ApiErrorCode.VALIDATION_ERROR, "Invalid commit payload", 422);
+  }
+
+  // Persist to DB with delta compression (P033)
+  try {
+    await saveCommitWithDelta(
+      roomId,
+      {
+        sha,
+        parent: commit.parent ?? null,
+        parents: commit.parents ?? [],
+        branch: commit.branch,
+        message: commit.message,
+        canvas: commit.canvas,
+        ts: Date.now(),
+        isMerge: commit.isMerge ?? false,
+      },
+      authSession?.user.id ?? null,
+    );
+  } catch (err) {
+    console.error("[commits POST] saveCommitWithDelta failed", err);
+    return apiError(ApiErrorCode.INTERNAL_ERROR, "Failed to save commit", 500);
+  }
+
+  // P074 – append COMMIT event to activity log (non-blocking)
+  void appendRoomEvent(roomId, "COMMIT", authSession?.user.id ?? null, {
+    sha,
+    branch: commit.branch,
+    message: commit.message,
+  }).catch(() => {});
+
+  // P030 – invalidate snapshot cache so next WS connection gets fresh state
+  roomCache.invalidate(roomId);
+
+  // Broadcast to other room members via WebSocket
+  broadcastToRoom(
     roomId,
     {
+      type: "commit",
       sha,
-      parent: commit.parent ?? null,
-      parents: commit.parents,
-      branch: commit.branch,
-      message: commit.message,
-      ts: commit.ts ?? Date.now(),
-      canvas: commit.canvas,
-      isMerge: commit.isMerge,
+      commit,
+      senderId: clientId,
+      senderName: senderName ?? "User",
+      senderColor: senderColor ?? "#7c6eff",
+      roomId,
     },
-    access.authSession?.user.id ?? null,
+    clientId,
   );
 
   return NextResponse.json({ sha }, { status: 201 });

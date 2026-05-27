@@ -4,7 +4,7 @@
  */
 import { prisma } from "@/lib/db/prisma";
 import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission } from "@prisma/client";
-import { replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
+import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 
 export type { RoomEventType, ShareScope, SharePermission };
 
@@ -74,6 +74,83 @@ export async function saveCommit(
           }
         })(),
         isMerge: commit.isMerge,
+        authorId: userId ?? null,
+      },
+      update: {},
+    }),
+    prisma.branch.upsert({
+      where: { roomId_name: { roomId, name: commit.branch } },
+      create: { roomId, name: commit.branch, headSha: commit.sha },
+      update: { headSha: commit.sha },
+    }),
+    prisma.roomState.upsert({
+      where: { roomId },
+      create: {
+        roomId,
+        headSha: commit.sha,
+        headBranch: commit.branch,
+        isDetached: false,
+      },
+      update: { headSha: commit.sha, headBranch: commit.branch },
+    }),
+  ]);
+}
+
+/**
+ * P033 – Persist a commit with optional delta compression.
+ *
+ * When a parent commit exists and is stored as a SNAPSHOT, the canvas diff is
+ * computed and stored as a DELTA if it is smaller than 90 % of the full canvas.
+ * Falls back to SNAPSHOT storage on any error.
+ *
+ * This is the preferred function for the REST commit endpoint where the full
+ * commit payload (including canvas string) is available.
+ */
+export async function saveCommitWithDelta(
+  roomId: string,
+  commit: CommitRecord,
+  userId?: string | null,
+): Promise<void> {
+  let canvasObj: object;
+  try {
+    canvasObj = JSON.parse(commit.canvas) as object;
+  } catch {
+    throw new Error(`Invalid canvas JSON for commit ${commit.sha}`);
+  }
+
+  let storageType: CommitStorageType = CommitStorageType.SNAPSHOT;
+  let canvasToStore: object = canvasObj;
+
+  if (commit.parent) {
+    try {
+      const parentCommit = await prisma.commit.findUnique({ where: { sha: commit.parent } });
+      if (parentCommit && parentCommit.storageType === CommitStorageType.SNAPSHOT) {
+        const parentCanvas = JSON.stringify(parentCommit.canvasJson);
+        const delta = computeCanvasDelta(parentCanvas, commit.canvas);
+        const deltaStr = JSON.stringify(delta);
+        if (deltaStr.length < commit.canvas.length * 0.9) {
+          canvasToStore = delta as unknown as object;
+          storageType = CommitStorageType.DELTA;
+        }
+      }
+    } catch {
+      // Fall back to SNAPSHOT on any error
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.commit.upsert({
+      where: { sha: commit.sha },
+      create: {
+        sha: commit.sha,
+        roomId,
+        parentSha: commit.parent ?? null,
+        parents: commit.parents,
+        branch: commit.branch,
+        message: commit.message,
+        canvasJson: canvasToStore,
+        isMerge: commit.isMerge,
+        storageType,
         authorId: userId ?? null,
       },
       update: {},

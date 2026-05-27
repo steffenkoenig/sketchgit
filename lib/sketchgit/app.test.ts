@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => {
     getPresenceClients: vi.fn().mockReturnValue([]),
     getMyClientId: vi.fn().mockReturnValue(''),
     togglePresenting: vi.fn(),
+    sendCommit: vi.fn(), sendBranchUpdate: vi.fn(), sendProfile: vi.fn(),
     wsClientId: null, currentRoomId: 'default',
   };
   return { mockGit, mockCanvas, mockWs, mockCollab, tlCallbacks };
@@ -212,13 +213,13 @@ describe('createSketchGitApp', () => {
     expect(openModal).toHaveBeenCalledWith('commitModal');
   });
 
-  it('doCommit commits, sends ws message', () => {
+  it('doCommit commits, sends commit via REST', () => {
     (document.getElementById('commitMsg') as HTMLInputElement).value = 'My commit';
     mocks.mockGit.commits.sha1 = { sha: 'sha1', message: 'My commit', canvas: '{}', branch: 'main', parents: ['sha0'], ts: 2000, isMerge: false };
     const app = createSketchGitApp();
     app.doCommit();
     expect(mocks.mockGit.commit).toHaveBeenCalledWith(expect.any(String), 'My commit');
-    expect(mocks.mockWs.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'commit' }));
+    expect(mocks.mockCollab.sendCommit).toHaveBeenCalledWith('sha1', expect.anything());
   });
 
   it('doCommit uses default message when input is empty', () => {
@@ -233,7 +234,7 @@ describe('createSketchGitApp', () => {
     mocks.mockGit.commit.mockReturnValue(null);
     const app = createSketchGitApp();
     app.doCommit();
-    expect(mocks.mockWs.send).not.toHaveBeenCalled();
+    expect(mocks.mockCollab.sendCommit).not.toHaveBeenCalled();
   });
 
   it('openBranchModal opens modal and populates list', async () => {
@@ -306,14 +307,14 @@ describe('createSketchGitApp', () => {
     expect(() => app.applyMergeResolution()).not.toThrow();
   });
 
-  it('setName updates connection', async () => {
+  it('setName updates connection via REST', async () => {
     const { closeModal } = await import('./ui/modals');
     (document.getElementById('nameInput') as HTMLInputElement).value = 'Bob';
     mocks.mockCollab.getRoomFromUrl.mockReturnValue('room1');
     const app = createSketchGitApp();
     app.setName();
     expect(closeModal).toHaveBeenCalledWith('nameModal');
-    expect(mocks.mockWs.send).toHaveBeenCalledWith({ type: 'profile', name: 'Bob', color: expect.any(String) });
+    expect(mocks.mockCollab.sendProfile).toHaveBeenCalledWith('Bob', expect.any(String));
   });
 
   it('tlScrollLeft and tlScrollRight do not throw', () => {
