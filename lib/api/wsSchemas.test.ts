@@ -8,6 +8,9 @@ import {
   WsProfileSchema,
   WsPingSchema,
   WsPongSchema,
+  WsFollowRequestSchema,
+  WsFollowAcceptSchema,
+  WsFollowStopSchema,
   WsFullsyncRequestSchema,
   InboundWsMessageSchema,
   WsViewSyncSchema,
@@ -162,6 +165,36 @@ describe('WsBranchUpdateSchema', () => {
 
   it('rejects empty branch', () => {
     expect(WsBranchUpdateSchema.safeParse({ type: 'branch-update', branch: '', headSha: 'abc12345' }).success).toBe(false);
+  });
+});
+
+describe('WsFollowRequestSchema', () => {
+  it('accepts valid follow-request message', () => {
+    expect(WsFollowRequestSchema.safeParse({ type: 'follow-request' }).success).toBe(true);
+  });
+
+  it('rejects invalid message', () => {
+    expect(WsFollowRequestSchema.safeParse({ type: 'other' }).success).toBe(false);
+  });
+});
+
+describe('WsFollowAcceptSchema', () => {
+  it('accepts valid follow-accept message', () => {
+    expect(WsFollowAcceptSchema.safeParse({ type: 'follow-accept' }).success).toBe(true);
+  });
+
+  it('rejects invalid message', () => {
+    expect(WsFollowAcceptSchema.safeParse({ type: 'other' }).success).toBe(false);
+  });
+});
+
+describe('WsFollowStopSchema', () => {
+  it('accepts valid follow-stop message', () => {
+    expect(WsFollowStopSchema.safeParse({ type: 'follow-stop' }).success).toBe(true);
+  });
+
+  it('rejects invalid message', () => {
+    expect(WsFollowStopSchema.safeParse({ type: 'other' }).success).toBe(false);
   });
 });
 
