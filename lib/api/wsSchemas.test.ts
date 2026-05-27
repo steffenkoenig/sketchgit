@@ -243,6 +243,16 @@ describe('WsObjectLockSchema / WsObjectUnlockSchema', () => {
     expect(WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds }).success).toBe(false);
   });
 
+  it('rejects if an objectId exceeds 64 characters', () => {
+    const longId = 'a'.repeat(65);
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: [longId] }).success).toBe(false);
+  });
+
+  it('rejects if color exceeds 20 characters', () => {
+    const longColor = 'a'.repeat(21);
+    expect(WsObjectLockSchema.safeParse({ type: 'object-lock', objectIds: ['obj1'], color: longColor }).success).toBe(false);
+  });
+
   it('accepts valid object-unlock message', () => {
     expect(WsObjectUnlockSchema.safeParse({ type: 'object-unlock' }).success).toBe(true);
   });
