@@ -6,6 +6,15 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.5.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.1...sketchgit-next-v0.5.2) (2026-05-28)
+
+
+### Bug Fixes
+
+* **lint:** add inline eslint-disable for process.env ([43b32b8](https://github.com/steffenkoenig/sketchgit/commit/43b32b8e145f88677a79270e25f4e6c5a9fb92dc))
+* resolve process is not defined errors in components and lib ([2df6d7c](https://github.com/steffenkoenig/sketchgit/commit/2df6d7c77c885967a0e18a5ab9780fc027d1e442))
+* verify shape creation prevention on existing object click ([58e23d5](https://github.com/steffenkoenig/sketchgit/commit/58e23d5933553e4f2927658276544d23c935f520))
+
 ## [0.5.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.0...sketchgit-next-v0.5.1) (2026-05-28)
 
 
