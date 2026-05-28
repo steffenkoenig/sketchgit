@@ -44,9 +44,9 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   const foucScript = `(function(){if(!document.cookie.includes('THEME=')&&window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.classList.add('theme-light');}})();`;
 
   return (
-    <html lang={locale} className={themeClass}>
+    <html lang={locale} className={themeClass} suppressHydrationWarning>
       <head>
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: foucScript }} />
+        <script nonce={nonce} suppressHydrationWarning>{foucScript}</script>
       </head>
       <body>
         <NextIntlClientProvider messages={messages} locale={locale}>
