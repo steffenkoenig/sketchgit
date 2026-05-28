@@ -2601,12 +2601,10 @@ describe('CanvasEngine – connector snapping and following', () => {
     mockCanvasInstance.getObjects.mockReturnValue([shape, arrowGroup]);
     mockCanvasInstance.getActiveObject.mockReturnValue(arrowGroup);
 
-    // Simulate Fabric.js v7 re-firing object:modified for the ALREADY-REMOVED
-    // old arrow when setActiveObject triggers discardActiveObject → endCurrentTransform.
-    // This is the exact re-entrant scenario that caused the "hundreds of arrows" crash.
-    // Use mockImplementationOnce so the custom behaviour is discarded after a single
-    // call and cannot leak into subsequent tests via the shared mockCanvasInstance.
-    mockCanvasInstance.setActiveObject.mockImplementationOnce(() => {
+    // Simulate Fabric.js v7 re-firing object:modified when manipulating active objects
+    // inside the event handler. Because rebuildArrowGroupInPlace calls group.removeAll(),
+    // we hook into that to simulate the re-entrant event.
+    (arrowGroup.removeAll as any).mockImplementationOnce(() => {
       canvasEventHandlers['object:modified']?.({ target: arrowGroup });
     });
 
