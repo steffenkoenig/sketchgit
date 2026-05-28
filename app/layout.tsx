@@ -46,7 +46,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang={locale} className={themeClass}>
       <head>
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: foucScript }} />
+        <script nonce={nonce}>{foucScript}</script>
       </head>
       <body>
         <NextIntlClientProvider messages={messages} locale={locale}>
