@@ -219,19 +219,27 @@ describe('createPasswordResetToken (P040)', () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
     mockVerificationToken.deleteMany.mockResolvedValue({ count: 0 });
     mockVerificationToken.create.mockResolvedValue({});
+    mockTransaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      return Promise.all(ops);
+    });
     const token = await createPasswordResetToken('alice@example.com');
     expect(typeof token).toBe('string');
     expect(token!.length).toBe(64);
     expect(/^[0-9a-f]+$/.test(token!)).toBe(true);
+    expect(mockTransaction).toHaveBeenCalled();
   });
 
   it('stores the token in verificationToken after deleting old tokens', async () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
     mockVerificationToken.deleteMany.mockResolvedValue({ count: 1 });
     mockVerificationToken.create.mockResolvedValue({});
+    mockTransaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      return Promise.all(ops);
+    });
     await createPasswordResetToken('alice@example.com');
     expect(mockVerificationToken.deleteMany).toHaveBeenCalledWith({ where: { identifier: 'alice@example.com' } });
     expect(mockVerificationToken.create).toHaveBeenCalledTimes(1);
+    expect(mockTransaction).toHaveBeenCalled();
   });
 });
 
