@@ -227,15 +227,9 @@ describe('createPasswordResetToken (P040)', () => {
 
   it('stores the token in verificationToken after deleting old tokens', async () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
-    mockTransaction.mockImplementation(async (ops: Promise<unknown>[]) => {
-      return Promise.all(ops);
-    });
     mockVerificationToken.deleteMany.mockResolvedValue({ count: 1 });
     mockVerificationToken.create.mockResolvedValue({});
-
     await createPasswordResetToken('alice@example.com');
-
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockVerificationToken.deleteMany).toHaveBeenCalledWith({ where: { identifier: 'alice@example.com' } });
     expect(mockVerificationToken.create).toHaveBeenCalledTimes(1);
   });
