@@ -1143,6 +1143,7 @@ export class CanvasEngine {
       o.set('fill', this.createFill(pattern ?? 'filled', v));
       (o as FabricObject & { _fillColor?: string })._fillColor = v;
       this.canvas?.requestRenderAll();
+      // BUG-010 – same fix: explicitly fire object:modified event to mark dirty and broadcast so peers see the change.
       this.canvas?.fire('object:modified', { target: o });
     }
   }
@@ -1332,8 +1333,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.bringObjectToFront(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   bringForward(): void {
@@ -1342,8 +1342,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.bringObjectForward(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   sendBackward(): void {
@@ -1352,8 +1351,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.sendObjectBackwards(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   sendToBack(): void {
@@ -1362,16 +1360,14 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.sendObjectToBack(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   setObjectLink(url: string): void {
     const o = this.canvas?.getActiveObject();
     if (!o) return;
     (o as FabricObject & { _link?: string })._link = url.trim() || undefined;
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
     // Visual feedback: update the link input in the properties panel
     const input = document.getElementById('linkInput') as HTMLInputElement | null;
     if (input) input.value = url.trim();
