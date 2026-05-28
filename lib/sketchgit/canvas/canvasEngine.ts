@@ -1121,7 +1121,8 @@ export class CanvasEngine {
     if (o) {
       o.set('stroke', v);
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1143,7 +1144,9 @@ export class CanvasEngine {
       o.set('fill', this.createFill(pattern ?? 'filled', v));
       (o as FabricObject & { _fillColor?: string })._fillColor = v;
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      // BUG-010 – same fix: mark dirty and broadcast so peers see the change.
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1166,7 +1169,8 @@ export class CanvasEngine {
         o.set('fill', 'transparent');
       }
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1194,7 +1198,8 @@ export class CanvasEngine {
         o.set('strokeDashArray', this.getDashArray(this.strokeDashType, w));
       }
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1215,7 +1220,8 @@ export class CanvasEngine {
       const dashArray = this.getDashArray(type, w);
       o.set('strokeDashArray', dashArray ?? null);
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1236,7 +1242,8 @@ export class CanvasEngine {
     if (o.isType('rect')) {
       (o as Rect).set({ rx: r, ry: r });
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      this.markDirty();
+      this.onBroadcastDraw(true);
     } else {
       // For sketch paths (artist/cartoonist/doodle) representing a rect: update
       // the stored original geometry and regenerate the sketch path.
@@ -1252,7 +1259,8 @@ export class CanvasEngine {
       const replacement = this.tryConvertToSketch(o, sloppiness);
       if (replacement) this.replaceActiveObject(o, replacement);
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1266,7 +1274,8 @@ export class CanvasEngine {
     if (o) {
       o.set('opacity', this.opacityValue / 100);
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1294,7 +1303,8 @@ export class CanvasEngine {
       o.set(this.getSloppinessOptions(type));
     }
     this.canvas?.requestRenderAll();
-    this.canvas?.fire('object:modified', { target: o });
+    this.markDirty();
+    this.onBroadcastDraw(true);
   }
 
   setFillPattern(type: 'filled' | 'striped' | 'crossed'): void {
@@ -1321,7 +1331,8 @@ export class CanvasEngine {
         ext._fillPattern = type;
         ext._fillColor = this.fillColor;
         this.canvas?.requestRenderAll();
-        this.canvas?.fire('object:modified', { target: o });
+        this.markDirty();
+        this.onBroadcastDraw(true);
       }
     }
   }
