@@ -6,6 +6,20 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.5.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.0...sketchgit-next-v0.5.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* broadcast and mark dirty programmatic canvas property updates ([7682bdb](https://github.com/steffenkoenig/sketchgit/commit/7682bdb7387d22d28780cf12d5fc8f7551cf9e65))
+* BUG-007 non-atomic password reset token documentation ([bd615d5](https://github.com/steffenkoenig/sketchgit/commit/bd615d5093c52e9e513365b7f0105dfee2b44f4c))
+* build failures in CI from unused vars and typescript resolution ([c40d32a](https://github.com/steffenkoenig/sketchgit/commit/c40d32ac560d5dc7c803141ab53c3dd153cb60cc))
+* implement robust pushHistory and Arrow group rebuilding in programmatic style updates ([fc55ff2](https://github.com/steffenkoenig/sketchgit/commit/fc55ff28545e964b0690e7364286be09ab092dab))
+* **lint:** remove global process comment causing no-redeclare error ([5a41653](https://github.com/steffenkoenig/sketchgit/commit/5a416532dc5be05738cda858953b751a7eed0eec))
+* mark programmatic changes dirty to enable commits and broadcast ([2a61851](https://github.com/steffenkoenig/sketchgit/commit/2a61851e1273e7fd46c43e232696c954ddf39bec))
+* resolve CI failures (ERESOLVE and no-redeclare) ([2e7aab9](https://github.com/steffenkoenig/sketchgit/commit/2e7aab9add51cec0e871d854beed9f5ad6a68078))
+* resolve CI failures for ERESOLVE and ESLint ([0711fbc](https://github.com/steffenkoenig/sketchgit/commit/0711fbcafe68ee5ef3309ffd3ec74c0a38375d92))
+
 ## [0.5.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.4.0...sketchgit-next-v0.5.0) (2026-05-27)
 
 
