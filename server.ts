@@ -1052,7 +1052,6 @@ void app.prepare()
           if (!validated.success) {
             logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema");
             sendTo(client, { type: "error", code: "INVALID_PAYLOAD" });
-            // BUG-009 – use `continue` so the rest of the batch is still processed.
             continue;
           }
           try {
