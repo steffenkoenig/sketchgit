@@ -1617,14 +1617,14 @@ describe('CanvasEngine – setFillPattern on existing shapes (bug fix)', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('applies fill pattern when selected object has a non-transparent fill (fillEnabled=false)', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     expect(engine.fillEnabled).toBe(false);
     const obj = makeFabricObject({ fill: '#ff0000', _fillPattern: 'filled' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
     engine.setFillPattern('striped');
     expect(obj.set).toHaveBeenCalledWith('fill', expect.anything());
-    // Because markDirty is an actual method (not spied in makeEngine()), we can just mock it for the test
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('does NOT apply fill pattern when object has transparent fill and fillEnabled=false', () => {
@@ -1767,7 +1767,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('toggleFill() enabling fill applies current fillColor to the selected object', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     // Set fill color directly on engine state (avoids depending on updateFillColor internals)
     engine.fillColor = '#ff0000';
@@ -1776,10 +1776,11 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // enable fill
     expect(engine.fillEnabled).toBe(true);
     expect(obj.set).toHaveBeenCalledWith('fill', '#ff0000');
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('toggleFill() disabling fill sets object fill to transparent', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     const obj = makeFabricObject({ fill: '#ff0000' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
@@ -1789,6 +1790,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // disable fill
     expect(engine.fillEnabled).toBe(false);
     expect(obj.set).toHaveBeenCalledWith('fill', 'transparent');
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('toggleFill() with no active object only updates flag and button', () => {

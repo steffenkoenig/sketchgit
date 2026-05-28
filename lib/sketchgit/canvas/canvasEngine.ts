@@ -1119,7 +1119,15 @@ export class CanvasEngine {
     if (dot) dot.style.background = v;
     const o = this.canvas?.getActiveObject();
     if (o) {
-      o.set('stroke', v);
+      this.pushHistory();
+      if ((o as FabricObject & { _isArrow?: boolean })._isArrow) {
+        const children = (o as Group).getObjects?.() ?? [];
+        const firstChild = children[0];
+        if (firstChild) firstChild.set('stroke', v);
+        this.rebuildSelectedArrow({});
+      } else {
+        o.set('stroke', v);
+      }
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -1139,6 +1147,7 @@ export class CanvasEngine {
       // Only apply when the object already has a fill or fill is explicitly enabled,
       // to avoid unintentionally adding fill to a transparent object.
       if (!objHasFill && !this.fillEnabled) return;
+      this.pushHistory();
       // Re-apply pattern fill with the new color, or use plain fill
       const pattern = (o as FabricObject & { _fillPattern?: string })._fillPattern as 'filled' | 'striped' | 'crossed' | undefined;
       o.set('fill', this.createFill(pattern ?? 'filled', v));
@@ -1159,6 +1168,7 @@ export class CanvasEngine {
     }
     const o = this.canvas?.getActiveObject();
     if (o) {
+      this.pushHistory();
       if (this.fillEnabled) {
         const fill = this.createFill(this.fillPattern, this.fillColor);
         o.set('fill', fill);
@@ -1192,10 +1202,18 @@ export class CanvasEngine {
     // Also apply to the currently selected object
     const o = this.canvas?.getActiveObject();
     if (o) {
-      o.set('strokeWidth', w);
-      // Re-apply dash array so the dash scale matches the new width
-      if (this.strokeDashType !== 'solid') {
-        o.set('strokeDashArray', this.getDashArray(this.strokeDashType, w));
+      this.pushHistory();
+      if ((o as FabricObject & { _isArrow?: boolean })._isArrow) {
+        const children = (o as Group).getObjects?.() ?? [];
+        const firstChild = children[0];
+        if (firstChild) firstChild.set('strokeWidth', w);
+        this.rebuildSelectedArrow({});
+      } else {
+        o.set('strokeWidth', w);
+        // Re-apply dash array so the dash scale matches the new width
+        if (this.strokeDashType !== 'solid') {
+          o.set('strokeDashArray', this.getDashArray(this.strokeDashType, w));
+        }
       }
       this.canvas?.requestRenderAll();
       this.markDirty();
@@ -1216,9 +1234,19 @@ export class CanvasEngine {
     el?.setAttribute('aria-pressed', 'true');
     const o = this.canvas?.getActiveObject();
     if (o) {
-      const w = (o.get('strokeWidth') as number) || this.strokeWidth;
-      const dashArray = this.getDashArray(type, w);
-      o.set('strokeDashArray', dashArray ?? null);
+      this.pushHistory();
+      const actualWidth = (o as FabricObject & { _isArrow?: boolean })._isArrow
+        ? (((o as Group).getObjects?.()?.[0] as FabricObject | undefined)?.get('strokeWidth') as number ?? this.strokeWidth)
+        : ((o.get('strokeWidth') as number) || this.strokeWidth);
+      if ((o as FabricObject & { _isArrow?: boolean })._isArrow) {
+        const children = (o as Group).getObjects?.() ?? [];
+        const firstChild = children[0];
+        if (firstChild) firstChild.set('strokeDashArray', this.getDashArray(type, actualWidth));
+        this.rebuildSelectedArrow({});
+      } else {
+        const dashArray = this.getDashArray(type, actualWidth);
+        o.set('strokeDashArray', dashArray ?? null);
+      }
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
@@ -1240,6 +1268,7 @@ export class CanvasEngine {
     if (!o) return;
     const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
     if (o.isType('rect')) {
+      this.pushHistory();
       (o as Rect).set({ rx: r, ry: r });
       this.canvas?.requestRenderAll();
       this.markDirty();
@@ -1253,6 +1282,7 @@ export class CanvasEngine {
       try { geom = JSON.parse(oe._origGeom) as Record<string, unknown>; }
       catch { return; }
       if (geom.type !== 'rect') return;
+      this.pushHistory();
       geom.rx = r;
       oe._origGeom = JSON.stringify(geom);
       const sloppiness = (oe._sloppiness ?? this.sloppiness) as 'architect' | 'artist' | 'cartoonist' | 'doodle';
@@ -1272,6 +1302,7 @@ export class CanvasEngine {
     if (label) label.textContent = `${this.opacityValue}%`;
     const o = this.canvas?.getActiveObject();
     if (o) {
+      this.pushHistory();
       o.set('opacity', this.opacityValue / 100);
       this.canvas?.requestRenderAll();
       this.markDirty();
@@ -1294,6 +1325,7 @@ export class CanvasEngine {
     const o = this.canvas?.getActiveObject();
     if (!o) return;
 
+    this.pushHistory();
     // Attempt to regenerate the shape from its stored original geometry.
     const replacement = this.tryConvertToSketch(o, type);
     if (replacement) {
@@ -1325,6 +1357,7 @@ export class CanvasEngine {
       const objFill = o.get('fill');
       const objHasFill = objFill !== 'transparent' && objFill != null;
       if (objHasFill || this.fillEnabled) {
+        this.pushHistory();
         const fill = this.createFill(type, this.fillColor);
         o.set('fill', fill);
         const ext = o as FabricObject & { _fillPattern?: string; _fillColor?: string };
