@@ -300,8 +300,6 @@ export function safeBranchName(value: string | null | undefined): string {
 export function safeCommitMessage(value: string | null | undefined): string {
   return (value ?? "").trim().slice(0, 500) || "(no message)";
 }
-
-
 function getRoom(roomId: string): Map<string, ClientState> {
   if (!rooms.has(roomId)) rooms.set(roomId, new Map());
   return rooms.get(roomId)!;

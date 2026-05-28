@@ -6,7 +6,6 @@
       "DOM.Iterable",
       "ES2022"
     ],
-    "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
       "@/*": [
