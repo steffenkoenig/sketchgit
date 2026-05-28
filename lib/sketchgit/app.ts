@@ -48,7 +48,7 @@ export function createSketchGitApp() {
   // CollaborationManager callbacks reference `canvas` and coordinator methods;
   // we wire them after coordinators are created using late-bound closures so
   // that the circular reference (collab ↔ canvas, collab ↔ timeline) is safe.
-  const collab = new CollaborationManager(ws, {
+  const collab: CollaborationManager = new CollaborationManager(ws, {
     getCanvasData: () => canvas.getCanvasData(),
     loadCanvasData: (data) => canvas.loadCanvasData(data),
     renderTimeline: () => tl.refresh(),
