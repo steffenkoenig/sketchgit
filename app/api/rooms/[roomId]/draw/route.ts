@@ -17,12 +17,10 @@ import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { broadcastToRoom } from "@/lib/server/wsRoomBroadcaster";
 import { WsDrawSchema, WsDrawDeltaSchema } from "@/lib/api/wsSchemas";
-import { ClientIdSchema } from "@/lib/api/roomEventHelpers";
 import { checkRoomAccess } from "@/lib/db/roomRepository";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 
-const MAX_CANVAS_BYTES = 512 * 1024;
 
 export const DrawRequestSchema = z.discriminatedUnion("type", [
   WsDrawSchema.extend({ clientId: z.string().min(1).max(64) }),

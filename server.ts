@@ -221,11 +221,11 @@ let inFlightWrites = 0;
 /** Resolvers waiting for in-flight writes to reach zero (used during shutdown). */
 const drainWaiters: Array<() => void> = [];
 
-function beginWrite(): void {
+export function beginWrite(): void {
   inFlightWrites++;
 }
 
-function endWrite(): void {
+export function endWrite(): void {
   inFlightWrites--;
   if (inFlightWrites <= 0) {
     inFlightWrites = 0;
@@ -288,7 +288,7 @@ function safeColor(value: string | null): string {
  * Slices to 100 characters and replaces all other characters with `-`.
  * Returns "main" as a safe default when the value is empty or null.
  */
-function safeBranchName(value: string | null | undefined): string {
+export function safeBranchName(value: string | null | undefined): string {
   const trimmed = (value ?? "main").trim().slice(0, 100);
   return trimmed.replace(/[^a-zA-Z0-9/_\-.]/g, "-") || "main";
 }
@@ -297,7 +297,7 @@ function safeBranchName(value: string | null | undefined): string {
  * P047 – Normalise a commit message coming from an untrusted client.
  * Strips leading/trailing whitespace and caps at 500 characters.
  */
-function safeCommitMessage(value: string | null | undefined): string {
+export function safeCommitMessage(value: string | null | undefined): string {
   return (value ?? "").trim().slice(0, 500) || "(no message)";
 }
 
