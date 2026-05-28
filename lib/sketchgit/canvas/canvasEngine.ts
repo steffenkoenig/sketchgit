@@ -1143,6 +1143,7 @@ export class CanvasEngine {
       o.set('fill', this.createFill(pattern ?? 'filled', v));
       (o as FabricObject & { _fillColor?: string })._fillColor = v;
       this.canvas?.requestRenderAll();
+      // Trigger object:modified to correctly integrate with undo/redo and broadcasting loop.
       this.canvas?.fire('object:modified', { target: o });
     }
   }
