@@ -1,4 +1,4 @@
-/* global process */
+
 /**
  * wsClient – resilient WebSocket wrapper with automatic reconnection (P004).
  *
