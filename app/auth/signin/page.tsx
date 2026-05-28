@@ -6,53 +6,24 @@
  * Supports email + password credentials and GitHub OAuth.
  * Anonymous users can dismiss the page and return to the canvas.
  */
-import { Suspense, FormEvent } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useAuthForm } from "../../../hooks/useAuthForm";
+import { useSignIn } from "../../../hooks/auth/useSignIn";
 
 function SignInForm() {
   const t = useTranslations();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const rawCallbackUrl = searchParams.get("callbackUrl") ?? "/";
-  const callbackUrl = rawCallbackUrl.startsWith("/") && !rawCallbackUrl.startsWith("//") && !rawCallbackUrl.startsWith("/\\")
-    ? rawCallbackUrl
-    : "/";
-
   const {
-    email, setEmail,
-    password, setPassword,
-    error, setError,
-    loading, setLoading
-  } = useAuthForm();
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-
-    setLoading(false);
-
-    if (result?.error) {
-      setError(t("auth.signIn.invalidCredentials"));
-      return;
-    }
-
-    router.push(callbackUrl);
-  }
-
-  async function handleGitHub() {
-    await signIn("github", { callbackUrl });
-  }
+    email,
+    setEmail,
+    password,
+    setPassword,
+    error,
+    loading,
+    callbackUrl,
+    handleSubmit,
+    handleGitHub,
+  } = useSignIn();
 
   return (
     <div className="auth-page">

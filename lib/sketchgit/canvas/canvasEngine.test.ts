@@ -1617,14 +1617,14 @@ describe('CanvasEngine – setFillPattern on existing shapes (bug fix)', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('applies fill pattern when selected object has a non-transparent fill (fillEnabled=false)', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     expect(engine.fillEnabled).toBe(false);
     const obj = makeFabricObject({ fill: '#ff0000', _fillPattern: 'filled' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
     engine.setFillPattern('striped');
     expect(obj.set).toHaveBeenCalledWith('fill', expect.anything());
-    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('does NOT apply fill pattern when object has transparent fill and fillEnabled=false', () => {
@@ -1767,7 +1767,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('toggleFill() enabling fill applies current fillColor to the selected object', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     // Set fill color directly on engine state (avoids depending on updateFillColor internals)
     engine.fillColor = '#ff0000';
@@ -1776,11 +1776,11 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // enable fill
     expect(engine.fillEnabled).toBe(true);
     expect(obj.set).toHaveBeenCalledWith('fill', '#ff0000');
-    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('toggleFill() disabling fill sets object fill to transparent', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     const obj = makeFabricObject({ fill: '#ff0000' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
@@ -1790,7 +1790,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // disable fill
     expect(engine.fillEnabled).toBe(false);
     expect(obj.set).toHaveBeenCalledWith('fill', 'transparent');
-    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('toggleFill() with no active object only updates flag and button', () => {
@@ -1920,8 +1920,9 @@ describe('CanvasEngine – connector snapping and following', () => {
   });
 
   it('arrow group rebuild during shape move does NOT call setActiveObject with the new group', () => {
-    // Bug fix: previously buildArrowGroup always called canvas.setActiveObject(newGroup)
-    // which disrupted Fabric.js drag-tracking for the shape being moved.
+    // setActiveObject must NEVER be called during in-place rebuilds. Because
+    // rebuildArrowGroupInPlace does not remove the group, drag tracking is
+    // naturally preserved and we don't need to restore it manually.
     const { engine } = makeEngine();
     engine.init();
 
@@ -1943,16 +1944,14 @@ describe('CanvasEngine – connector snapping and following', () => {
     // The new group should have been added to the canvas.
     expect(arrowGroup.removeAll).toHaveBeenCalled();
 
-    // setActiveObject must NEVER be called with the new arrow group — only with the
-    // moving shape (to restore drag tracking).
+    // setActiveObject must NEVER be called with the new arrow group or the moving shape.
     expect(mockCanvasInstance.setActiveObject).not.toHaveBeenCalled();
   });
 
   it('object:moving arrow rebuild does NOT nullify this.activeObj (drawing in progress)', () => {
-    // Bug fix: buildArrowGroup used to always set this.activeObj = null.  When called
-    // via rebuildArrowForMove (triggered by object:moving while drawing arrow 2), this
-    // cleared the drawing-line reference, causing onMouseMove and onMouseUp to bail
-    // early and silently discard the in-progress arrow.
+    // mid-drag (e.g. triggered by object:moving while drawing arrow 2), this prevents
+    // clearing the drawing-line reference, which would cause onMouseMove and onMouseUp
+    // to bail early and silently discard the in-progress arrow.
     const { engine } = makeEngine();
     engine.init();
     engine.setTool('arrow');
