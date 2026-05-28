@@ -21,8 +21,6 @@ import { checkRoomAccess } from "@/lib/db/roomRepository";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 
-const _MAX_CANVAS_BYTES = 512 * 1024;
-
 export const DrawRequestSchema = z.discriminatedUnion("type", [
   WsDrawSchema.extend({ clientId: z.string().min(1).max(64) }),
   WsDrawDeltaSchema.extend({ clientId: z.string().min(1).max(64) }),
