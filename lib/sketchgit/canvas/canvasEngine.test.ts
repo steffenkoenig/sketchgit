@@ -1920,8 +1920,9 @@ describe('CanvasEngine – connector snapping and following', () => {
   });
 
   it('arrow group rebuild during shape move does NOT call setActiveObject with the new group', () => {
-    // Bug fix: previously buildArrowGroup always called canvas.setActiveObject(newGroup)
-    // which disrupted Fabric.js drag-tracking for the shape being moved.
+    // setActiveObject must NEVER be called during in-place rebuilds. Because
+    // rebuildArrowGroupInPlace does not remove the group, drag tracking is
+    // naturally preserved and we don't need to restore it manually.
     const { engine } = makeEngine();
     engine.init();
 
@@ -1943,16 +1944,14 @@ describe('CanvasEngine – connector snapping and following', () => {
     // The new group should have been added to the canvas.
     expect(arrowGroup.removeAll).toHaveBeenCalled();
 
-    // setActiveObject must NEVER be called with the new arrow group — only with the
-    // moving shape (to restore drag tracking).
+    // setActiveObject must NEVER be called with the new arrow group or the moving shape.
     expect(mockCanvasInstance.setActiveObject).not.toHaveBeenCalled();
   });
 
   it('object:moving arrow rebuild does NOT nullify this.activeObj (drawing in progress)', () => {
-    // Bug fix: buildArrowGroup used to always set this.activeObj = null.  When called
-    // via rebuildArrowForMove (triggered by object:moving while drawing arrow 2), this
-    // cleared the drawing-line reference, causing onMouseMove and onMouseUp to bail
-    // early and silently discard the in-progress arrow.
+    // mid-drag (e.g. triggered by object:moving while drawing arrow 2), this prevents
+    // clearing the drawing-line reference, which would cause onMouseMove and onMouseUp
+    // to bail early and silently discard the in-progress arrow.
     const { engine } = makeEngine();
     engine.init();
     engine.setTool('arrow');

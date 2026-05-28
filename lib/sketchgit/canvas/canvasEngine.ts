@@ -772,12 +772,6 @@ export class CanvasEngine {
     headStart: 'none' | 'open' | 'triangle' | 'triangle-outline',
     headEnd: 'none' | 'open' | 'triangle' | 'triangle-outline',
     arrowType: 'sharp' | 'curved' | 'elbow',
-    /** When false the new group is NOT set as the active canvas selection.
-     *  Pass false from rebuildArrowForMove to avoid calling setActiveObject
-     *  mid-drag, which would disrupt Fabric.js's drag-tracking state and
-     *  prevent further mouse-move events from reaching the object that the
-     *  user is actually dragging. */
-    selectAfter = true,
   ): void {
     if (!this.canvas) return;
     const { x1 = 0, y1 = 0, x2 = 0, y2 = 0 } = line as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
@@ -856,7 +850,7 @@ export class CanvasEngine {
       },
     );
     // Carry the source line's _id (if any) to the group.  When buildArrowGroup is
-    // called via rebuildArrowForMove, tempLine._id was pre-set to the original group's
+    // called via rebuildArrow, tempLine._id was pre-set to the original group's
     // _id, so the rebuilt group keeps a stable identity across rebuilds — important for
     // diff/merge tracking and the reSnapOnModified re-selection logic.
     const srcLineId = (line as Line & { _id?: string })._id;
@@ -869,10 +863,8 @@ export class CanvasEngine {
     (grp as AnchoredArrowGroup)._gcx = grpCenter.x;
     (grp as AnchoredArrowGroup)._gcy = grpCenter.y;
     this.applyArrowEndpointControls(grp);
-    if (selectAfter) this.canvas.setActiveObject(grp);
-    // Do NOT clear this.activeObj here — when buildArrowGroup is called mid-drag
-    // (via rebuildArrowForMove → object:moving) this.activeObj may be a Line that
-    // the user is currently drawing.  Nulling it prematurely would cause
+    this.canvas.setActiveObject(grp);
+    // Do NOT clear this.activeObj here. Nulling it prematurely would cause
     // subsequent onMouseMove/onMouseUp calls to skip their early-exit checks,
     // silently discarding the in-progress arrow.  onMouseUp already sets
     // this.activeObj = null after buildArrowGroup returns (line in onMouseUp).
