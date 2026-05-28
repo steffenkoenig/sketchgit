@@ -46,11 +46,7 @@ function log(
   if (LEVELS[level] < LEVELS[activeLevel]) return;
   const fields = typeof fieldsOrMsg === 'string' ? {} : fieldsOrMsg;
   const message = typeof fieldsOrMsg === 'string' ? fieldsOrMsg : (msg ?? '');
-  if (Object.keys(fields).length > 0) {
-    consoleFn(`[sketchgit:${level}]`, message, fields);
-  } else {
-    consoleFn(`[sketchgit:${level}]`, message);
-  }
+  consoleFn(`[sketchgit:${level}]`, message, fields);
   if (level === 'error' && errorHook) errorHook(fields, message);
 }
 

@@ -50,7 +50,7 @@ export class MergeCoordinator {
   }
 
   doMerge(): void {
-    const { git, canvas, collab } = this.ctx;
+    const { git, canvas, ws } = this.ctx;
     const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement | null;
     const src = sel?.value ?? '';
     closeModal('mergeModal');
@@ -64,16 +64,15 @@ export class MergeCoordinator {
       this.refresh();
       showToast(`✓ Merged '${src}' into '${git.HEAD}'`);
       // P052 – Broadcast the merge commit to peers and persist to DB
-      collab.sendCommit(result.sha, git.commits[result.sha]);
+      ws.send({ type: 'commit', sha: result.sha, commit: git.commits[result.sha] });
     } else if ('conflicts' in result) {
       const conflictResult = result.conflicts;
-      const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = conflictResult;
+      const { conflicts, cleanObjects, oursData, branchNames } = conflictResult;
       this._openConflictModal(
         conflicts as MergeConflict[],
         cleanObjects as (Record<string, unknown> | null)[],
         oursData as string,
         branchNames as BranchNames,
-        mergedCanvasProps as Record<string, unknown>,
       );
       showToast(`⚡ ${conflicts.length} conflict(s) — please resolve`, true);
     }
@@ -107,9 +106,9 @@ export class MergeCoordinator {
 
   applyMergeResolution(): void {
     if (!this.pendingMerge) return;
-    const { git, canvas, collab } = this.ctx;
-    const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = this.pendingMerge;
-    const baseCanvasProps = mergedCanvasProps || (JSON.parse(oursData) as Record<string, unknown>);
+    const { git, canvas, ws } = this.ctx;
+    const { conflicts, cleanObjects, oursData, branchNames } = this.pendingMerge;
+    const baseParsed = JSON.parse(oursData) as Record<string, unknown>;
 
     const finalObjects = [...cleanObjects];
     let conflictIdx = 0;
@@ -142,8 +141,8 @@ export class MergeCoordinator {
       }
     });
 
-    baseCanvasProps.objects = finalObjects.filter(Boolean);
-    const mergedData = JSON.stringify(baseCanvasProps);
+    baseParsed.objects = finalObjects.filter(Boolean);
+    const mergedData = JSON.stringify(baseParsed);
 
     const { targetBranch, sourceBranch, targetSHA, sourceSHA } = branchNames;
     const sha = git.generateSha();
@@ -161,7 +160,7 @@ export class MergeCoordinator {
     this.refresh();
     showToast(`✓ Merge complete — ${conflicts.length} conflict(s) resolved`);
     // P052 – Broadcast the conflict-resolved merge commit to peers and persist to DB
-    collab.sendCommit(sha, git.commits[sha]);
+    ws.send({ type: 'commit', sha, commit: git.commits[sha] });
   }
 
   // ─── Private conflict UI helpers ───────────────────────────────────────────
@@ -171,9 +170,8 @@ export class MergeCoordinator {
     cleanObjects: (Record<string, unknown> | null)[],
     oursData: string,
     branchNames: BranchNames,
-    mergedCanvasProps: Record<string, unknown>,
   ): void {
-    this.pendingMerge = { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps, resolved: false };
+    this.pendingMerge = { conflicts, cleanObjects, oursData, branchNames, resolved: false };
 
     const list = document.getElementById('conflictList');
     if (!list) return;
@@ -343,8 +341,8 @@ export class MergeCoordinator {
       });
     });
     if (this.pendingMerge) {
-      const { conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps } = this.pendingMerge;
-      this._openConflictModal(conflicts, cleanObjects, oursData, branchNames, mergedCanvasProps);
+      const { conflicts, cleanObjects, oursData, branchNames } = this.pendingMerge;
+      this._openConflictModal(conflicts, cleanObjects, oursData, branchNames);
     }
   }
 

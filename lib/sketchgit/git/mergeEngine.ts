@@ -182,33 +182,6 @@ export function threeWayMerge(
   const oursMap = buildObjMap(oursData);
   const theirsMap = buildObjMap(theirsData);
 
-  const baseParsed = JSON.parse(baseData) as Record<string, unknown>;
-  const oursParsed = JSON.parse(oursData) as Record<string, unknown>;
-  const theirsParsed = JSON.parse(theirsData) as Record<string, unknown>;
-
-  const mergedCanvasProps: Record<string, unknown> = { ...oursParsed };
-  delete mergedCanvasProps.objects;
-
-  const allCanvasKeys = new Set([
-    ...Object.keys(baseParsed),
-    ...Object.keys(oursParsed),
-    ...Object.keys(theirsParsed),
-  ]);
-
-  for (const key of allCanvasKeys) {
-    if (key === 'objects') continue;
-    const bVal = baseParsed[key];
-    const oVal = oursParsed[key];
-    const tVal = theirsParsed[key];
-
-    const oursChangedProp = JSON.stringify(bVal) !== JSON.stringify(oVal);
-    const theirsChangedProp = JSON.stringify(bVal) !== JSON.stringify(tVal);
-
-    if (theirsChangedProp && !oursChangedProp) {
-      mergedCanvasProps[key] = tVal;
-    }
-  }
-
   const allIds = new Set([
     ...Object.keys(baseMap),
     ...Object.keys(oursMap),
@@ -318,9 +291,10 @@ export function threeWayMerge(
   }
 
   if (conflicts.length === 0) {
-    mergedCanvasProps.objects = resultObjects;
-    return { result: JSON.stringify(mergedCanvasProps), autoMerged: true };
+    const oursParsed = JSON.parse(oursData) as Record<string, unknown>;
+    oursParsed.objects = resultObjects;
+    return { result: JSON.stringify(oursParsed), autoMerged: true };
   }
 
-  return { conflicts, cleanObjects: resultObjects, baseData, oursData, theirsData, mergedCanvasProps };
+  return { conflicts, cleanObjects: resultObjects, baseData, oursData, theirsData };
 }
