@@ -66,11 +66,11 @@ function makeClient() {
 
 /** Create a fresh mock PollingFallback instance and inject it into PollingFallback mock. */
 function makePollingMock(active = false) {
-  const instance = {
+  const instance: any = {
     _active: active,
-    start: vi.fn().mockImplementation(function(this: typeof instance) { this._active = true; }),
-    stop:  vi.fn().mockImplementation(function(this: typeof instance) { this._active = false; }),
-    isActive: vi.fn().mockImplementation(function(this: typeof instance) { return this._active; }),
+    start: vi.fn().mockImplementation(function(this: any) { this._active = true; }),
+    stop:  vi.fn().mockImplementation(function(this: any) { this._active = false; }),
+    isActive: vi.fn().mockImplementation(function(this: any) { return this._active; }),
     postCommit: vi.fn().mockResolvedValue(undefined),
   };
   // Must use a regular function (not arrow) as the mock implementation so it
