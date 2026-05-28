@@ -1121,7 +1121,10 @@ export class CanvasEngine {
     if (o) {
       o.set('stroke', v);
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      // BUG-010 – programmatic obj.set() doesn't fire object:modified, so we
+      // must explicitly mark the canvas dirty and broadcast the change to peers.
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -1143,7 +1146,10 @@ export class CanvasEngine {
       o.set('fill', this.createFill(pattern ?? 'filled', v));
       (o as FabricObject & { _fillColor?: string })._fillColor = v;
       this.canvas?.requestRenderAll();
-      this.canvas?.fire('object:modified', { target: o });
+      // BUG-010 – programmatic obj.set() doesn't fire object:modified, so we
+      // must explicitly mark the canvas dirty and broadcast the change to peers.
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 

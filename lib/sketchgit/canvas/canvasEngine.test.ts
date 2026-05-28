@@ -435,10 +435,13 @@ describe('CanvasEngine – style controls', () => {
   it('updateStrokeColor() applies color to the active canvas object', () => {
     const activeObj = makeFabricObject();
     mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
+    const spy = vi.spyOn(engine, 'markDirty');
     engine.init();
     engine.updateStrokeColor('#00ff00');
     expect(activeObj.set).toHaveBeenCalledWith('stroke', '#00ff00');
+    expect(spy).toHaveBeenCalled();
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('updateFillColor() updates fillColor and #fillDot background', () => {
@@ -453,10 +456,13 @@ describe('CanvasEngine – style controls', () => {
   it('updateFillColor() applies fill to the active canvas object', () => {
     const activeObj = makeFabricObject();
     mockCanvasInstance.getActiveObject.mockReturnValue(activeObj);
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
+    const spy = vi.spyOn(engine, 'markDirty');
     engine.init();
     engine.updateFillColor('#purple');
     expect(activeObj.set).toHaveBeenCalledWith('fill', '#purple');
+    expect(spy).toHaveBeenCalled();
+    expect(onBroadcastDraw).toHaveBeenCalledWith(true);
   });
 
   it('toggleFill() toggles fillEnabled and updates button text', () => {
