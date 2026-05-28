@@ -221,17 +221,6 @@ let inFlightWrites = 0;
 /** Resolvers waiting for in-flight writes to reach zero (used during shutdown). */
 const drainWaiters: Array<() => void> = [];
 
-function beginWrite(): void {
-  inFlightWrites++;
-}
-
-function endWrite(): void {
-  inFlightWrites--;
-  if (inFlightWrites <= 0) {
-    inFlightWrites = 0;
-    drainWaiters.splice(0).forEach((resolve) => resolve());
-  }
-}
 
 /** Resolve when in-flight writes reach zero, or after `timeoutMs`. */
 function waitForDrain(timeoutMs: number): Promise<void> {
@@ -281,26 +270,6 @@ function safeColor(value: string | null): string {
   const c = (value ?? "").trim();
   return /^#[0-9a-fA-F]{6}$/.test(c) ? c : "#7c6eff";
 }
-
-/**
- * P047 – Normalise a branch name coming from an untrusted WebSocket client.
- * Allows letters, digits, `/`, `_`, `-`, `.` (standard git branch-name chars).
- * Slices to 100 characters and replaces all other characters with `-`.
- * Returns "main" as a safe default when the value is empty or null.
- */
-function safeBranchName(value: string | null | undefined): string {
-  const trimmed = (value ?? "main").trim().slice(0, 100);
-  return trimmed.replace(/[^a-zA-Z0-9/_\-.]/g, "-") || "main";
-}
-
-/**
- * P047 – Normalise a commit message coming from an untrusted client.
- * Strips leading/trailing whitespace and caps at 500 characters.
- */
-function safeCommitMessage(value: string | null | undefined): string {
-  return (value ?? "").trim().slice(0, 500) || "(no message)";
-}
-
 
 function getRoom(roomId: string): Map<string, ClientState> {
   if (!rooms.has(roomId)) rooms.set(roomId, new Map());
