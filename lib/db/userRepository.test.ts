@@ -1,3 +1,4 @@
+import { userHasPassword, getUserForAccountDeletion, deleteUser } from "./userRepository";
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock Prisma before importing the module under test
@@ -43,6 +44,7 @@ const mockPrismaUser = {
   findUnique: prisma.user.findUnique as ReturnType<typeof vi.fn>,
   create: prisma.user.create as ReturnType<typeof vi.fn>,
   update: prisma.user.update as ReturnType<typeof vi.fn>,
+  delete: prisma.user.delete as ReturnType<typeof vi.fn>,
 };
 const mockVerificationToken = {
   upsert: prisma.verificationToken.upsert as ReturnType<typeof vi.fn>,
@@ -219,19 +221,29 @@ describe('createPasswordResetToken (P040)', () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
     mockVerificationToken.deleteMany.mockResolvedValue({ count: 0 });
     mockVerificationToken.create.mockResolvedValue({});
+    mockTransaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      return Promise.all(ops);
+    });
     const token = await createPasswordResetToken('alice@example.com');
     expect(typeof token).toBe('string');
     expect(token!.length).toBe(64);
     expect(/^[0-9a-f]+$/.test(token!)).toBe(true);
+    expect(mockTransaction).toHaveBeenCalled();
   });
 
   it('stores the token in verificationToken after deleting old tokens', async () => {
     mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'alice@example.com' });
+    mockTransaction.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops));
     mockVerificationToken.deleteMany.mockResolvedValue({ count: 1 });
     mockVerificationToken.create.mockResolvedValue({});
+    mockTransaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      return Promise.all(ops);
+    });
     await createPasswordResetToken('alice@example.com');
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockVerificationToken.deleteMany).toHaveBeenCalledWith({ where: { identifier: 'alice@example.com' } });
     expect(mockVerificationToken.create).toHaveBeenCalledTimes(1);
+    expect(mockTransaction).toHaveBeenCalled();
   });
 });
 
@@ -263,5 +275,36 @@ describe('resetPassword (P040 + P065)', () => {
     expect(result).toBe(true);
     expect(mockArgon2.hash).toHaveBeenCalledWith('NewPassword123!', expect.objectContaining({ type: 2 }));
     expect(mockTransaction).toHaveBeenCalled();
+  });
+});
+
+describe('userHasPassword', () => {
+  it('returns true when user has a password', async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({ passwordHash: 'hash' });
+    const result = await userHasPassword('usr_1');
+    expect(result).toBe(true);
+  });
+
+  it('returns false when user does not exist', async () => {
+    mockPrismaUser.findUnique.mockResolvedValue(null);
+    const result = await userHasPassword('usr_1');
+    expect(result).toBe(false);
+  });
+});
+
+describe('getUserForAccountDeletion', () => {
+  it('returns user minimal fields', async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({ id: 'usr_1', email: 'e', passwordHash: 'hash' });
+    const result = await getUserForAccountDeletion('usr_1');
+    expect(result).toEqual({ id: 'usr_1', email: 'e', passwordHash: 'hash' });
+  });
+});
+
+describe('deleteUser', () => {
+  it('calls prisma delete', async () => {
+    const mockDelete = vi.fn().mockResolvedValue({});
+    prisma.user.delete = mockDelete as any;
+    await deleteUser('usr_1');
+    expect(mockDelete).toHaveBeenCalledWith({ where: { id: 'usr_1' } });
   });
 });
