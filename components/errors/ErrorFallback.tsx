@@ -46,8 +46,7 @@ export function ErrorFallback({ error, resetError, titleKey, inline }: ErrorFall
         {t("errors.errorLogged")}
       </p>
       {
-      /* eslint-disable-next-line no-undef */
-      process.env.NODE_ENV === "development" && error && (
+      globalThis.process?.env?.NODE_ENV === "development" && error && (
         <pre className="mb-6 max-w-md overflow-auto rounded bg-zinc-100 p-4 text-left text-xs text-red-600 dark:bg-zinc-800">
           {error.message}
         </pre>

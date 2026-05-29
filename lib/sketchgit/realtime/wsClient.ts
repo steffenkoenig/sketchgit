@@ -202,8 +202,8 @@ export class WsClient {
     // This variable is substituted at build time by the Next.js bundler
     // (NEXT_PUBLIC_* prefix), not looked up at runtime.
     // Example: NEXT_PUBLIC_WS_URL=wss://my-ws-server.railway.app/ws
-    /* eslint-disable-next-line no-undef */
-    const base = process.env.NEXT_PUBLIC_WS_URL ??
+    const base =
+      globalThis.process?.env?.NEXT_PUBLIC_WS_URL ??
       `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
     return `${base}?room=${encodeURIComponent(this.roomId)}&name=${name}&color=${color}`;
   }
