@@ -46,11 +46,13 @@ afterEach(() => {
 
 describe('P075 getRedisClient()', () => {
   it('returns null in standalone mode when REDIS_URL is not set', async () => {
+    delete process.env.REDIS_URL;
     const { getRedisClient } = await freshClient();
     expect(getRedisClient()).toBeNull();
   });
 
   it('returns a client in standalone mode when REDIS_URL is set', async () => {
+    process.env.REDIS_URL = 'redis://localhost:6379';
     process.env.REDIS_URL = 'redis://localhost:6379';
     const { getRedisClient } = await freshClient();
     const client = getRedisClient();
@@ -59,6 +61,7 @@ describe('P075 getRedisClient()', () => {
 
   it('returns null in sentinel mode when REDIS_SENTINEL_HOSTS is not set', async () => {
     process.env.REDIS_MODE = 'sentinel';
+    delete process.env.REDIS_URL;
     const { getRedisClient } = await freshClient();
     expect(getRedisClient()).toBeNull();
   });
@@ -66,6 +69,7 @@ describe('P075 getRedisClient()', () => {
   it('returns a client in sentinel mode when REDIS_SENTINEL_HOSTS is set', async () => {
     process.env.REDIS_MODE = 'sentinel';
     process.env.REDIS_SENTINEL_HOSTS = 'sentinel1:26379,sentinel2:26379';
+    delete process.env.REDIS_URL;
     const { getRedisClient } = await freshClient();
     const client = getRedisClient();
     expect(client).not.toBeNull();
@@ -73,6 +77,7 @@ describe('P075 getRedisClient()', () => {
 
   it('returns null in cluster mode when REDIS_CLUSTER_NODES is not set', async () => {
     process.env.REDIS_MODE = 'cluster';
+    delete process.env.REDIS_URL;
     const { getRedisClient } = await freshClient();
     expect(getRedisClient()).toBeNull();
   });
@@ -80,6 +85,7 @@ describe('P075 getRedisClient()', () => {
   it('returns a non-null client in cluster mode when REDIS_CLUSTER_NODES is set', async () => {
     process.env.REDIS_MODE = 'cluster';
     process.env.REDIS_CLUSTER_NODES = 'node1:6379,node2:6379';
+    delete process.env.REDIS_URL;
     const { getRedisClient } = await freshClient();
     const client = getRedisClient();
     expect(client).not.toBeNull();

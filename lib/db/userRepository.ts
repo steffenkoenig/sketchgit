@@ -163,6 +163,9 @@ export async function createPasswordResetToken(email: string): Promise<string | 
   const token = randomBytes(32).toString("hex"); // 64-char hex, 256 bits of entropy
   const expires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
+  // BUG-007 – wrap delete+create in a single batch transaction so a crash
+  // between the two operations cannot leave the user with no valid reset token.
+  // This mirrors the pattern already used by resetPassword() in this file.
   await prisma.$transaction([
     prisma.verificationToken.deleteMany({ where: { identifier: email } }),
     prisma.verificationToken.create({
