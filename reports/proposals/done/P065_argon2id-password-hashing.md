@@ -124,7 +124,8 @@ export async function verifyCredentials(
 ### 5. Update `DUMMY_HASH` for timing attack protection (P054)
 The existing `DUMMY_HASH` is a bcrypt hash used to prevent user enumeration (P054). Replace it with an Argon2id dummy hash:
 ```typescript
-// Regenerate with: node -e "require('argon2').hash('dummy-sentinel').then(console.log)"
+// Regenerate with:
+//   node -e "require('argon2').hash('dummy-sentinel',{type:require('argon2').argon2id,memoryCost:65536,timeCost:3,parallelism:4}).then(console.log)"
 // The Argon2id hash is ~95 characters; timing is indistinguishable from a real verify()
 const DUMMY_ARGON2_HASH = '$argon2id$v=19$m=65536,t=3,p=4$…';
 ```
