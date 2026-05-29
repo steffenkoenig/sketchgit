@@ -1,10 +1,25 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { Space_Grotesk, Fira_Code } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { headers, cookies } from "next/headers";
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+const firaCode = Fira_Code({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-fira-code",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "SketchGit",
@@ -44,7 +59,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   const foucScript = `(function(){if(!document.cookie.includes('THEME=')&&window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.classList.add('theme-light');}})();`;
 
   return (
-    <html lang={locale} className={themeClass}>
+    <html lang={locale} className={`${themeClass} ${spaceGrotesk.variable} ${firaCode.variable}`}>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: foucScript }} />
       </head>
