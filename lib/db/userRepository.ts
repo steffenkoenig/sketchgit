@@ -56,6 +56,8 @@ function isBcryptHash(hash: string): boolean {
  *
  * This is a valid Argon2id hash (not a stub), so argon2.verify() always
  * performs the full computation and throws no format errors.
+ *
+ * For regeneration instructions, see reports/proposals/done/P065_argon2id-password-hashing.md.
  */
 const DUMMY_HASH =
   "$argon2id$v=19$m=65536,t=3,p=4$sTTaaZYNgt9fGz7VTRvAgw$39c+Zc1Yh+ICnABi9q4om7nlV/jS7GLlyMnwujwqn9s";
