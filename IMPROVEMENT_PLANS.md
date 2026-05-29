@@ -80,8 +80,8 @@ Currently, anyone with a room link or an invitation token has full editing capab
 
 ### Proposed Changes
 - **Database Schema**:
-  - Update the `RoomMember` model to include a `role` enum (`OWNER`, `EDITOR`, `VIEWER`).
-  - Add a `publicReadOnly` boolean flag to the `Room` model.
+  - Leverage the existing `RoomMembership` model and its `role` field (which uses the `MemberRole` enum containing `OWNER`, `EDITOR`, `COMMITTER`, and `VIEWER`).
+  - Leverage the existing `ShareLink` model with `SharePermission.VIEW` for read-only sharing, or add a `publicReadOnly` boolean flag to the `Room` model if a room-wide toggle is preferred.
 - **Backend/WebSocket**:
   - Modify WebSocket event handlers to check the user's role before processing drawing deltas, commits, or branch modifications. Discard unauthorized events.
   - Update `proxy.ts` and Next.js route handlers to enforce RBAC rules on API endpoints (e.g., blocking `VIEWER` from creating commits).
