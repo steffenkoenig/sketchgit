@@ -3,7 +3,7 @@
  *
  * We mock ioredis entirely so no real Redis connection is made.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── ioredis mock (hoisted so vi.mock factory can reference it) ────────────────
 
@@ -25,9 +25,16 @@ vi.mock('ioredis', () => ({ default: mocks.MockRedis }));
 
 async function freshClient(): Promise<typeof import('./redis')> {
   vi.resetModules();
-  vi.mock('ioredis', () => ({ default: mocks.MockRedis }));
   return import('./redis');
 }
+
+beforeEach(() => {
+  delete process.env.REDIS_MODE;
+  delete process.env.REDIS_URL;
+  delete process.env.REDIS_SENTINEL_HOSTS;
+  delete process.env.REDIS_SENTINEL_NAME;
+  delete process.env.REDIS_CLUSTER_NODES;
+});
 
 afterEach(() => {
   delete process.env.REDIS_MODE;
