@@ -204,6 +204,7 @@ export class WsClient {
     // Example: NEXT_PUBLIC_WS_URL=wss://my-ws-server.railway.app/ws
     const base =
 
+      /* eslint-disable-next-line no-undef */
       (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_WS_URL : undefined) ??
       `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
     return `${base}?room=${encodeURIComponent(this.roomId)}&name=${name}&color=${color}`;

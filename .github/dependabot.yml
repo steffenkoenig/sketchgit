@@ -1,5 +1,8 @@
 version: 2
 updates:
+  # When reviewing these updates, ensure you check that any new or updated dependencies
+  # have licenses that comply with our allowed licenses list in reports/license-policy.md.
+  # The CI job `node scripts/check-licenses.mjs` will fail if a blocked license is introduced.
   - package-ecosystem: npm
     directory: /
     schedule:

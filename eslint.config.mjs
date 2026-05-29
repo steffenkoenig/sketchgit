@@ -120,9 +120,19 @@ export default [
       "node_modules/**",
       ".next/**",
       "prisma/**",
-      "*.mjs",
       "e2e/**",
       "playwright.config.ts",
     ],
+  },
+  {
+    files: ["*.mjs", "scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      "no-console": "off",
+    },
   },
 ];
