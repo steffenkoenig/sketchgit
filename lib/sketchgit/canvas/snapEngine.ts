@@ -1,5 +1,3 @@
-import { FabricObject, Point, Line } from 'fabric';
-
 export const SNAP_DISTANCE = 30;
 
 export interface SnappedPoint {
