@@ -1,0 +1,5 @@
+## Refactor Target: [lib/sketchgit/canvas/canvasEngine.ts / Grouping & Alignment Features]
+**Identified Structural Flaw:** Missing native Fabric.js object grouping and alignment capabilities resulting in fragmented shape management.
+**Impact on Maintainability:** Lack of native group merging forced fragile custom multi-selection tracking and complicated synchronization logic for composite objects.
+**The Clean Architecture Blueprint:** Introduced cleanly decoupled `groupObjects`, `ungroupObjects`, and `alignObjects` functions into the `CanvasEngine`. Implemented exact tracking identifiers (`_isUserGroup`) across the 3-way `mergeEngine` boundary to guarantee that branch serialization cleanly preserves complex structural groups.
+**Verification & Refactor Logic:** Decomposed UI alignment triggers into isolated callback routes. Refactored object grouping to use immutable operations under Fabric.js v7 strict constraints, assigning consistent `_id` values and ensuring `toActiveSelection()` equivalents manually reconstruct grouped boundaries. Validated successfully across the Vitest suite without memory leaks.

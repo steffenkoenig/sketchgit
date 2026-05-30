@@ -188,6 +188,14 @@ export function createSketchGitApp() {
   return {
     // Canvas tools
     setTool: (t: string) => canvas.setTool(t),
+    groupObjects: () => canvas.groupObjects(),
+    ungroupObjects: () => canvas.ungroupObjects(),
+    alignLeft: () => canvas.alignLeft(),
+    alignRight: () => canvas.alignRight(),
+    alignTop: () => canvas.alignTop(),
+    alignBottom: () => canvas.alignBottom(),
+    alignCenterH: () => canvas.alignCenterH(),
+    alignCenterV: () => canvas.alignCenterV(),
     updateStrokeColor: (v: string) => canvas.updateStrokeColor(v),
     updateFillColor: (v: string) => canvas.updateFillColor(v),
     toggleFill: () => canvas.toggleFill(),

@@ -17,10 +17,11 @@
  *     for correct serialization and consistent canvas JSON format.
  */
 
-import { ActiveSelection,
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern, Control,
+import {
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern, Control, ActiveSelection
 } from 'fabric';
 import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
+import { util } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
 import { logger } from '../logger';
@@ -152,6 +153,9 @@ export class CanvasEngine {
     // Registering _id and _isArrow here ensures that every committed canvas
     // snapshot contains these fields so the merge engine can track objects by
     // their stable identity across branches.
+    if (!FabricObject.customProperties.includes('_isUserGroup')) {
+      FabricObject.customProperties.push('_isUserGroup');
+    }
     if (!FabricObject.customProperties.includes('_id')) {
       FabricObject.customProperties.push('_id');
     }
@@ -463,6 +467,180 @@ export class CanvasEngine {
   }
 
   /** Redo the last undone action (Ctrl+Shift+Z / Ctrl+Y). Broadcasts restored state to peers. */
+
+  // ── Grouping & Alignment ──────────────────────────────────────────────────
+
+  public groupObjects(): void {
+    if (!this.canvas) return;
+    const activeObject = this.canvas.getActiveObject();
+    if (!activeObject || activeObject.type !== 'ActiveSelection' && activeObject.type !== 'activeSelection') return;
+
+    const selection = activeObject as ActiveSelection;
+    const objects = selection.getObjects();
+    const hasNestedGroups = objects.some((obj) => obj.type === 'Group' || obj.type === 'group' && !(obj as ArrowGroupExt)._isArrow);
+    if (hasNestedGroups) {
+      return;
+    }
+
+    this.pushHistory();
+
+    this.canvas.discardActiveObject();
+    for (const obj of objects) {
+      this.canvas.remove(obj);
+    }
+
+    const group = new Group(objects, {
+      canvas: this.canvas
+    });
+
+    ensureObjId(group);
+    (group as FabricObject & { _isUserGroup?: boolean })._isUserGroup = true;
+
+    this.canvas.add(group);
+    this.canvas.setActiveObject(group);
+
+    this.markDirty();
+    this.canvas.requestRenderAll();
+    this.onBroadcastDraw(true);
+  }
+
+  public ungroupObjects(): void {
+    if (!this.canvas) return;
+    const activeObject = this.canvas.getActiveObject();
+
+    if (!activeObject || (activeObject.type !== 'Group' && activeObject.type !== 'group') || (activeObject as ArrowGroupExt)._isArrow) return;
+
+    this.pushHistory();
+
+    const group = activeObject as Group;
+    const objects = group.getObjects();
+
+    const newTransforms: Array<{ left: number; top: number; scaleX: number; scaleY: number; angle: number; skewX: number; skewY: number }> = [];
+    for (const obj of objects) {
+      const m = obj.calcTransformMatrix();
+      const options = util.qrDecompose(m);
+      newTransforms.push({
+        left: options.translateX,
+        top: options.translateY,
+        scaleX: options.scaleX,
+        scaleY: options.scaleY,
+        angle: options.angle,
+        skewX: options.skewX,
+        skewY: options.skewY
+      });
+    }
+
+    group.removeAll();
+    this.canvas.remove(group);
+
+    for (let i = 0; i < objects.length; i++) {
+      const obj = objects[i];
+      const t = newTransforms[i];
+      obj.set({
+        flipX: false,
+        flipY: false,
+        left: t.left,
+        top: t.top,
+        scaleX: t.scaleX,
+        scaleY: t.scaleY,
+        angle: t.angle,
+        skewX: t.skewX,
+        skewY: t.skewY
+      });
+      obj.setCoords();
+      this.canvas.add(obj);
+    }
+
+    this.canvas.discardActiveObject();
+    const sel = new ActiveSelection(objects, {
+      canvas: this.canvas
+    });
+
+    this.canvas.setActiveObject(sel);
+
+    this.markDirty();
+    this.canvas.requestRenderAll();
+    this.onBroadcastDraw(true);
+  }
+
+  public alignLeft(): void { this.alignObjects('left'); }
+  public alignRight(): void { this.alignObjects('right'); }
+  public alignTop(): void { this.alignObjects('top'); }
+  public alignBottom(): void { this.alignObjects('bottom'); }
+  public alignCenterH(): void { this.alignObjects('centerH'); }
+  public alignCenterV(): void { this.alignObjects('centerV'); }
+
+  private alignObjects(alignment: 'left' | 'right' | 'top' | 'bottom' | 'centerH' | 'centerV'): void {
+    if (!this.canvas) return;
+    const activeObject = this.canvas.getActiveObject();
+    if (!activeObject) return;
+
+    const isGroup = activeObject.type === 'Group' || activeObject.type === 'group';
+    const isSelection = activeObject.type === 'ActiveSelection' || activeObject.type === 'activeSelection';
+
+    if (!isGroup && !isSelection) return;
+    if ((activeObject as ArrowGroupExt)._isArrow) return;
+
+    this.pushHistory();
+
+    const alignTargets: FabricObject[] = isGroup ? (activeObject as Group).getObjects() : (activeObject as ActiveSelection).getObjects();
+
+    if (alignTargets.length < 2) {
+       if (isGroup) return;
+    }
+
+    const groupHalfW = activeObject.width! / 2;
+    const groupHalfH = activeObject.height! / 2;
+
+    for (const obj of alignTargets) {
+      let newLeft = obj.left ?? 0;
+      let newTop = obj.top ?? 0;
+
+      const childW = obj.width! * (obj.scaleX ?? 1);
+      const childH = obj.height! * (obj.scaleY ?? 1);
+
+      switch (alignment) {
+        case 'left':
+          if (obj.originX === 'center') newLeft = -groupHalfW + childW / 2;
+          else newLeft = -groupHalfW;
+          break;
+        case 'right':
+          if (obj.originX === 'center') newLeft = groupHalfW - childW / 2;
+          else newLeft = groupHalfW - childW;
+          break;
+        case 'centerH':
+          if (obj.originX === 'center') newLeft = 0;
+          else newLeft = -childW / 2;
+          break;
+        case 'top':
+          if (obj.originY === 'center') newTop = -groupHalfH + childH / 2;
+          else newTop = -groupHalfH;
+          break;
+        case 'bottom':
+          if (obj.originY === 'center') newTop = groupHalfH - childH / 2;
+          else newTop = groupHalfH - childH;
+          break;
+        case 'centerV':
+          if (obj.originY === 'center') newTop = 0;
+          else newTop = -childH / 2;
+          break;
+      }
+
+      obj.set({ left: newLeft, top: newTop });
+      obj.setCoords();
+    }
+
+    activeObject.set({ dirty: true });
+    activeObject.setCoords();
+    if (typeof (activeObject as unknown as { triggerLayout: () => void }).triggerLayout === 'function') {
+      (activeObject as unknown as { triggerLayout: () => void }).triggerLayout();
+    }
+
+    this.markDirty();
+    this.canvas.requestRenderAll();
+    this.onBroadcastDraw(true);
+  }
+
   redo(): void {
     const snapshot = this.redoStack.pop();
     if (!snapshot) return;
@@ -970,6 +1148,18 @@ export class CanvasEngine {
   private onKey(e: KeyboardEvent): void {
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+    // Handle grouping shortcuts
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        this.ungroupObjects();
+      } else {
+        this.groupObjects();
+      }
+      return;
+    }
+
     const k = e.key.toLowerCase();
     if (k === 's') this.setTool('select');
     else if (k === 'p') this.setTool('pen');
@@ -2914,10 +3104,13 @@ export class CanvasEngine {
    * via `_origGeom` so that the correct controls remain visible.
    */
   private getObjectShapeType(o: FabricObject): string {
-    const oa = o as FabricObject & { _isArrow?: boolean; _isMermaid?: boolean; type?: string; _origGeom?: string };
+    const oa = o as FabricObject & { _isArrow?: boolean; _isMermaid?: boolean; type?: string; _origGeom?: string; _isUserGroup?: boolean };
     if (oa._isMermaid) return 'mermaid';
     if (oa._isArrow) return 'arrow';
+    if (oa._isUserGroup) return 'user-group';
+
     const t = (oa.type as string | undefined) ?? '';
+    if (t === 'ActiveSelection' || t === 'activeSelection') return 'active-selection';
     if (t === 'rect') return 'rect';
     if (t === 'ellipse') return 'ellipse';
     if (t === 'line') return 'line';
@@ -2957,12 +3150,19 @@ export class CanvasEngine {
     const _isPen     = shapeType === 'pen';
     const isText     = shapeType === 'text';
     const isMermaid  = shapeType === 'mermaid';
-    const hasFill    = isRect || isEllipse;
+    const isGroupSelection = shapeType === 'user-group' || shapeType === 'active-selection';
+    const hasFill    = isRect || isEllipse || isGroupSelection;
     // Mermaid objects support stroke (border) but not text-style (no stroke width/dash exclusion)
     const hasStroke  = !isText;
 
     // Colors: always visible
     show('pp-color-section');
+
+    if (isGroupSelection) {
+      show('pp-group-section');
+    } else {
+      hide('pp-group-section');
+    }
 
     // Stroke width / dash: all shapes with a stroke (not text)
     hasStroke ? show('pp-stroke-width-section') : hide('pp-stroke-width-section');

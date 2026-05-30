@@ -59,6 +59,39 @@ export const PropertiesPanel = React.memo(function PropertiesPanel({ call }: Pro
         </div>
       </div>
 
+      {/* ── Grouping & Alignment ───────────────────────────────────────────── */}
+      <div className="pp-section" id="pp-group-section">
+        <span className="pp-label">{t("grouping")}</span>
+        <div className="pp-row" style={{ flexWrap: "wrap", gap: "4px" }}>
+          <button className="szbtn" id="btnGroup" onClick={() => call("groupObjects")} title={t("groupObjects")} aria-label={t("groupObjects")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 8h8v8H8z" /></svg>
+          </button>
+          <button className="szbtn" id="btnUngroup" onClick={() => call("ungroupObjects")} title={t("ungroupObjects")} aria-label={t("ungroupObjects")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 8h8v8H8z" strokeDasharray="2 2" /></svg>
+          </button>
+          <div className="vsep" role="separator" />
+          <button className="szbtn" id="btnAlignLeft" onClick={() => call("alignLeft")} title={t("alignLeft")} aria-label={t("alignLeft")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><line x1="4" y1="4" x2="4" y2="20" /><rect x="8" y="8" width="8" height="8" /></svg>
+          </button>
+          <button className="szbtn" id="btnAlignCenterH" onClick={() => call("alignCenterH")} title={t("alignCenterH")} aria-label={t("alignCenterH")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><line x1="12" y1="4" x2="12" y2="20" /><rect x="8" y="8" width="8" height="8" /></svg>
+          </button>
+          <button className="szbtn" id="btnAlignRight" onClick={() => call("alignRight")} title={t("alignRight")} aria-label={t("alignRight")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><line x1="20" y1="4" x2="20" y2="20" /><rect x="8" y="8" width="8" height="8" /></svg>
+          </button>
+          <div className="vsep" role="separator" />
+          <button className="szbtn" id="btnAlignTop" onClick={() => call("alignTop")} title={t("alignTop")} aria-label={t("alignTop")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><line x1="4" y1="4" x2="20" y2="4" /><rect x="8" y="8" width="8" height="8" /></svg>
+          </button>
+          <button className="szbtn" id="btnAlignCenterV" onClick={() => call("alignCenterV")} title={t("alignCenterV")} aria-label={t("alignCenterV")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><line x1="4" y1="12" x2="20" y2="12" /><rect x="8" y="8" width="8" height="8" /></svg>
+          </button>
+          <button className="szbtn" id="btnAlignBottom" onClick={() => call("alignBottom")} title={t("alignBottom")} aria-label={t("alignBottom")} aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none"><line x1="4" y1="20" x2="20" y2="20" /><rect x="8" y="8" width="8" height="8" /></svg>
+          </button>
+        </div>
+      </div>
+
       {/* ── Stroke width ────────────────────────────────────────────────────── */}
       <div className="pp-section" id="pp-stroke-width-section">
         <span className="pp-label">{t("strokeWidth")}</span>
