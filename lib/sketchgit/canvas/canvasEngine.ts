@@ -1121,6 +1121,8 @@ export class CanvasEngine {
     if (o) {
       o.set('stroke', v);
       this.canvas?.requestRenderAll();
+      // BUG-010 – programmatic obj.set() doesn't fire object:modified, so we
+      // explicitly fire it here to let the canvas handlers run (dirty, broadcast, history).
       this.canvas?.fire('object:modified', { target: o });
     }
   }
@@ -1143,6 +1145,7 @@ export class CanvasEngine {
       o.set('fill', this.createFill(pattern ?? 'filled', v));
       (o as FabricObject & { _fillColor?: string })._fillColor = v;
       this.canvas?.requestRenderAll();
+      // BUG-010 – same fix: explicitly fire object:modified.
       this.canvas?.fire('object:modified', { target: o });
     }
   }
@@ -1332,8 +1335,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.bringObjectToFront(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   bringForward(): void {
@@ -1342,8 +1344,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.bringObjectForward(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   sendBackward(): void {
@@ -1352,8 +1353,7 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.sendObjectBackwards(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   sendToBack(): void {
@@ -1362,16 +1362,14 @@ export class CanvasEngine {
     this.pushHistory();
     this.canvas.sendObjectToBack(o);
     this.canvas.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
   }
 
   setObjectLink(url: string): void {
     const o = this.canvas?.getActiveObject();
     if (!o) return;
     (o as FabricObject & { _link?: string })._link = url.trim() || undefined;
-    this.markDirty();
-    this.onBroadcastDraw(true);
+    this.canvas?.fire('object:modified', { target: o });
     // Visual feedback: update the link input in the properties panel
     const input = document.getElementById('linkInput') as HTMLInputElement | null;
     if (input) input.value = url.trim();
@@ -2328,14 +2326,6 @@ export class CanvasEngine {
 
     const ag = obj as AnchoredArrowGroup;
     if (ag._isArrow) {
-      // BUG-021: Cancel any pending connector-follow rAF from the object:moving
-      // phase so it doesn't run with a stale reference to the removed arrow group.
-      if (this._attachmentRafId !== null) {
-        cancelAnimationFrame(this._attachmentRafId);
-        this._attachmentRafId = null;
-        this._attachmentRafTarget = null;
-      }
-
       // Determine where the arrow endpoints are after the group was moved.
       // _gcx/_gcy is the group center when _x1/_y1/_x2/_y2 were last set;
       // the difference gives the movement delta.
@@ -2418,8 +2408,17 @@ export class CanvasEngine {
           this._attachmentRafId = null;
           this._attachmentRafTarget = null;
         }
-        // Rebuild the arrow at the snapped coordinates.
-        this.rebuildArrowGroupInPlace(obj, snapX1, snapY1, snapX2, snapY2);
+        // Rebuild the arrow at the snapped coordinates.  Track whether the group was
+        // active so we can re-select the rebuilt group, preserving selection after snap.
+        const wasActive = this.canvas.getActiveObject() === obj;
+        const agId = (ag as FabricObject & { _id?: string })._id;
+        this.rebuildArrowForMove(obj, snapX1, snapY1, snapX2, snapY2);
+        if (wasActive && agId) {
+          const newGrp = this.canvas.getObjects().find(
+            (o) => (o as FabricObject & { _id?: string })._id === agId,
+          );
+          if (newGrp) this.canvas.setActiveObject(newGrp);
+        }
       } else {
         // No snap: just persist the new group center so the next delta is correct.
         ag._gcx = newCenter.x;
@@ -2434,14 +2433,6 @@ export class CanvasEngine {
     let geom: { type: string; x1: number; y1: number; x2: number; y2: number };
     try { geom = JSON.parse(sp._origGeom) as typeof geom; } catch { return; }
     if (geom.type !== 'line') return;
-
-    // BUG-021: Cancel any pending connector-follow rAF from the object:moving
-    // phase so it doesn't run with a stale reference to the removed sketch path.
-    if (this._attachmentRafId !== null) {
-      cancelAnimationFrame(this._attachmentRafId);
-      this._attachmentRafId = null;
-      this._attachmentRafTarget = null;
-    }
 
     // Derive current logical endpoint positions from the path's new center and the
     // half-deltas stored in _origGeom.  This mirrors how tryConvertToSketch positions
@@ -2653,7 +2644,7 @@ export class CanvasEngine {
     }
 
     for (const { grp, x1, y1, x2, y2 } of arrowsToRebuild) {
-      this.rebuildArrowGroupInPlace(grp, x1, y1, x2, y2);
+      this.rebuildArrowForMove(grp, x1, y1, x2, y2);
     }
     for (const { sp, x1, y1, x2, y2 } of sketchesToRebuild) {
       this.rebuildSketchPathForMove(sp, x1, y1, x2, y2);
@@ -2663,6 +2654,53 @@ export class CanvasEngine {
       this.canvas.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(false); // throttled — endpoint moves are frequent
+    }
+  }
+
+  /**
+   * Rebuild an arrow Group with updated endpoint coordinates without changing
+   * the canvas selection (used when a connected shape is being moved).
+   * Preserves the group's _id, _attachedFrom, _attachedTo, and anchor offsets.
+   */
+  private rebuildArrowForMove(
+    grp: FabricObject,
+    x1: number, y1: number, x2: number, y2: number,
+  ): void {
+    if (!this.canvas) return;
+    const ag = grp as AnchoredArrowGroup;
+
+    const headStart = (ag._arrowHeadStart ?? 'none') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const headEnd   = (ag._arrowHeadEnd   ?? 'open') as 'none' | 'open' | 'triangle' | 'triangle-outline';
+    const arrowType = (ag._arrowType      ?? 'sharp') as 'sharp' | 'curved' | 'elbow';
+
+    const children = (grp as Group).getObjects?.() ?? [];
+    const firstChild = children[0] as FabricObject | undefined;
+    const stroke = (firstChild?.get('stroke') as string | undefined) ?? this.strokeColor;
+    const strokeWidth = (firstChild?.get('strokeWidth') as number | undefined) ?? this.strokeWidth;
+    const strokeDashArray = (firstChild?.get('strokeDashArray') as number[] | undefined);
+    const opacity = (grp.get('opacity') as number | undefined) ?? 1;
+
+    const tempLine = new Line([x1, y1, x2, y2], {
+      stroke, strokeWidth, strokeDashArray,
+      opacity, selectable: false, evented: false,
+    });
+    // Preserve the group's ID, attachment IDs, and anchor offsets.
+    (tempLine as FabricObject & { _id?: string })._id = (grp as FabricObject & { _id?: string })._id;
+    const tl = tempLine as AnchoredLine;
+    tl._attachedFrom = ag._attachedFrom;
+    tl._attachedTo = ag._attachedTo;
+    tl._attachedFromAnchorX = ag._attachedFromAnchorX;
+    tl._attachedFromAnchorY = ag._attachedFromAnchorY;
+    tl._attachedToAnchorX = ag._attachedToAnchorX;
+    tl._attachedToAnchorY = ag._attachedToAnchorY;
+
+    // Rebuild without switching the canvas selection (selectAfter=false), then restore
+    // the previously-active object so Fabric.js drag-tracking is not interrupted.
+    const prevActive = this.canvas.getActiveObject();
+    this.canvas.remove(grp);
+    this.buildArrowGroup(tempLine, headStart, headEnd, arrowType, false);
+    if (prevActive && prevActive !== grp) {
+      this.canvas.setActiveObject(prevActive);
     }
   }
 

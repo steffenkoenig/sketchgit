@@ -26,13 +26,9 @@ import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { InboundWsMessageSchema } from "./lib/api/wsSchemas.js";
 import { pruneInactiveRooms, checkRoomAccess, resolveRoomId, appendRoomEvent, addRoomMember, type ClientRole, type CommitRecord } from "./lib/db/roomRepository.js";
-import { replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
+import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "./lib/sketchgit/git/canvasDelta.js";
+import { validateCommitMessage } from "./lib/server/commitValidation.js";
 import { verifyScopeCookie, mapPermissionToRole } from "./lib/server/shareLinkTokens.js";
-import { checkDbHealth } from "./lib/db/health.js";
-import { parseAllowedOrigins } from "./lib/server/allowedOrigins.js";
-import { parseCookies } from "./lib/server/cookieHelpers.js";
-import { getGlobalPresence } from "./lib/server/presence.js";
-import { initRoomBroadcaster } from "./lib/server/wsRoomBroadcaster.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -147,16 +143,21 @@ async function initRedis(): Promise<void> {
   // to locally-connected WebSocket clients.
   await redisSub.psubscribe(`${REDIS_CHANNEL_PREFIX}*`);
 
-  const { handleRedisPmessage } = await import("./lib/server/redisPmessage.js");
   redisSub.on("pmessage", (_pattern: string, channel: string, data: string) => {
-    handleRedisPmessage(
-      channel,
-      data,
-      REDIS_CHANNEL_PREFIX,
-      SERVER_INSTANCE_ID,
-      logger,
-      broadcastLocalRoom
-    );
+    const roomId = channel.slice(REDIS_CHANNEL_PREFIX.length);
+    let envelope: { from: string; instanceId: string; payload: WsMessage };
+    try {
+      envelope = JSON.parse(data) as { from: string; instanceId: string; payload: WsMessage };
+    } catch {
+      logger.warn({ channel }, "redis: failed to parse pmessage payload");
+      return;
+    }
+    // Skip messages this instance published itself – those clients already
+    // received the message via the synchronous local broadcast in broadcastRoom().
+    if (envelope.instanceId === SERVER_INSTANCE_ID) return;
+    // Relay to locally-connected clients only (excluding the original sender
+    // whose clientId is embedded in the envelope to prevent echo-loops).
+    broadcastLocalRoom(roomId, envelope.payload, envelope.from);
   });
 
   redisReady = true;
@@ -257,10 +258,25 @@ const PING_INTERVAL_MS = 25_000;
 // Server-to-server / CLI tools typically omit it (we allow those through).
 // Origins are normalised via `new URL(...).origin` so that trailing slashes
 // or differences in case do not cause legitimate upgrades to be rejected.
-// Treat an empty/whitespace-only WS_ALLOWED_ORIGINS as unset so we always
-// fall back to NEXTAUTH_URL rather than producing an empty allow-list that
-// would reject all browser upgrades.
-const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.WS_ALLOWED_ORIGINS, env.NEXTAUTH_URL);
+const ALLOWED_ORIGINS: Set<string> = (() => {
+  // Treat an empty/whitespace-only WS_ALLOWED_ORIGINS as unset so we always
+  // fall back to NEXTAUTH_URL rather than producing an empty allow-list that
+  // would reject all browser upgrades.
+  const raw = process.env.WS_ALLOWED_ORIGINS?.trim() || env.NEXTAUTH_URL;
+  return new Set(
+    raw
+      .split(",")
+      .map((o) => {
+        const trimmed = o.trim();
+        try {
+          return new URL(trimmed).origin;
+        } catch {
+          return trimmed;
+        }
+      })
+      .filter(Boolean),
+  );
+})();
 
 // P023 – readiness flag: false until the HTTP server is fully listening
 let isReady = false;
@@ -301,6 +317,21 @@ function safeCommitMessage(value: string | null | undefined): string {
   return (value ?? "").trim().slice(0, 500) || "(no message)";
 }
 
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const part of (cookieHeader ?? "").split(";")) {
+    const idx = part.indexOf("=");
+    if (idx < 0) continue;
+    const key = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    try {
+      map[key] = decodeURIComponent(val);
+    } catch {
+      map[key] = val;
+    }
+  }
+  return map;
+}
 
 function getRoom(roomId: string): Map<string, ClientState> {
   if (!rooms.has(roomId)) rooms.set(roomId, new Map());
@@ -310,6 +341,16 @@ function getRoom(roomId: string): Map<string, ClientState> {
 function sendTo(ws: WebSocket, payload: WsMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
+  }
+}
+
+// P023 – lightweight DB health probe (SELECT 1)
+async function checkDbHealth(): Promise<boolean> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -363,7 +404,34 @@ const REDIS_PRESENCE_TTL_SECONDS = 30;
  * P035 – Return the merged list of clients from all server instances for a room.
  * Falls back to the local client list when Redis is unavailable.
  */
+async function getGlobalPresence(
+  roomId: string,
+  localClients: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>,
+): Promise<Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }>> {
+  if (!redisPub || !redisReady) return localClients;
 
+  try {
+    const key = `${REDIS_PRESENCE_PREFIX}${roomId}`;
+    const allFields = await redisPub.hgetall(key);
+    if (!allFields) return localClients;
+
+    const seen = new Set<string>();
+    const merged: Array<{ clientId: string; name: string; color: string; userId: string | null; branch: string; headSha: string | null }> = [];
+    for (const value of Object.values(allFields)) {
+      const clients = JSON.parse(value) as Array<{ clientId: string; name: string; color: string; userId: string | null; branch?: string; headSha?: string | null }>;
+      for (const c of clients) {
+        if (!seen.has(c.clientId)) {
+          seen.add(c.clientId);
+          merged.push({ ...c, branch: c.branch ?? 'main', headSha: c.headSha ?? null });
+        }
+      }
+    }
+    return merged;
+  } catch (err) {
+    logger.warn({ roomId, err }, "redis: getGlobalPresence failed, falling back to local");
+    return localClients;
+  }
+}
 
 function pushPresence(roomId: string): void {
   const room = rooms.get(roomId);
@@ -391,7 +459,7 @@ function pushPresence(roomId: string): void {
     pipeline.expire(key, REDIS_PRESENCE_TTL_SECONDS);
     // Fetch global merged list, then broadcast
     void pipeline.exec().then(() =>
-      getGlobalPresence(roomId, localClients, redisPub, redisReady, logger).then((clients) => {
+      getGlobalPresence(roomId, localClients).then((clients) => {
         broadcastLocalRoom(roomId, { type: "presence", roomId, clients });
       }).catch((err) => {
         logger.warn({ roomId, err }, "redis: presence merge failed");
@@ -421,28 +489,6 @@ function schedulePushPresence(roomId: string): void {
 
   presenceDebounceTimers.set(roomId, timer);
 }
-
-// ─── REST API broadcaster (shared with Next.js route handlers) ────────────────
-
-/**
- * Initialise the wsRoomBroadcaster singleton so that Next.js API route
- * handlers can push WS messages to connected room clients.  Must be called
- * after `broadcastRoom`, `schedulePushPresence`, and `rooms` are available.
- */
-initRoomBroadcaster({
-  broadcast: broadcastRoom,
-  updateClient: (roomId, clientId, updates) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-    const client = room.get(clientId);
-    if (!client) return;
-    if (updates.displayName !== undefined) client.displayName = updates.displayName;
-    if (updates.displayColor !== undefined) client.displayColor = updates.displayColor;
-    if (updates.currentBranch !== undefined) client.currentBranch = updates.currentBranch;
-    if (updates.currentHeadSha !== undefined) client.currentHeadSha = updates.currentHeadSha;
-  },
-  schedulePresence: schedulePushPresence,
-});
 
 // ─── Session parsing ──────────────────────────────────────────────────────────
 
@@ -478,6 +524,98 @@ async function dbEnsureRoom(roomId: string, ownerId: string | null): Promise<voi
     });
   } catch (err) {
     logger.error({ roomId, err }, "db.ensureRoom failed");
+  }
+}
+
+interface CommitData {
+  parent?: string | null;
+  parents?: string[];
+  branch: string;
+  message: string;
+  canvas: string;
+  isMerge?: boolean;
+}
+
+async function dbSaveCommit(
+  roomId: string,
+  sha: string,
+  commitData: CommitData,
+  userId: string | null,
+): Promise<void> {
+  // P047 – sanitize branch name and commit message before any DB writes.
+  const branch = safeBranchName(commitData.branch);
+  const message = safeCommitMessage(commitData.message);
+
+  // Validate canvas JSON before entering the transaction. An invalid payload
+  // means the commit is unrenderable – log and skip rather than persisting
+  // a silent empty fallback that would confuse clients.
+  let canvasObj: object;
+  try {
+    canvasObj = JSON.parse(commitData.canvas) as object;
+  } catch (err) {
+    logger.warn({ roomId, sha, err }, "db.saveCommit: invalid canvas JSON; skipping persistence");
+    return;
+  }
+
+  // P033: attempt delta compression when there's a parent commit stored as SNAPSHOT
+  let storageType: CommitStorageType = CommitStorageType.SNAPSHOT;
+  let canvasToStore: object = canvasObj;
+
+  if (commitData.parent) {
+    try {
+      const parentCommit = await prisma.commit.findUnique({ where: { sha: commitData.parent } });
+      if (parentCommit && parentCommit.storageType === CommitStorageType.SNAPSHOT) {
+        const parentCanvas = JSON.stringify(parentCommit.canvasJson);
+        const delta = computeCanvasDelta(parentCanvas, commitData.canvas);
+        const deltaStr = JSON.stringify(delta);
+        if (deltaStr.length < commitData.canvas.length * 0.9) {
+          canvasToStore = delta as unknown as object;
+          storageType = CommitStorageType.DELTA;
+        }
+      }
+    } catch {
+      // Fall back to SNAPSHOT on any error
+    }
+  }
+
+  try {
+    await prisma.$transaction([
+      prisma.commit.upsert({
+        where: { sha },
+        create: {
+          sha,
+          roomId,
+          parentSha: commitData.parent ?? null,
+          parents: commitData.parents ?? [],
+          branch,
+          message,
+          // P011: canvasJson is now Json (JSONB) – pass a parsed object, not a string.
+          // P033: may be a delta object if storageType is DELTA.
+          canvasJson: canvasToStore,
+          isMerge: commitData.isMerge ?? false,
+          storageType,
+          authorId: userId ?? null,
+        },
+        update: {},
+      }),
+      prisma.branch.upsert({
+        where: { roomId_name: { roomId, name: branch } },
+        create: { roomId, name: branch, headSha: sha },
+        update: { headSha: sha },
+      }),
+      prisma.roomState.upsert({
+        where: { roomId },
+        create: {
+          roomId,
+          headSha: sha,
+          headBranch: branch,
+          isDetached: false,
+        },
+        update: { headSha: sha, headBranch: branch },
+      }),
+    ]);
+  } catch (err) {
+    logger.error({ roomId, sha, err }, "db.saveCommit failed");
   }
 }
 
@@ -620,7 +758,7 @@ void app.prepare()
         // Orchestrators use this to decide whether to restart the container; a DB
         // outage should NOT trigger a restart (the process itself is healthy).
         if (req.url === "/api/health") {
-          const dbOk = await checkDbHealth(prisma);
+          const dbOk = await checkDbHealth();
           const payload = JSON.stringify({
             status: "ok",
             uptime: process.uptime(),
@@ -642,7 +780,7 @@ void app.prepare()
         // P023 – readiness probe: 503 until the HTTP server is listening AND the
         // database is reachable.  Only then is the instance ready for traffic.
         if (req.url === "/api/ready") {
-          const canAcceptTraffic = isReady && (await checkDbHealth(prisma));
+          const canAcceptTraffic = isReady && (await checkDbHealth());
           res.writeHead(canAcceptTraffic ? 200 : 503, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ready: canAcceptTraffic }));
           return;
@@ -768,18 +906,8 @@ void app.prepare()
     });
 
     /**
-     * Process a single validated WsMessage for a connected client.
-     *
-     * After the REST-based refactor, clients no longer send draw, draw-delta,
-     * commit, branch-update, cursor, profile, object-lock, object-unlock,
-     * follow-*, or view-sync messages over WebSocket.  Those events now arrive
-     * via the respective POST API endpoints, which handle DB writes and call
-     * broadcastToRoom() to push WS notifications to all room clients.
-     *
-     * The only inbound WS messages that remain are:
-     *  - pong      – heartbeat echo (no relay needed)
-     *  - fullsync-request – peer requests git state from another peer; relayed
-     *  - fullsync  – peer-to-peer git state response; relayed to target
+     * P073 – Process a single validated WsMessage for a connected client.
+     * Extracted so the P073 batch handler can call it for each message in a batch.
      */
     async function handleWsMessage(
       client: ClientState,
@@ -787,10 +915,81 @@ void app.prepare()
       roomId: string,
       clientId: string,
     ): Promise<void> {
-      // Heartbeat echo – drop without relay.
+      if (message.type === "profile") {
+        // Guard against non-string values from malicious clients; safeName/safeColor
+        // call .trim() internally and would throw on numbers/objects.
+        client.displayName = safeName(
+          typeof message.name === "string" ? message.name : null,
+        );
+        client.displayColor = safeColor(
+          typeof message.color === "string" ? message.color : null,
+        );
+        // P079 – update branch position if supplied (optional, backward-compatible)
+        if (typeof message.branch === "string" && message.branch.length > 0) {
+          client.currentBranch = safeBranchName(message.branch);
+        }
+        if (typeof message.headSha === "string") {
+          client.currentHeadSha = message.headSha.slice(0, 64) || null;
+        }
+        schedulePushPresence(roomId);
+        return;
+      }
+
+      // Drop ping/pong before any further processing – heartbeat only
       if (message.type === "ping" || message.type === "pong") return;
 
-      // P091 – COMMIT-scoped share link: deny peer-to-peer fullsync relay.
+      // P034 – Enforce write permissions: only VIEWER role cannot modify
+      // shared canvas state. ANONYMOUS users are allowed to draw and commit
+      // in public rooms (the anonymous-first UX design).
+      if (
+        (message.type === "draw" ||
+          message.type === "draw-delta" ||
+          message.type === "commit" ||
+          message.type === "branch-update") &&
+        client.role === "VIEWER"
+      ) {
+        sendTo(client, { type: "error", code: "FORBIDDEN", detail: "Read-only access" });
+        return;
+      }
+
+      // P091 – COMMITTER role: can draw and commit but cannot create new branches.
+      // A branch-update is considered a "new branch creation" when the branch name
+      // is not already in the room's cached snapshot, and it is neither a rollback
+      // nor a detached-HEAD checkout.
+      if (client.role === "COMMITTER" && message.type === "branch-update") {
+        const buMsg = message as WsMessage & { branch?: string | null; isRollback?: boolean; detached?: boolean };
+        if (
+          typeof buMsg.branch === "string" &&
+          buMsg.branch.length > 0 &&
+          !buMsg.isRollback &&
+          !buMsg.detached
+        ) {
+          const snapshot = roomCache.get(roomId);
+          if (snapshot && !(buMsg.branch in snapshot.branches)) {
+            sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Your share link does not allow branch creation" });
+            return;
+          }
+        }
+      }
+
+      // P091 – BRANCH-scoped share link: reject operations targeting non-allowed branches.
+      // For commit messages the branch is nested under `message.commit.branch`;
+      // for branch-update messages it is the top-level `message.branch`.
+      if (client.shareScope === "BRANCH" && client.allowedBranches) {
+        const msgWithBranch = message as WsMessage & { branch?: string; commit?: { branch?: string } };
+        const targetBranch =
+          msgWithBranch.branch ??
+          (message.type === "commit" ? msgWithBranch.commit?.branch : undefined);
+        if (
+          typeof targetBranch === "string" &&
+          !client.allowedBranches.includes(targetBranch)
+        ) {
+          sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Branch not accessible via your share link" });
+          return;
+        }
+      }
+
+      // P091 – COMMIT-scoped share link: deny all writes; only fullsync-request is allowed.
       if (client.shareScope === "COMMIT") {
         if (message.type !== "fullsync-request") {
           sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Share link grants read-only commit access" });
@@ -798,21 +997,66 @@ void app.prepare()
         }
       }
 
-      // Relay peer-to-peer fullsync messages to the room.
-      if (message.type === "fullsync-request" || message.type === "fullsync") {
-        const relay: WsMessage = {
-          ...message,
-          senderId: client.clientId,
-          senderName: client.displayName,
-          senderColor: client.displayColor,
-          roomId,
-        };
-        broadcastRoom(roomId, relay, client.clientId);
-        return;
+      // Persist commit messages to the database
+      if (message.type === "commit" && message.sha && message.commit) {
+        // P057 – Validate SHA format and payload size before persisting or relaying
+        const isValid = validateCommitMessage(
+          message.sha,
+          message.commit,
+          (reason) => logger.warn({ clientId, roomId, reason }, "ws: commit rejected"),
+        );
+        if (!isValid) return;
+
+        logger.info({ clientId, roomId, sha: message.sha }, "ws: commit received");
+        // P043 – Track in-flight DB writes so graceful shutdown can drain them.
+        beginWrite();
+        try {
+          await dbSaveCommit(
+            roomId,
+            message.sha as string,
+            message.commit as CommitData,
+            client.userId,
+          );
+        } finally {
+          endWrite();
+        }
+        // P074 – append COMMIT event to activity log (non-blocking)
+        const commitData = message.commit as CommitData;
+        void appendRoomEvent(roomId, "COMMIT", client.userId, {
+          sha: message.sha,
+          branch: commitData.branch,
+          message: commitData.message,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append COMMIT"));
+        // P030: invalidate cached snapshot so next connection loads fresh state
+        roomCache.invalidate(roomId);
       }
 
-      // Unknown or legacy message type – silently ignore.
-      logger.warn({ clientId, roomId, type: message.type }, "ws: ignoring legacy inbound message (use REST API)");
+      // P074 – append BRANCH_CHECKOUT / ROLLBACK event for branch-update messages
+      // P079 – update the client's branch position on the server for presence
+      if (message.type === "branch-update") {
+        const buMsg = message as WsMessage & { branch?: string; headSha?: string; isRollback?: boolean };
+        // Store new branch position so presence reflects it
+        if (typeof buMsg.branch === "string" && buMsg.branch.length > 0) {
+          client.currentBranch = safeBranchName(buMsg.branch);
+          client.currentHeadSha = typeof buMsg.headSha === "string" ? buMsg.headSha.slice(0, 64) : null;
+          schedulePushPresence(roomId);
+        }
+        const evType = buMsg.isRollback ? "ROLLBACK" : "BRANCH_CHECKOUT";
+        void appendRoomEvent(roomId, evType, client.userId, {
+          branch: buMsg.branch,
+          headSha: buMsg.headSha,
+        }).catch((err: unknown) => logger.warn({ err }, "events: failed to append branch event"));
+      }
+
+      // Relay to peers
+      const relay: WsMessage = {
+        ...message,
+        senderId: client.clientId,
+        senderName: client.displayName,
+        senderColor: client.displayColor,
+        roomId,
+      };
+      broadcastRoom(roomId, relay, client.clientId);
     }
 
     wss.on("connection", asyncHandler("ws:connection", async (ws: WebSocket, reqUrl: URL) => {
@@ -847,14 +1091,9 @@ void app.prepare()
           // First fetch the invitation to validate it (expiry, roomId).
           const invitation = await prisma.roomInvitation.findUnique({
             where: { token: inviteToken },
-            select: { roomId: true, expiresAt: true, maxUses: true, useCount: true },
+            select: { roomId: true, expiresAt: true, maxUses: true },
           });
-          if (
-            invitation &&
-            invitation.roomId === roomId &&
-            invitation.expiresAt > new Date() &&
-            invitation.useCount < invitation.maxUses
-          ) {
+          if (invitation && invitation.roomId === roomId && invitation.expiresAt > new Date()) {
             // BUG-004 – use updateMany with a conditional WHERE to atomically
             // increment useCount only when still below maxUses, preventing a
             // TOCTOU race where concurrent connections could both pass the
@@ -863,22 +1102,17 @@ void app.prepare()
               where: { token: inviteToken, useCount: { lt: invitation.maxUses } },
               data: { useCount: { increment: 1 } },
             });
-            if (updated.count === 0) {
-              // Another concurrent connection consumed the last use; deny access
-              sendTo(client, { type: "error", code: "INVITATION_EXHAUSTED", detail: "Invitation limit reached" });
-              ws.close(1008, "Invitation exhausted");
-              return;
+            if (updated.count > 0) {
+              // Also add as a room member so future connections don't need the token
+              if (client.userId) {
+                await prisma.roomMembership.upsert({
+                  where: { roomId_userId: { roomId, userId: client.userId } },
+                  update: {},
+                  create: { roomId, userId: client.userId, role: "EDITOR" },
+                });
+              }
+              access = { allowed: true, role: "EDITOR" };
             }
-
-            // Also add as a room member so future connections don't need the token
-            if (client.userId) {
-              await prisma.roomMembership.upsert({
-                where: { roomId_userId: { roomId, userId: client.userId } },
-                update: {},
-                create: { roomId, userId: client.userId, role: "EDITOR" },
-              });
-            }
-            access = { allowed: true, role: "EDITOR" };
           }
         }
 
@@ -1055,13 +1289,7 @@ void app.prepare()
             // BUG-009 – use `continue` so the rest of the batch is still processed.
             continue;
           }
-          try {
-            await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId);
-          } catch (err) {
-            logger.error({ err, clientId, roomId }, "ws: error processing message in batch");
-            sendTo(client, { type: "error", code: "INTERNAL_ERROR" });
-            continue;
-          }
+          await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId);
         }
       }));
 

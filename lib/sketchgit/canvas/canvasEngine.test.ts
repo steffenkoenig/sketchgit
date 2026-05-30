@@ -17,9 +17,6 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
       // P022: methods used by the in-place polyline update
       _setPositionDimensions: vi.fn(),
       setCoords: vi.fn(),
-      getObjects: vi.fn(() => []),
-      removeAll: vi.fn(),
-      add: vi.fn(),
       ...opts,
       set: vi.fn(function (this: Record<string, unknown>, key: string | Record<string, unknown>, val?: unknown) {
         if (typeof key === 'object') { Object.assign(this, key); } else { this[key] = val; }
@@ -40,7 +37,6 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
   }
 
   const mockCanvasInstance = {
-    fire: vi.fn(),
     on: vi.fn((event: string, handler: (e: unknown) => void) => {
       canvasEventHandlers[event] = handler;
     }),
@@ -71,6 +67,7 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
     bringObjectForward: vi.fn(),
     sendObjectBackwards: vi.fn(),
     sendObjectToBack: vi.fn(),
+    fire: vi.fn(),
   };
 
   return { mockCanvasInstance, canvasEventHandlers, makeFabricObject };
@@ -1617,14 +1614,14 @@ describe('CanvasEngine – setFillPattern on existing shapes (bug fix)', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('applies fill pattern when selected object has a non-transparent fill (fillEnabled=false)', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     expect(engine.fillEnabled).toBe(false);
     const obj = makeFabricObject({ fill: '#ff0000', _fillPattern: 'filled' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
     engine.setFillPattern('striped');
     expect(obj.set).toHaveBeenCalledWith('fill', expect.anything());
-    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
+    expect(onBroadcastDraw).toHaveBeenCalled();
   });
 
   it('does NOT apply fill pattern when object has transparent fill and fillEnabled=false', () => {
@@ -1767,7 +1764,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('toggleFill() enabling fill applies current fillColor to the selected object', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     // Set fill color directly on engine state (avoids depending on updateFillColor internals)
     engine.fillColor = '#ff0000';
@@ -1776,11 +1773,11 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // enable fill
     expect(engine.fillEnabled).toBe(true);
     expect(obj.set).toHaveBeenCalledWith('fill', '#ff0000');
-    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
+    expect(onBroadcastDraw).toHaveBeenCalled();
   });
 
   it('toggleFill() disabling fill sets object fill to transparent', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw } = makeEngine();
     engine.init();
     const obj = makeFabricObject({ fill: '#ff0000' });
     mockCanvasInstance.getActiveObject.mockReturnValue(obj);
@@ -1790,7 +1787,7 @@ describe('CanvasEngine – toggleFill applies fill to active object (bug fix)', 
     engine.toggleFill(); // disable fill
     expect(engine.fillEnabled).toBe(false);
     expect(obj.set).toHaveBeenCalledWith('fill', 'transparent');
-    expect(mockCanvasInstance.fire).toHaveBeenCalledWith("object:modified", expect.any(Object));
+    expect(onBroadcastDraw).toHaveBeenCalled();
   });
 
   it('toggleFill() with no active object only updates flag and button', () => {
@@ -1859,7 +1856,7 @@ describe('CanvasEngine – connector snapping and following', () => {
   beforeEach(() => { setupDom(); resetMocks(); });
 
   it('object:moving on a shape triggers rebuild of an attached arrow group', () => {
-    const { engine } = makeEngine();
+    const { engine, onBroadcastDraw: _onBroadcastDraw } = makeEngine();
     engine.init();
 
     // A shape that will be moved.
@@ -1884,11 +1881,13 @@ describe('CanvasEngine – connector snapping and following', () => {
     canvasEventHandlers['object:moving']?.({ target: shape });
 
     // The old arrow group should be removed and a new Group built.
-    expect(arrowGroup.removeAll).toHaveBeenCalled();
-    expect(arrowGroup.add).toHaveBeenCalled();
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(arrowGroup);
+    expect(Group).toHaveBeenCalled();
 
     // The newly added group should carry the same _attachedFrom ID.
-    expect((arrowGroup as any)._attachedFrom).toBe('shape-1');
+    const addCalls = mockCanvasInstance.add.mock.calls;
+    const lastAdded = addCalls[addCalls.length - 1]?.[0] as Record<string, unknown>;
+    expect(lastAdded?._attachedFrom).toBe('shape-1');
   });
 
   it('object:moving on a shape updates the _x1/_y1 endpoint of the rebuilt arrow group', () => {
@@ -1912,11 +1911,37 @@ describe('CanvasEngine – connector snapping and following', () => {
     canvasEventHandlers['object:moving']?.({ target: shape });
 
     // The rebuilt group should have _x2/_y2 snapped to the shape's new center.
-    expect((arrowGroup as any)._x2).toBe(250); // center.x
-    expect((arrowGroup as any)._y2).toBe(190); // center.y
+    const addCalls = mockCanvasInstance.add.mock.calls;
+    const lastAdded = addCalls[addCalls.length - 1]?.[0] as Record<string, unknown>;
+    expect(lastAdded?._x2).toBe(250); // center.x
+    expect(lastAdded?._y2).toBe(190); // center.y
     // The non-attached endpoint should be unchanged.
-    expect((arrowGroup as any)._x1).toBe(10);
-    expect((arrowGroup as any)._y1).toBe(10);
+    expect(lastAdded?._x1).toBe(10);
+    expect(lastAdded?._y1).toBe(10);
+  });
+
+  it('active selection is restored after arrow group is rebuilt during shape move', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const shape = makeFabricObject({ _id: 'shape-3', left: 0, top: 0, width: 10, height: 10 });
+    const arrowGroup = makeFabricObject({
+      _isArrow: true, _attachedFrom: 'shape-3',
+      _x1: 0, _y1: 0, _x2: 50, _y2: 50,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+      getObjects: vi.fn().mockReturnValue([]),
+    });
+
+    mockCanvasInstance.getObjects.mockReturnValue([shape, arrowGroup]);
+    mockCanvasInstance.getActiveObject.mockReturnValue(shape);
+    mockCanvasInstance.setActiveObject.mockClear();
+
+    canvasEventHandlers['object:moving']?.({ target: shape });
+
+    // After rebuild, the dragged shape should be re-selected (not the new arrow group).
+    const setActiveCalls = mockCanvasInstance.setActiveObject.mock.calls;
+    const lastSetActive = setActiveCalls[setActiveCalls.length - 1]?.[0];
+    expect(lastSetActive).toBe(shape);
   });
 
   it('arrow group rebuild during shape move does NOT call setActiveObject with the new group', () => {
@@ -1941,11 +1966,14 @@ describe('CanvasEngine – connector snapping and following', () => {
     canvasEventHandlers['object:moving']?.({ target: shape });
 
     // The new group should have been added to the canvas.
-    expect(arrowGroup.removeAll).toHaveBeenCalled();
+    expect(Group).toHaveBeenCalled();
+    const newGroup = (Group as unknown as ReturnType<typeof vi.fn>).mock.results[0]?.value as Record<string, unknown>;
 
     // setActiveObject must NEVER be called with the new arrow group — only with the
     // moving shape (to restore drag tracking).
-    expect(mockCanvasInstance.setActiveObject).not.toHaveBeenCalled();
+    const setActiveCalls = mockCanvasInstance.setActiveObject.mock.calls as unknown[][];
+    const calledWithNewGroup = setActiveCalls.some((args) => args[0] === newGroup);
+    expect(calledWithNewGroup).toBe(false);
   });
 
   it('object:moving arrow rebuild does NOT nullify this.activeObj (drawing in progress)', () => {
@@ -2403,11 +2431,13 @@ describe('CanvasEngine – connector snapping and following', () => {
     canvasEventHandlers['object:modified']?.({ target: arrowGroup });
 
     // Arrow must be rebuilt (old group removed, Group constructor called).
-    expect(arrowGroup.removeAll).toHaveBeenCalled();
-    expect(arrowGroup.add).toHaveBeenCalled();
+    expect(mockCanvasInstance.remove).toHaveBeenCalledWith(arrowGroup);
+    expect(Group).toHaveBeenCalled();
 
     // The rebuilt group should have _attachedFrom set to 'snap-shape'.
-    expect((arrowGroup as any)._attachedFrom).toBe('snap-shape');
+    const addCalls = mockCanvasInstance.add.mock.calls;
+    const rebuilt = addCalls[addCalls.length - 1]?.[0] as Record<string, unknown>;
+    expect(rebuilt?._attachedFrom).toBe('snap-shape');
   });
 
   it('object:modified on an arrow group with no nearby shapes updates _x1/_y1 without rebuilding', () => {
@@ -2473,6 +2503,51 @@ describe('CanvasEngine – connector snapping and following', () => {
   });
 
   // ── reSnapOnModified: arrow group selection restoration ─────────────────────
+
+  it('object:modified on an arrow group that was active re-selects the rebuilt group', () => {
+    const { engine } = makeEngine();
+    engine.init();
+
+    const arrowGroup = makeFabricObject({
+      _isArrow: true, _id: 'ag-reselect',
+      _x1: 0, _y1: 0, _x2: 100, _y2: 100,
+      _gcx: 50, _gcy: 50,
+      _arrowHeadStart: 'none', _arrowHeadEnd: 'open', _arrowType: 'sharp',
+      getObjects: vi.fn().mockReturnValue([]),
+    });
+    // Shape nearby x1/y1 after move.
+    const shape = makeFabricObject({ _id: 'rs-shape', left: 0, top: 0, width: 10, height: 10 });
+    // Group moves so x1/y1 ends up within SNAP_RADIUS of shape.
+    (arrowGroup.getCenterPoint as ReturnType<typeof vi.fn>).mockReturnValue({ x: 55, y: 55 });
+
+    // Track objects in canvas so the find()-by-_id lookup works.
+    const objectsInCanvas: unknown[] = [shape, arrowGroup];
+    mockCanvasInstance.add.mockImplementation((obj: unknown) => objectsInCanvas.push(obj));
+    mockCanvasInstance.remove.mockImplementation((obj: unknown) => {
+      const idx = objectsInCanvas.indexOf(obj);
+      if (idx !== -1) objectsInCanvas.splice(idx, 1);
+    });
+    mockCanvasInstance.getObjects.mockImplementation(() => [...objectsInCanvas]);
+
+    // The arrow group itself is the active object when object:modified fires.
+    mockCanvasInstance.getActiveObject.mockReturnValue(arrowGroup);
+    (Group as unknown as ReturnType<typeof vi.fn>).mockClear();
+    mockCanvasInstance.setActiveObject.mockClear();
+
+    canvasEventHandlers['object:modified']?.({ target: arrowGroup });
+
+    // A rebuild must have occurred.
+    expect(Group).toHaveBeenCalled();
+
+    // setActiveObject should have been called to re-select the rebuilt group
+    // (the newly-added group, not the old arrowGroup that was removed).
+    const setActiveCalls = mockCanvasInstance.setActiveObject.mock.calls as unknown[][];
+    expect(setActiveCalls.length).toBeGreaterThan(0);
+    const lastSetArg = setActiveCalls[setActiveCalls.length - 1]?.[0] as Record<string, unknown>;
+    expect(lastSetArg?._id).toBe('ag-reselect');
+    // The re-selected object must be the newly rebuilt group, not the original.
+    expect(lastSetArg).not.toBe(arrowGroup);
+  });
 
   // ── reSnapOnModified: sketch-path connector ─────────────────────────────────
 
@@ -2618,7 +2693,7 @@ describe('CanvasEngine – connector snapping and following', () => {
     canvasEventHandlers['object:modified']?.({ target: arrowGroup });
 
     // Only ONE Group should have been constructed (one rebuild, not two).
-    expect((arrowGroup.removeAll as any).mock.calls.length).toBe(1);
+    expect((Group as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
   });
 
   // ── BUG-021: pending rAF cancelled on snap rebuild ────────────────────────

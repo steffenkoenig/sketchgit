@@ -52,11 +52,7 @@ function makeCtx(overrides?: Partial<AppContext['git']>): AppContext {
       clearDirty: vi.fn(),
     } as unknown as AppContext['canvas'],
     ws: { send: vi.fn(), isConnected: vi.fn().mockReturnValue(true) } as unknown as AppContext['ws'],
-    collab: {
-      sendCommit: vi.fn(),
-      sendBranchUpdate: vi.fn(),
-      sendProfile: vi.fn(),
-    } as unknown as AppContext['collab'],
+    collab: {} as AppContext['collab'],
   };
 }
 
@@ -170,7 +166,9 @@ describe('CommitCoordinator', () => {
       (ctx.git.checkout as ReturnType<typeof vi.fn>).mockReturnValue('sha0');
       coord.openCommitPopup('sha0', 0, 0);
       coord.cpCheckout();
-      expect(ctx.collab.sendBranchUpdate).toHaveBeenCalledWith('main', 'sha0', { isRollback: false });
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'branch-update', branch: 'main', headSha: 'sha0', isRollback: false }),
+      );
     });
   });
 
@@ -209,7 +207,7 @@ describe('CommitCoordinator', () => {
   // ─── doCommit ─────────────────────────────────────────────────────────────
 
   describe('doCommit()', () => {
-    it('commits canvas data and broadcasts via REST API', () => {
+    it('commits canvas data and broadcasts via WebSocket', () => {
       const msgInput = document.getElementById('commitMsg') as HTMLInputElement;
       msgInput.value = 'My commit';
       (ctx.git.commits as Record<string, unknown>)['sha1'] = { sha: 'sha1', message: 'My commit' };
@@ -217,7 +215,9 @@ describe('CommitCoordinator', () => {
       coord.doCommit();
 
       expect(ctx.git.commit).toHaveBeenCalledWith('{"objects":[]}', 'My commit');
-      expect(ctx.collab.sendCommit).toHaveBeenCalledWith('sha1', expect.objectContaining({ sha: 'sha1' }));
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'commit', sha: 'sha1' }),
+      );
       expect(mockCloseModal).toHaveBeenCalledWith('commitModal');
       expect(ctx.canvas.clearDirty).toHaveBeenCalled();
       expect(refresh).toHaveBeenCalledOnce();
@@ -233,7 +233,7 @@ describe('CommitCoordinator', () => {
     it('does nothing if git.commit returns null (nothing to commit)', () => {
       (ctx.git.commit as ReturnType<typeof vi.fn>).mockReturnValue(null);
       coord.doCommit();
-      expect(ctx.collab.sendCommit).not.toHaveBeenCalled();
+      expect(ctx.ws.send).not.toHaveBeenCalled();
     });
   });
 
@@ -248,14 +248,16 @@ describe('CommitCoordinator', () => {
       (coord as unknown as { popupSHA: string }).popupSHA = 'sha99';
       (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha0'); // different sha
       coord.cpCheckout();
-      expect(ctx.collab.sendBranchUpdate).toHaveBeenCalledWith(null, 'sha99', { detached: true });
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'branch-update', detached: true, headSha: 'sha99' }),
+      );
     });
 
     it('does NOT send branch-update when already at that commit', () => {
       (coord as unknown as { popupSHA: string }).popupSHA = 'sha0';
       (ctx.git.currentSHA as ReturnType<typeof vi.fn>).mockReturnValue('sha0');
       coord.cpCheckout();
-      expect(ctx.collab.sendBranchUpdate).not.toHaveBeenCalled();
+      expect(ctx.ws.send).not.toHaveBeenCalled();
     });
   });
 
@@ -284,7 +286,9 @@ describe('CommitCoordinator', () => {
       ctx.git.detached = null;
       coord.cpRollback();
       coord.acceptConfirm();
-      expect(ctx.collab.sendBranchUpdate).toHaveBeenCalledWith('main', 'sha0', { isRollback: true });
+      expect(ctx.ws.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'branch-update', isRollback: true, headSha: 'sha0' }),
+      );
     });
 
     it('does NOT perform rollback after cancelConfirm', () => {
@@ -292,7 +296,7 @@ describe('CommitCoordinator', () => {
       ctx.git.detached = null;
       coord.cpRollback();
       coord.cancelConfirm();
-      expect(ctx.collab.sendBranchUpdate).not.toHaveBeenCalled();
+      expect(ctx.ws.send).not.toHaveBeenCalled();
       expect(ctx.canvas.loadCanvasData).not.toHaveBeenCalled();
     });
   });

@@ -106,14 +106,15 @@ export class BranchCoordinator {
         this.refresh();
         showToast(`Switched to branch '${name}'`);
         // P053 – notify peers of HEAD change (no new commit; updates presence display)
-        this.ctx.collab.sendBranchUpdate(name, branchTip, { isRollback: false });
+        this.ctx.ws.send({ type: 'branch-update', branch: name, headSha: branchTip, isRollback: false });
         // P079 – update server's record of our branch for presence
-        this.ctx.collab.sendProfile(
-          this.ctx.ws.name,
-          this.ctx.ws.color,
-          name,
-          branchTip ?? null,
-        );
+        this.ctx.ws.send({
+          type: 'profile',
+          name: this.ctx.ws.name,
+          color: this.ctx.ws.color,
+          branch: name,
+          headSha: branchTip ?? null,
+        });
         // Persist last-visited branch and reflect it in the URL bar.
         savePreferences({ lastBranchName: name });
         setBranchInUrl(name);
@@ -163,7 +164,7 @@ export class BranchCoordinator {
   }
 
   doCreateBranch(): void {
-    const { git, canvas, collab, ws } = this.ctx;
+    const { git, canvas, ws } = this.ctx;
     const nameEl = document.getElementById('newBranchName') as HTMLInputElement | null;
     const rawName = (nameEl?.value ?? '').trim().replace(/\s+/g, '-');
     const name = rawName || this._nextBranchName();
@@ -180,10 +181,10 @@ export class BranchCoordinator {
     showToast(`✓ Created & switched to '${name}'`);
     this.ctxMenuSHA = null;
     const headSha = git.branches[name] ?? '';
-    collab.sendBranchUpdate(name, headSha, { isRollback: false });
-    collab.sendProfile(ws.name, ws.color, name, headSha);
+    ws.send({ type: 'branch-update', branch: name, headSha, isRollback: false });
+    ws.send({ type: 'profile', name: ws.name, color: ws.color, branch: name, headSha });
     if (commitSha) {
-      collab.sendCommit(commitSha, git.commits[commitSha]);
+      ws.send({ type: 'commit', sha: commitSha, commit: git.commits[commitSha] });
     }
     // Persist last-visited branch and reflect it in the URL bar.
     savePreferences({ lastBranchName: name });
