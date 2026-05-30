@@ -6,6 +6,7 @@
 - [x] Fix Arrow Snap Crash (BUG-020 & BUG-021) -> Attached Test: `npm test` passed
 - [x] Eliminate Google Fonts CDN (GAP-016) -> Docs Updated: Customer, Technical, Support
 - [x] Dependency License Scanning (P089) -> Docs Updated: Customer, Technical, Support
+- [x] Object Grouping and Alignment -> Docs Updated: Customer, Technical, Support
 
 **Active Step:** Finished.
 **Blockers/Constraints:** None.

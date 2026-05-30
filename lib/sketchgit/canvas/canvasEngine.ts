@@ -17,7 +17,7 @@
  *     for correct serialization and consistent canvas JSON format.
  */
 
-import {
+import { ActiveSelection,
   Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern, Control,
 } from 'fabric';
 import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
