@@ -1,0 +1,8 @@
+docs: add new platform improvement plans
+
+Added proposals/improvements.md containing 3 new platform
+improvement plans: Object Grouping and Alignment, Sticky
+Notes and Contextual Annotations, and Dashboard Folders.
+Each plan follows the required structure including Goal,
+Problem, Proposed Changes, Definitions of Done, and a
+future press release.
