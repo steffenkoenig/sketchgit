@@ -1,0 +1,7 @@
+docs: [milestone 1.0] verify completion of milestone 1.0 bugs and gaps
+
+- Verified BUG-020 & BUG-021 (Arrow Snap Crash) are fixed with the `_reSnapping` guard.
+- Verified GAP-016 (GDPR violation with Google Fonts CDN) is fixed without CDN usage.
+- Verified P089 (Dependency License Scanning) is implemented with scripts and CI.
+- Verified all unit tests pass locally.
+- Updated builder.md journal to mark the milestone as finished.
