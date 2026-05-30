@@ -1,7 +1,0 @@
-docs: [milestone 1.0] verify completion of milestone 1.0 bugs and gaps
-
-- Verified BUG-020 & BUG-021 (Arrow Snap Crash) are fixed with the `_reSnapping` guard in CanvasEngine.
-- Verified GAP-016 (GDPR violation with Google Fonts CDN) is fixed by checking `app/globals.css` and `proxy.ts`.
-- Verified P089 (Dependency License Scanning) is implemented with `scripts/check-licenses.mjs` and the CI workflow.
-- Verified all unit tests pass (ignoring unrelated CI failures for missing DB/env).
-- Updated builder.md journal to mark the milestone as finished.
