@@ -3024,13 +3024,13 @@ describe('CanvasEngine – endpoint selection controls', () => {
 
   describe('Grouping', () => {
     let engine: CanvasEngine;
-    let onCanvasChange: ReturnType<typeof vi.fn>;
+    let onBroadcastDraw: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
       const setup = makeEngine();
       engine = setup.engine;
-      onCanvasChange = vi.fn();
-      engine.onCanvasChange = onCanvasChange;
+      onBroadcastDraw = vi.fn();
+      (engine as any).onBroadcastDraw = onBroadcastDraw;
       engine.init();
       mockCanvasInstance.getObjects.mockReturnValue([]);
       mockCanvasInstance.getActiveObject.mockReturnValue(null);
@@ -3046,13 +3046,13 @@ describe('CanvasEngine – endpoint selection controls', () => {
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
 
       // stub pushHistory to just trigger the mock, or we can just mock pushHistory
-      engine.pushHistory = vi.fn();
+      (engine as any).pushHistory = vi.fn();
 
       engine.groupSelection();
 
       expect(activeSelection.removeAll).toHaveBeenCalled();
       expect(mockCanvasInstance.setActiveObject).toHaveBeenCalled();
-      expect(engine.pushHistory).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
     });
 
     it('ungroups a selected group', () => {
@@ -3075,19 +3075,19 @@ describe('CanvasEngine – endpoint selection controls', () => {
       mockCanvasInstance.getObjects.mockReturnValue([group]);
       mockCanvasInstance.getActiveObject.mockReturnValue(group);
 
-      engine.pushHistory = vi.fn();
+      (engine as any).pushHistory = vi.fn();
       // Stub ActiveSelection from fabric so it doesn't fail deep inside the real class methods
-      engine.canvas.setActiveObject = vi.fn();
-      const addMock = vi.spyOn(engine.canvas, 'add').mockImplementation(vi.fn());
+      engine.canvas!.setActiveObject = vi.fn();
+      const addMock = vi.spyOn(engine.canvas!, 'add').mockImplementation(vi.fn());
 
       // We bypass the full Fabric ActiveSelection constructor which causes errors:
-      vi.spyOn(engine.canvas, 'remove').mockImplementation(vi.fn());
+      vi.spyOn(engine.canvas!, 'remove').mockImplementation(vi.fn());
 
       engine.ungroupSelection();
 
       expect(removeAllMock).toHaveBeenCalled();
       expect(addMock).toHaveBeenCalled();
-      expect(engine.pushHistory).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
     });
 
     it('does nothing if no selection is made for grouping', () => {
@@ -3099,13 +3099,13 @@ describe('CanvasEngine – endpoint selection controls', () => {
 
   describe('Alignment', () => {
     let engine: CanvasEngine;
-    let onCanvasChange: ReturnType<typeof vi.fn>;
+    let onBroadcastDraw: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
       const setup = makeEngine();
       engine = setup.engine;
-      onCanvasChange = vi.fn();
-      engine.onCanvasChange = onCanvasChange;
+      onBroadcastDraw = vi.fn();
+      (engine as any).onBroadcastDraw = onBroadcastDraw;
       engine.init();
     });
 
@@ -3124,12 +3124,12 @@ describe('CanvasEngine – endpoint selection controls', () => {
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
-      engine.pushHistory = vi.fn();
+      (engine as any).pushHistory = vi.fn();
       engine.alignSelection('left');
 
       expect(rect1.set).toHaveBeenCalled();
       expect(rect2.set).toHaveBeenCalled();
-      expect(engine.pushHistory).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
     });
 
     it('aligns selected objects to the right', () => {

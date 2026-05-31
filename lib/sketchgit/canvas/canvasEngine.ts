@@ -1524,7 +1524,7 @@ export class CanvasEngine {
 
     this.pushHistory();
 
-    const activeSelection = o as any;
+    const activeSelection = o as ActiveSelection;
     const items = activeSelection.removeAll();
 
     const group = new Group(items);
@@ -1543,7 +1543,7 @@ export class CanvasEngine {
     if (!o || !this.canvas) return;
 
     // Ensure it's a generic group, not an arrow
-    if (o.type !== 'group' || (o as any)._isArrow) return;
+    if (o.type !== 'group' || (o as Group & { _isArrow?: boolean })._isArrow) return;
 
     this.pushHistory();
 
@@ -1577,7 +1577,7 @@ export class CanvasEngine {
         width: active.width ?? 0,
         height: active.height ?? 0
       };
-    } else if (active.type === 'group' && !(active as any)._isArrow) {
+    } else if (active.type === 'group' && !(active as Group & { _isArrow?: boolean })._isArrow) {
       items = (active as Group).getObjects();
       boundingRect = {
         left: active.width ? -active.width / 2 : 0,
