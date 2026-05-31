@@ -4,7 +4,6 @@ test.describe('Object Grouping & Alignment', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
 
-    // Some basic setup for local e2e if there are dialogs.
     const onboardingBtn = page.locator('button:has-text("Get Started")');
     if (await onboardingBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
       await onboardingBtn.click();
@@ -36,22 +35,24 @@ test.describe('Object Grouping & Alignment', () => {
       targetPosition: { x: 450, y: 450 },
     });
 
-    // We should see grouping actions in Properties panel
-    await expect(page.locator('button:has-text("Group")').first()).toBeVisible({ timeout: 5000 });
+    // Buttons use title/aria-label only (SVG icons, no visible text)
+    const groupBtn = page.locator('button[title^="Group"]').first();
+    await expect(groupBtn).toBeVisible({ timeout: 5000 });
 
     // 5. Group them
-    await page.click('button:has-text("Group")');
+    await groupBtn.click();
 
-    // Now it should show Ungroup
-    await expect(page.locator('button:has-text("Ungroup")').first()).toBeVisible({ timeout: 5000 });
+    // After grouping the active object changes to a single Group —
+    // the ungroup button should appear
+    const ungroupBtn = page.locator('button[title^="Ungroup"]').first();
+    await expect(ungroupBtn).toBeVisible({ timeout: 5000 });
 
     // 6. Test Align Left
-    // Align left applies inside the active selection or group
     await page.click('button[title="Align Left"]');
     await page.waitForTimeout(100);
 
     // 7. Ungroup them
-    await page.click('button:has-text("Ungroup")');
-    await expect(page.locator('button:has-text("Group")').first()).toBeVisible({ timeout: 5000 });
+    await ungroupBtn.click();
+    await expect(groupBtn).toBeVisible({ timeout: 5000 });
   });
 });
