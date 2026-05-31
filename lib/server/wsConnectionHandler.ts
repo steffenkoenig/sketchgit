@@ -10,6 +10,7 @@ import { verifyScopeCookie, mapPermissionToRole } from "./shareLinkTokens.js";
 import { parseCookies } from "./cookieHelpers.js";
 
 import type { WsMessage } from "../sketchgit/types.js";
+import type { RoomSnapshot } from "../db/roomRepository.js";
 
 // ClientState must match what is used in server.ts exactly
 export type ClientState = WebSocket & {
@@ -34,8 +35,8 @@ export interface ConnectionHandlerDeps {
   prisma: PrismaClient;
   env: Env;
   rooms: Map<string, Map<string, ClientState>>;
-  roomCache: { get: (roomId: string) => any; set: (roomId: string, snapshot: any) => void };
-  roomCleanupTimers: Map<string, NodeJS.Timeout>;
+  roomCache: { get: (roomId: string) => RoomSnapshot | undefined; set: (roomId: string, snapshot: RoomSnapshot) => void };
+  roomCleanupTimers: Map<string, ReturnType<typeof setTimeout>>;
   connectionsPerIp: Map<string, number>;
   safeRoomId: (value: string | null) => string;
   safeName: (value: string | null) => string;
@@ -44,7 +45,7 @@ export interface ConnectionHandlerDeps {
   dbEnsureRoom: (roomId: string, ownerId: string | null) => Promise<void>;
   sendTo: (ws: WebSocket, payload: WsMessage) => void;
   schedulePushPresence: (roomId: string) => void;
-  dbLoadSnapshot: (roomId: string) => Promise<any>;
+  dbLoadSnapshot: (roomId: string) => Promise<RoomSnapshot | null>;
   handleWsMessage: (client: ClientState, message: WsMessage, roomId: string, clientId: string) => Promise<void>;
   ROOM_CLEANUP_DELAY_MS: number;
   broadcastRoom: (roomId: string, payload: WsMessage, excludeClientId?: string | null) => void;
@@ -234,7 +235,7 @@ export const createWsConnectionHandler = (deps: ConnectionHandlerDeps) => {
       // client so they get the latest committed state even when rejoining a room.
       // P091 – Scope-aware fullsync: BRANCH and COMMIT scoped clients receive only
       // the subset of history their share link grants access to.
-      let snapshot = roomCache.get(roomId);
+      let snapshot: RoomSnapshot | undefined | null = roomCache.get(roomId);
       if (!snapshot) {
         snapshot = await dbLoadSnapshot(roomId);
         if (snapshot) roomCache.set(roomId, snapshot);
