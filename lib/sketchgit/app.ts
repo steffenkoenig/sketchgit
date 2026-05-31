@@ -219,6 +219,16 @@ export function createSketchGitApp() {
     zoomOut: () => canvas.zoomOut(),
     resetZoom: () => canvas.resetZoom(),
 
+    // Grouping & Alignment
+    groupSelection: () => canvas.groupSelection(),
+    ungroupSelection: () => canvas.ungroupSelection(),
+    alignLeft: () => canvas.alignLeft(),
+    alignCenterH: () => canvas.alignCenterH(),
+    alignRight: () => canvas.alignRight(),
+    alignTop: () => canvas.alignTop(),
+    alignCenterV: () => canvas.alignCenterV(),
+    alignBottom: () => canvas.alignBottom(),
+
     // Collaboration panel
     toggleCollabPanel: () => collaboration.toggleCollabPanel(),
     copyPeerId: () => collaboration.copyPeerId(),

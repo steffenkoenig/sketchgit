@@ -18,7 +18,7 @@
  */
 
 import {
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern, Control,
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, ActiveSelection, FabricImage, FabricObject, Point, Pattern, Control,
 } from 'fabric';
 import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
 
@@ -983,7 +983,14 @@ export class CanvasEngine {
     else if (k === '+' || k === '=') this.zoomIn();
     else if (k === '-') this.zoomOut();
     else if (k === '0') this.resetZoom();
-    else if ((e.ctrlKey || e.metaKey) && k === 'z') {
+    else if ((e.ctrlKey || e.metaKey) && k === 'g') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        this.ungroupSelection();
+      } else {
+        this.groupSelection();
+      }
+    } else if ((e.ctrlKey || e.metaKey) && k === 'z') {
       e.preventDefault();
       if (e.shiftKey) {
         this.redo();
@@ -1504,6 +1511,128 @@ export class CanvasEngine {
     this.markDirty();
     this.onBroadcastDraw(true);
   }
+
+
+  // ── Grouping and Alignment ──────────────────────────────────────────────
+
+  groupSelection(): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o || !this.canvas) return;
+
+    // Check if it's an ActiveSelection
+    if (o.type !== 'activeSelection') return;
+
+    this.pushHistory();
+
+    const activeSelection = o as any;
+    const items = activeSelection.removeAll();
+
+    const group = new Group(items);
+    ensureObjId(group);
+
+    this.canvas.add(group);
+    this.canvas.setActiveObject(group);
+    this.canvas.requestRenderAll();
+
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  ungroupSelection(): void {
+    const o = this.canvas?.getActiveObject();
+    if (!o || !this.canvas) return;
+
+    // Ensure it's a generic group, not an arrow
+    if (o.type !== 'group' || (o as any)._isArrow) return;
+
+    this.pushHistory();
+
+    const group = o as Group;
+    const items = group.removeAll();
+    this.canvas.remove(group);
+
+    this.canvas.add(...items);
+
+    const activeSelection = new (ActiveSelection)(items, { canvas: this.canvas });
+    this.canvas.setActiveObject(activeSelection);
+    this.canvas.requestRenderAll();
+
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  alignSelection(alignment: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom'): void {
+    const active = this.canvas?.getActiveObject();
+    if (!active || !this.canvas) return;
+
+    let boundingRect: { left: number, top: number, width: number, height: number };
+    let items: FabricObject[];
+
+    if (active.type === 'activeSelection') {
+      items = (active as ActiveSelection).getObjects();
+      // Active selection uses group coordinates internally
+      boundingRect = {
+        left: active.width ? -active.width / 2 : 0,
+        top: active.height ? -active.height / 2 : 0,
+        width: active.width ?? 0,
+        height: active.height ?? 0
+      };
+    } else if (active.type === 'group' && !(active as any)._isArrow) {
+      items = (active as Group).getObjects();
+      boundingRect = {
+        left: active.width ? -active.width / 2 : 0,
+        top: active.height ? -active.height / 2 : 0,
+        width: active.width ?? 0,
+        height: active.height ?? 0
+      };
+    } else {
+      return; // Single object or arrow group cannot be internally aligned
+    }
+
+    if (items.length <= 1) return;
+
+    this.pushHistory();
+
+    for (const obj of items) {
+      const objW = (obj.width ?? 0) * (obj.scaleX ?? 1);
+      const objH = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+      switch (alignment) {
+        case 'left':
+          obj.set({ left: boundingRect.left + objW / 2 });
+          break;
+        case 'centerH':
+          obj.set({ left: 0 }); // Center in group coords is 0
+          break;
+        case 'right':
+          obj.set({ left: boundingRect.left + boundingRect.width - objW / 2 });
+          break;
+        case 'top':
+          obj.set({ top: boundingRect.top + objH / 2 });
+          break;
+        case 'centerV':
+          obj.set({ top: 0 });
+          break;
+        case 'bottom':
+          obj.set({ top: boundingRect.top + boundingRect.height - objH / 2 });
+          break;
+      }
+      obj.setCoords();
+    }
+
+    this.canvas.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  alignLeft(): void { this.alignSelection('left'); }
+  alignCenterH(): void { this.alignSelection('centerH'); }
+  alignRight(): void { this.alignSelection('right'); }
+  alignTop(): void { this.alignSelection('top'); }
+  alignCenterV(): void { this.alignSelection('centerV'); }
+  alignBottom(): void { this.alignSelection('bottom'); }
+
+  // ── End Grouping ──────────────────────────────────────────────────────────
 
   zoomIn(): void { this.canvas?.setZoom(Math.min(this.canvas.getZoom() * 1.2, 10)); }
   zoomOut(): void { this.canvas?.setZoom(Math.max(this.canvas.getZoom() / 1.2, 0.1)); }
@@ -2918,6 +3047,8 @@ export class CanvasEngine {
     if (oa._isMermaid) return 'mermaid';
     if (oa._isArrow) return 'arrow';
     const t = (oa.type as string | undefined) ?? '';
+    if (t === 'activeSelection') return 'activeSelection';
+    if (t === 'group') return 'group';
     if (t === 'rect') return 'rect';
     if (t === 'ellipse') return 'ellipse';
     if (t === 'line') return 'line';
@@ -2991,5 +3122,9 @@ export class CanvasEngine {
     // Layer + link: only when an existing object is selected
     isObjectSelected ? show('pp-layer-section') : hide('pp-layer-section');
     isObjectSelected ? show('pp-link-section')  : hide('pp-link-section');
+
+    // Grouping & Alignment: visible for ActiveSelection and generic groups
+    const isGroupOrSelection = shapeType === 'activeSelection' || shapeType === 'group';
+    isGroupOrSelection ? show('pp-group-section') : hide('pp-group-section');
   }
 }
