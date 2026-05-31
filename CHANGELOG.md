@@ -6,6 +6,30 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.6.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.3...sketchgit-next-v0.6.0) (2026-05-31)
+
+
+### Features
+
+* [milestone 1.0] add future improvement plans document ([e907306](https://github.com/steffenkoenig/sketchgit/commit/e907306fa1668ae6b63a1f9f68c1e36289fd584a))
+* [Milestone 1.1] Implement Object Grouping and Alignment ([61545a7](https://github.com/steffenkoenig/sketchgit/commit/61545a71570a5dc034ac927451e2101e961d92c8))
+* [milestone 2.0] Implement Two-Factor Authentication via Email ([361909d](https://github.com/steffenkoenig/sketchgit/commit/361909da483bbc278b18b817b25ff29a9c0f700d))
+
+
+### Bug Fixes
+
+* address all grouping/alignment bugs from gemini review in PR [#183](https://github.com/steffenkoenig/sketchgit/issues/183) ([47cbf8f](https://github.com/steffenkoenig/sketchgit/commit/47cbf8f8d4a49d4b3b5720655175060c1f7644a6))
+* **coverage:** restore branch coverage threshold and exclude wsConnectionHandler ([721a07f](https://github.com/steffenkoenig/sketchgit/commit/721a07f7534521ff730707900f9545bf88329281))
+* **security:** use crypto.randomInt for 2FA token generation ([8e119f3](https://github.com/steffenkoenig/sketchgit/commit/8e119f30a0b6d3d001488ac39b937dca10ca5553))
+
+
+### Refactoring
+
+* [structure] Decompose CanvasEngine snapping into isolated module ([17765b8](https://github.com/steffenkoenig/sketchgit/commit/17765b8e282970a7f2d1082d8f409aed47c40148))
+* [structure] Decompose monolithic CanvasEngine interaction loops into testable subroutines ([3a762f1](https://github.com/steffenkoenig/sketchgit/commit/3a762f18cb79c99cada6bb952bff089e4df9193a))
+* [structure] Decompose monolithic threeWayMerge into testable subroutines ([e584f92](https://github.com/steffenkoenig/sketchgit/commit/e584f9201aabf51304c792f65d9d5c9862e8b43a))
+* [structure] Decompose monolithic WebSocket connection handler ([e335e7e](https://github.com/steffenkoenig/sketchgit/commit/e335e7eabd09d52b0987f0be7aa2af2eafd3ea0e))
+
 ## [0.5.3](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.2...sketchgit-next-v0.5.3) (2026-05-30)
 
 
