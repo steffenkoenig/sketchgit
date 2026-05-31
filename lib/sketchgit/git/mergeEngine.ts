@@ -25,8 +25,8 @@ export function findLCA(
   function walkA(sha: string | null) {
     if (!sha || ancestorsA.has(sha)) return;
     ancestorsA.add(sha);
-    const c = commits[sha];
-    if (c) c.parents.forEach(walkA);
+    const commit = commits[sha];
+    if (commit) commit.parents.forEach(walkA);
   }
   walkA(shaA);
 
@@ -38,8 +38,8 @@ export function findLCA(
     if (!sha || visited.has(sha)) continue;
     visited.add(sha);
     if (ancestorsA.has(sha)) return sha;
-    const c = commits[sha];
-    if (c) c.parents.forEach((p) => queue.push(p));
+    const commit = commits[sha];
+    if (commit) commit.parents.forEach((parent) => queue.push(parent));
   }
   return null;
 }
@@ -129,32 +129,32 @@ export function computeMermaidLineMergeDetails(
   const lineConflicts: MermaidLineConflict[] = [];
 
   for (let i = 0; i < maxLen; i++) {
-    const b = i < baseLines.length ? baseLines[i] : undefined;
-    const o = i < oursLines.length ? oursLines[i] : undefined;
-    const t = i < theirsLines.length ? theirsLines[i] : undefined;
+    const baseLine = i < baseLines.length ? baseLines[i] : undefined;
+    const oursLine = i < oursLines.length ? oursLines[i] : undefined;
+    const theirsLine = i < theirsLines.length ? theirsLines[i] : undefined;
 
-    const oursChangedLine = o !== b;
-    const theirsChangedLine = t !== b;
+    const oursChangedLine = oursLine !== baseLine;
+    const theirsChangedLine = theirsLine !== baseLine;
 
     if (!oursChangedLine && !theirsChangedLine) {
-      if (b !== undefined) partialLines.push(b);
+      if (baseLine !== undefined) partialLines.push(baseLine);
     } else if (oursChangedLine && !theirsChangedLine) {
-      if (o !== undefined) partialLines.push(o);
+      if (oursLine !== undefined) partialLines.push(oursLine);
     } else if (!oursChangedLine && theirsChangedLine) {
-      if (t !== undefined) partialLines.push(t);
+      if (theirsLine !== undefined) partialLines.push(theirsLine);
     } else {
       // Both changed this position
-      if (o === t) {
-        if (o !== undefined) partialLines.push(o);
-      } else if (o === undefined && t === undefined) {
+      if (oursLine === theirsLine) {
+        if (oursLine !== undefined) partialLines.push(oursLine);
+      } else if (oursLine === undefined && theirsLine === undefined) {
         // Both deleted the line – skip it
-      } else if (b === undefined) {
+      } else if (baseLine === undefined) {
         // Both appended different content – include both (deterministic order)
-        if (o !== undefined) partialLines.push(o);
-        if (t !== undefined) partialLines.push(t);
+        if (oursLine !== undefined) partialLines.push(oursLine);
+        if (theirsLine !== undefined) partialLines.push(theirsLine);
       } else {
         // True line-level conflict – record a placeholder and a conflict entry
-        lineConflicts.push({ lineNumber: i + 1, base: b, ours: o, theirs: t, chosen: 'ours' });
+        lineConflicts.push({ lineNumber: i + 1, base: baseLine, ours: oursLine, theirs: theirsLine, chosen: 'ours' });
         partialLines.push(null);
       }
     }
@@ -186,28 +186,7 @@ export function threeWayMerge(
   const oursParsed = JSON.parse(oursData) as Record<string, unknown>;
   const theirsParsed = JSON.parse(theirsData) as Record<string, unknown>;
 
-  const mergedCanvasProps: Record<string, unknown> = { ...oursParsed };
-  delete mergedCanvasProps.objects;
-
-  const allCanvasKeys = new Set([
-    ...Object.keys(baseParsed),
-    ...Object.keys(oursParsed),
-    ...Object.keys(theirsParsed),
-  ]);
-
-  for (const key of allCanvasKeys) {
-    if (key === 'objects') continue;
-    const bVal = baseParsed[key];
-    const oVal = oursParsed[key];
-    const tVal = theirsParsed[key];
-
-    const oursChangedProp = JSON.stringify(bVal) !== JSON.stringify(oVal);
-    const theirsChangedProp = JSON.stringify(bVal) !== JSON.stringify(tVal);
-
-    if (theirsChangedProp && !oursChangedProp) {
-      mergedCanvasProps[key] = tVal;
-    }
-  }
+  const mergedCanvasProps = mergeCanvasProperties(baseParsed, oursParsed, theirsParsed);
 
   const allIds = new Set([
     ...Object.keys(baseMap),
@@ -219,102 +198,7 @@ export function threeWayMerge(
   const conflicts: MergeConflict[] = [];
 
   for (const id of allIds) {
-    const base = baseMap[id];
-    const ours = oursMap[id];
-    const theirs = theirsMap[id];
-
-    const baseProps = base ? extractProps(base) : null;
-    const oursProps = ours ? extractProps(ours) : null;
-    const theirsProps = theirs ? extractProps(theirs) : null;
-
-    // ── Deleted in both → skip
-    if (!ours && !theirs) continue;
-
-    // ── Only in one side → take it (prefer keeping over deletion)
-    if (ours && !theirs) { resultObjects.push(ours); continue; }
-    if (!ours && theirs) { resultObjects.push(theirs); continue; }
-
-    // ── Present in both
-    const oursChanged = base ? !propsEqual(baseProps!, oursProps!) : true;
-    const theirsChanged = base ? !propsEqual(baseProps!, theirsProps!) : false;
-
-    if (!oursChanged && !theirsChanged) { resultObjects.push(ours!); continue; }
-    if (oursChanged && !theirsChanged) { resultObjects.push(ours!); continue; }
-    if (!oursChanged && theirsChanged) { resultObjects.push(theirs!); continue; }
-
-    // ── Both changed → check for property-level conflicts
-    const propConflicts: MergeConflict['propConflicts'] = [];
-    const mergedObj: Record<string, unknown> = { ...ours! };
-    // Track properties that were auto-merged at the line level (for mermaid code).
-    const lineMergedProps = new Map<string, unknown>();
-
-    const allPropKeys = new Set([
-      ...Object.keys(oursProps ?? {}),
-      ...Object.keys(theirsProps ?? {}),
-    ]);
-
-    for (const prop of allPropKeys) {
-      const bVal = baseProps ? baseProps[prop] : undefined;
-      const oVal = oursProps ? oursProps[prop] : undefined;
-      const tVal = theirsProps ? theirsProps[prop] : undefined;
-
-      const oursChangedProp = JSON.stringify(bVal) !== JSON.stringify(oVal);
-      const theirsChangedProp = JSON.stringify(bVal) !== JSON.stringify(tVal);
-
-      if (oursChangedProp && theirsChangedProp && JSON.stringify(oVal) !== JSON.stringify(tVal)) {
-        // For mermaid code: attempt a line-by-line merge before reporting a conflict.
-        // This allows auto-merging when both sides edited *different* lines.
-        if (
-          prop === '_mermaidCode' &&
-          typeof bVal === 'string' &&
-          typeof oVal === 'string' &&
-          typeof tVal === 'string'
-        ) {
-          const lineMerged = mergeTextLineByLine(bVal, oVal, tVal);
-          if (lineMerged !== null) {
-            // Line-level merge succeeded – record the merged value and skip the conflict.
-            lineMergedProps.set(prop, lineMerged);
-            continue;
-          }
-          // Line-level merge failed – compute per-line conflict detail so the UI
-          // can show each conflicting line individually instead of the whole string.
-          const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(bVal, oVal, tVal);
-          propConflicts.push({
-            prop, base: bVal, ours: oVal, theirs: tVal, chosen: 'ours',
-            mermaidLineConflicts: lineConflicts,
-            mermaidPartialLines: partialLines,
-          });
-          continue;
-        }
-        // True conflict on this property
-        propConflicts.push({ prop, base: bVal, ours: oVal, theirs: tVal, chosen: 'ours' });
-      }
-    }
-
-    if (propConflicts.length === 0) {
-      // Changes don't overlap at property level → auto-merge (apply theirs on ours)
-      for (const prop of allPropKeys) {
-        const bVal = baseProps ? baseProps[prop] : undefined;
-        const tVal = theirsProps ? theirsProps[prop] : undefined;
-        if (lineMergedProps.has(prop)) {
-          mergedObj[prop] = lineMergedProps.get(prop);
-        } else if (JSON.stringify(bVal) !== JSON.stringify(tVal)) {
-          mergedObj[prop] = tVal;
-        }
-      }
-      resultObjects.push(mergedObj);
-    } else {
-      // Need user resolution
-      conflicts.push({
-        id,
-        label: getObjLabel(ours ?? theirs),
-        oursObj: ours!,
-        theirsObj: theirs!,
-        propConflicts,
-        mergedObj,
-      });
-      resultObjects.push(null); // placeholder, filled after resolution
-    }
+    mergeSingleObject(id, baseMap[id], oursMap[id], theirsMap[id], resultObjects, conflicts);
   }
 
   if (conflicts.length === 0) {
@@ -323,4 +207,128 @@ export function threeWayMerge(
   }
 
   return { conflicts, cleanObjects: resultObjects, baseData, oursData, theirsData, mergedCanvasProps };
+}
+
+
+function mergeCanvasProperties(
+  baseParsed: Record<string, unknown>,
+  oursParsed: Record<string, unknown>,
+  theirsParsed: Record<string, unknown>
+): Record<string, unknown> {
+  const mergedCanvasProps: Record<string, unknown> = { ...oursParsed };
+  delete mergedCanvasProps.objects;
+
+  const allCanvasKeys = new Set([
+    ...Object.keys(baseParsed),
+    ...Object.keys(oursParsed),
+    ...Object.keys(theirsParsed),
+  ]);
+
+  for (const key of allCanvasKeys) {
+    if (key === 'objects') continue;
+    const baseValue = baseParsed[key];
+    const oursValue = oursParsed[key];
+    const theirsValue = theirsParsed[key];
+
+    const oursChangedProp = JSON.stringify(baseValue) !== JSON.stringify(oursValue);
+    const theirsChangedProp = JSON.stringify(baseValue) !== JSON.stringify(theirsValue);
+
+    if (theirsChangedProp && !oursChangedProp) {
+      mergedCanvasProps[key] = theirsValue;
+    }
+  }
+  return mergedCanvasProps;
+}
+
+function mergeSingleObject(
+  id: string,
+  base: Record<string, unknown> | undefined,
+  ours: Record<string, unknown> | undefined,
+  theirs: Record<string, unknown> | undefined,
+  resultObjects: (Record<string, unknown> | null)[],
+  conflicts: MergeConflict[]
+): void {
+  const baseProps = base ? extractProps(base) : null;
+  const oursProps = ours ? extractProps(ours) : null;
+  const theirsProps = theirs ? extractProps(theirs) : null;
+
+  // ── Deleted in both → skip
+  if (!ours && !theirs) return;
+
+  // ── Only in one side → take it (prefer keeping over deletion)
+  if (ours && !theirs) { resultObjects.push(ours); return; }
+  if (!ours && theirs) { resultObjects.push(theirs); return; }
+
+  // ── Present in both
+  const oursChanged = base ? !propsEqual(baseProps!, oursProps!) : true;
+  const theirsChanged = base ? !propsEqual(baseProps!, theirsProps!) : false;
+
+  if (!oursChanged && !theirsChanged) { resultObjects.push(ours!); return; }
+  if (oursChanged && !theirsChanged) { resultObjects.push(ours!); return; }
+  if (!oursChanged && theirsChanged) { resultObjects.push(theirs!); return; }
+
+  // ── Both changed → check for property-level conflicts
+  const propConflicts: MergeConflict['propConflicts'] = [];
+  const mergedObj: Record<string, unknown> = { ...ours! };
+  const lineMergedProps = new Map<string, unknown>();
+
+  const allPropKeys = new Set([
+    ...Object.keys(oursProps ?? {}),
+    ...Object.keys(theirsProps ?? {}),
+  ]);
+
+  for (const prop of allPropKeys) {
+    const baseValue = baseProps ? baseProps[prop] : undefined;
+    const oursValue = oursProps ? oursProps[prop] : undefined;
+    const theirsValue = theirsProps ? theirsProps[prop] : undefined;
+
+    const oursChangedProp = JSON.stringify(baseValue) !== JSON.stringify(oursValue);
+    const theirsChangedProp = JSON.stringify(baseValue) !== JSON.stringify(theirsValue);
+
+    if (oursChangedProp && theirsChangedProp && JSON.stringify(oursValue) !== JSON.stringify(theirsValue)) {
+      if (
+        prop === '_mermaidCode' &&
+        typeof baseValue === 'string' &&
+        typeof oursValue === 'string' &&
+        typeof theirsValue === 'string'
+      ) {
+        const lineMerged = mergeTextLineByLine(baseValue, oursValue, theirsValue);
+        if (lineMerged !== null) {
+          lineMergedProps.set(prop, lineMerged);
+          continue;
+        }
+        const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(baseValue, oursValue, theirsValue);
+        propConflicts.push({
+          prop, base: baseValue, ours: oursValue, theirs: theirsValue, chosen: 'ours',
+          mermaidLineConflicts: lineConflicts,
+          mermaidPartialLines: partialLines,
+        });
+        continue;
+      }
+      propConflicts.push({ prop, base: baseValue, ours: oursValue, theirs: theirsValue, chosen: 'ours' });
+    }
+  }
+
+  if (propConflicts.length === 0) {
+    for (const prop of allPropKeys) {
+      const baseValue = baseProps ? baseProps[prop] : undefined;
+      const theirsValue = theirsProps ? theirsProps[prop] : undefined;
+      if (lineMergedProps.has(prop)) {
+        mergedObj[prop] = lineMergedProps.get(prop);
+      } else if (JSON.stringify(baseValue) !== JSON.stringify(theirsValue)) {
+        mergedObj[prop] = theirsValue;
+      }
+    }
+    resultObjects.push(mergedObj);
+  } else {
+    conflicts.push({
+      id,
+      label: getObjLabel(ours ?? theirs),
+      oursObj: ours!,
+      theirsObj: theirs!,
+      propConflicts,
+      mergedObj,
+    });
+    resultObjects.push(null);
+  }
 }
