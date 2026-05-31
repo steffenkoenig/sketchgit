@@ -13,3 +13,12 @@
 
 **Active Step:** Planning.
 **Blockers/Constraints:** None.
+
+## Milestone 1.1 - Object Grouping and Alignment
+
+**Current State Audit:** Verified the codebase. The canvas currently handles `ActiveSelection` inherently via Fabric, but lacks generic Grouping UI or methods. Fabric 7 lacks `toGroup()` and `toActiveSelection()` so groups must be constructed/destructed manually. Merge engine handles standard properties but needs updates for deep `_groupObjects` handling during a 3-way merge.
+
+**Completed Items:**
+
+**Active Step:** Implementing Grouping and Alignment logic.
+**Blockers/Constraints:** None.

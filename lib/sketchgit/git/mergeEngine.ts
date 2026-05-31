@@ -163,6 +163,83 @@ export function computeMermaidLineMergeDetails(
   return { partialLines, lineConflicts };
 }
 
+
+/**
+ * Helper to deep-merge a group's `_groupObjects` array (which represents the
+ * internal `objects` property of a Fabric.js Group).
+ *
+ * Returns the merged array string, or `null` if there is an unresolvable conflict
+ * inside the group.
+ */
+function mergeGroupObjects(baseStr: string, oursStr: string, theirsStr: string): string | null {
+  // Fast paths
+  if (oursStr === theirsStr) return oursStr;
+  if (oursStr === baseStr) return theirsStr;
+  if (theirsStr === baseStr) return oursStr;
+
+  let baseArr: Record<string, unknown>[] = [];
+  let oursArr: Record<string, unknown>[] = [];
+  let theirsArr: Record<string, unknown>[] = [];
+
+  try {
+    if (baseStr) baseArr = JSON.parse(baseStr) as Record<string, unknown>[];
+    if (oursStr) oursArr = JSON.parse(oursStr) as Record<string, unknown>[];
+    if (theirsStr) theirsArr = JSON.parse(theirsStr) as Record<string, unknown>[];
+  } catch {
+    return null; // Parse error = conflict
+  }
+
+  const baseMap = new Map(baseArr.filter(o => o._id).map(o => [o._id as string, o]));
+  const oursMap = new Map(oursArr.filter(o => o._id).map(o => [o._id as string, o]));
+  const theirsMap = new Map(theirsArr.filter(o => o._id).map(o => [o._id as string, o]));
+
+  const allIds = new Set([...baseMap.keys(), ...oursMap.keys(), ...theirsMap.keys()]);
+  const result: Record<string, unknown>[] = [];
+
+  for (const id of allIds) {
+    const b = baseMap.get(id);
+    const o = oursMap.get(id);
+    const t = theirsMap.get(id);
+
+    // Deleted in both
+    if (!o && !t) continue;
+
+    // Only in one side: respect intentional deletions.
+    if (o && !t) {
+      if (!b) { result.push(o); continue; } // brand-new in ours
+      continue; // theirs deleted it — propagate the deletion
+    }
+    if (!o && t) {
+      if (!b) { result.push(t); continue; } // brand-new in theirs
+      continue; // ours deleted it — propagate the deletion
+    }
+
+    // Present in both - compare properties
+    const bStr = b ? JSON.stringify(b) : null;
+    const oStr = o ? JSON.stringify(o) : null;
+    const tStr = t ? JSON.stringify(t) : null;
+
+    const oursChanged = bStr !== oStr;
+    const theirsChanged = bStr !== tStr;
+
+    if (!oursChanged && !theirsChanged) { result.push(o!); continue; }
+    if (oursChanged && !theirsChanged) { result.push(o!); continue; }
+    if (!oursChanged && theirsChanged) { result.push(t!); continue; }
+
+    // Both changed
+    if (oStr === tStr) {
+      result.push(o!);
+    } else {
+      // For groups, if there are overlapping property changes on a child object,
+      // we bubble it up as a conflict on the entire `_groupObjects` property
+      // because we don't currently have UI to drill down into nested group conflicts.
+      return null;
+    }
+  }
+
+  return JSON.stringify(result);
+}
+
 // ─── 3-way merge ─────────────────────────────────────────────────────────────
 
 /**
@@ -255,9 +332,17 @@ function mergeSingleObject(
   // ── Deleted in both → skip
   if (!ours && !theirs) return;
 
-  // ── Only in one side → take it (prefer keeping over deletion)
-  if (ours && !theirs) { resultObjects.push(ours); return; }
-  if (!ours && theirs) { resultObjects.push(theirs); return; }
+  // ── Only in one side: distinguish new additions from intentional deletions.
+  // If the object existed in base, the absent side explicitly deleted it → respect that.
+  // If it was not in base, it is new in the present side → keep it.
+  if (ours && !theirs) {
+    if (!base) { resultObjects.push(ours); return; } // brand-new in ours
+    return; // theirs deleted it — propagate the deletion
+  }
+  if (!ours && theirs) {
+    if (!base) { resultObjects.push(theirs); return; } // brand-new in theirs
+    return; // ours deleted it — propagate the deletion
+  }
 
   // ── Present in both
   const oursChanged = base ? !propsEqual(baseProps!, oursProps!) : true;
@@ -286,6 +371,20 @@ function mergeSingleObject(
     const theirsChangedProp = JSON.stringify(baseValue) !== JSON.stringify(theirsValue);
 
     if (oursChangedProp && theirsChangedProp && JSON.stringify(oursValue) !== JSON.stringify(theirsValue)) {
+      // Deep 3-way merge for nested group child objects
+      if (
+        prop === '_groupObjects' &&
+        typeof oursValue === 'string' &&
+        typeof theirsValue === 'string'
+      ) {
+        const bStr = typeof baseValue === 'string' ? baseValue : '';
+        const groupMerged = mergeGroupObjects(bStr, oursValue, theirsValue);
+        if (groupMerged !== null) {
+          lineMergedProps.set(prop, groupMerged);
+          continue;
+        }
+      }
+
       if (
         prop === '_mermaidCode' &&
         typeof baseValue === 'string' &&

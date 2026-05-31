@@ -17,6 +17,16 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
       // P022: methods used by the in-place polyline update
       _setPositionDimensions: vi.fn(),
       setCoords: vi.fn(),
+      _set: vi.fn(),
+      off: vi.fn(),
+      on: vi.fn(),
+      isDescendantOf: vi.fn().mockReturnValue(false),
+      getRelativeCenterPoint: vi.fn().mockReturnValue({ x: 0, y: 0 }),
+      isStrokeAccountedForInDimensions: vi.fn().mockReturnValue(false),
+      getAngle: vi.fn().mockReturnValue(0),
+      getTotalAngle: vi.fn().mockReturnValue(0),
+      getViewportTransform: vi.fn().mockReturnValue([1, 0, 0, 1, 0, 0]),
+      calcTransformMatrix: vi.fn().mockReturnValue([1, 0, 0, 1, 0, 0]),
       getObjects: vi.fn(() => []),
       removeAll: vi.fn(),
       add: vi.fn(),
@@ -96,6 +106,7 @@ vi.mock('fabric', () => ({
   IText: vi.fn(function FabricIText(_t: string, opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   Polygon: vi.fn(function FabricPolygon(_pts: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
   Group: vi.fn(function FabricGroup(_items: unknown[], opts: Record<string, unknown>) { return makeFabricObject(opts); }),
+  ActiveSelection: vi.fn(function FabricActiveSelection(_items: unknown[], opts: Record<string, unknown>) { return makeFabricObject({ ...opts, type: 'activeSelection' }); }),
   FabricObject: class FabricObject { static customProperties: string[] = []; },
   FabricImage: {
     fromURL: vi.fn(async (_url: string) => ({
@@ -3001,5 +3012,228 @@ describe('CanvasEngine – endpoint selection controls', () => {
     const bodyShape = addedShapes[0];
     expect(bodyShape?.strokeLineCap).toBe('butt');
     expect(bodyShape?.strokeLineJoin).toBe('miter');
+  });
+
+  // ─── Grouping & Alignment ──────────────────────────────────────────────────
+
+  describe('Grouping', () => {
+    let engine: CanvasEngine;
+    let onBroadcastDraw: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      const setup = makeEngine();
+      engine = setup.engine;
+      onBroadcastDraw = vi.fn();
+      (engine as any).onBroadcastDraw = onBroadcastDraw;
+      engine.init();
+      mockCanvasInstance.getObjects.mockReturnValue([]);
+      mockCanvasInstance.getActiveObject.mockReturnValue(null);
+    });
+
+    it('groups multiple selected objects', () => {
+      const rect = makeFabricObject({ type: 'rect', _id: 'r1' });
+      const circle = makeFabricObject({ type: 'circle', _id: 'c1' });
+      const objects = [rect, circle];
+
+      mockCanvasInstance.getObjects.mockReturnValue(objects);
+      const activeSelection = { type: 'activeSelection', getObjects: () => objects, removeAll: vi.fn().mockReturnValue(objects), destroy: vi.fn() };
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+
+      // stub pushHistory to just trigger the mock, or we can just mock pushHistory
+      (engine as any).pushHistory = vi.fn();
+
+      engine.groupSelection();
+
+      expect(activeSelection.removeAll).toHaveBeenCalled();
+      expect(mockCanvasInstance.setActiveObject).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
+    });
+
+    it('ungroups a selected group', () => {
+      const rect = makeFabricObject({ type: 'rect', _id: 'r1', _set: vi.fn() });
+      const circle = makeFabricObject({ type: 'circle', _id: 'c1', _set: vi.fn() });
+
+      const removeAllMock = vi.fn(() => [rect, circle]);
+
+      const group = {
+        type: 'group',
+        _id: 'g1',
+        _isArrow: false,
+        getObjects: () => [rect, circle],
+        removeAll: removeAllMock,
+        destroy: vi.fn(),
+        set: vi.fn(),
+        setCoords: vi.fn()
+      };
+
+      mockCanvasInstance.getObjects.mockReturnValue([group]);
+      mockCanvasInstance.getActiveObject.mockReturnValue(group);
+
+      (engine as any).pushHistory = vi.fn();
+      // Stub ActiveSelection from fabric so it doesn't fail deep inside the real class methods
+      engine.canvas!.setActiveObject = vi.fn();
+      const addMock = vi.spyOn(engine.canvas!, 'add').mockImplementation(vi.fn());
+
+      // We bypass the full Fabric ActiveSelection constructor which causes errors:
+      vi.spyOn(engine.canvas!, 'remove').mockImplementation(vi.fn());
+
+      engine.ungroupSelection();
+
+      expect(removeAllMock).toHaveBeenCalled();
+      expect(addMock).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
+    });
+
+    it('does nothing if no selection is made for grouping', () => {
+      mockCanvasInstance.getActiveObject.mockReturnValue(null);
+      engine.groupSelection();
+      expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Alignment', () => {
+    let engine: CanvasEngine;
+    let onBroadcastDraw: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      const setup = makeEngine();
+      engine = setup.engine;
+      onBroadcastDraw = vi.fn();
+      (engine as any).onBroadcastDraw = onBroadcastDraw;
+      engine.init();
+    });
+
+    it('aligns selected objects to the left', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const activeSelection = {
+        type: 'activeSelection',
+        getObjects: () => [rect1, rect2],
+        forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        removeAll: vi.fn(),
+        destroy: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+      (engine as any).pushHistory = vi.fn();
+      engine.alignSelection('left');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
+    });
+
+    it('aligns selected objects to the right', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const activeSelection = {
+        type: 'activeSelection',
+        getObjects: () => [rect1, rect2],
+        forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        removeAll: vi.fn(),
+        destroy: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+
+      engine.alignSelection('right');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+    });
+
+    it('aligns selected objects to the top', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const activeSelection = {
+        type: 'activeSelection',
+        getObjects: () => [rect1, rect2],
+        forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        removeAll: vi.fn(),
+        destroy: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+
+      engine.alignSelection('top');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+    });
+
+    it('aligns selected objects to the bottom', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const activeSelection = {
+        type: 'activeSelection',
+        getObjects: () => [rect1, rect2],
+        forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        removeAll: vi.fn(),
+        destroy: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+
+      engine.alignSelection('bottom');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+    });
+
+    it('aligns selected objects to horizontal center', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const activeSelection = {
+        type: 'activeSelection',
+        getObjects: () => [rect1, rect2],
+        forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        removeAll: vi.fn(),
+        destroy: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+
+      engine.alignSelection('centerH');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+    });
+
+    it('aligns selected objects to vertical center', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const activeSelection = {
+        type: 'activeSelection',
+        getObjects: () => [rect1, rect2],
+        forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        removeAll: vi.fn(),
+        destroy: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+
+      engine.alignSelection('centerV');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+    });
   });
 });
