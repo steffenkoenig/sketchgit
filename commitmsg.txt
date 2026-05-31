@@ -1,0 +1,6 @@
+feat: add future improvement plans document
+
+Added proposals/future_improvements.md outlining three detailed future
+implementation plans (Canvas Minimap, Commit Tagging, Custom Shape
+Libraries) strictly adhering to the requested format constraints without
+relying on external integrations or AI features.
