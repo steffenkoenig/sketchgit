@@ -1591,11 +1591,23 @@ export class CanvasEngine {
     this.pushHistory();
 
     const group = o as Group;
-    // Snapshot items before destroying — destroy() restores each item's
-    // absolute canvas transform (undoing the group's local offset).
     const items = group.getObjects() as FabricObject[];
-    group.destroy();
 
+    // In Fabric v7, we recalculate positions before removing to maintain relative positioning
+    // as destroy() no longer exists for groups to do this automatically.
+    for (const item of items) {
+      const transformMatrix = item.calcTransformMatrix();
+      const point = new Point(transformMatrix[4], transformMatrix[5]);
+      item.set({
+          left: point.x,
+          top: point.y,
+          scaleX: transformMatrix[0],
+          scaleY: transformMatrix[3],
+      });
+      item.setCoords();
+    }
+
+    // Remove group from canvas
     this.canvas.remove(group);
 
     for (const item of items) {
