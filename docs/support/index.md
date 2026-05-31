@@ -5,5 +5,5 @@
 ## Known Constraints & Troubleshooting
 
 ### Object Grouping & Merging (Milestone 1.1)
-- **Nested Conflict Resolution:** While standard group property changes merge automatically, overlapping edits to properties on the exact same child object inside a group will bubble up and mark the *entire group* as conflicting. If users complain about missing deep-conflict UI for groups, inform them that they must choose between the two group states entirely during a branch merge.
+- **Nested Conflict Resolution:** While standard group property changes merge automatically, overlapping edits to the *exact same property* on the exact same child object inside a group will bubble up and mark the *entire group* as conflicting. Non-overlapping property changes on the same child object will merge automatically. If users complain about missing deep-conflict UI for groups, inform them that they must choose between the two group states entirely during a branch merge.
 - **Lost Objects in Groups:** If users experience objects disappearing when grouped, verify that they aren't placing very large groups far outside the viewport. Fabric.js culling may hide them.
