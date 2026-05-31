@@ -17,3 +17,7 @@ To protect the project from non-compliant restrictive copyleft licenses, we have
 - **Tooling:** We use `license-checker-rseidelsohn`.
 - **Policy:** Defined in `reports/license-policy.md`.
 - **Enforcement:** A new script `scripts/check-licenses.mjs` is executed during the GitHub Actions CI workflow (`.github/workflows/ci.yml`). If a production dependency violates the policy (e.g., includes a GPL or AGPL license), the CI build will fail.
+
+
+## Git Model Integration for Groups (Milestone 1.x)
+To prevent Denial of Service (DoS) attacks via deeply nested malicious JSON payloads via WebSocket syncs, the internal `objectIdTracker` has been updated with a serialization limit for `Group` objects (`MAX_DEPTH = 10`). When extracting git model merge properties, any nested structure beyond this depth is truncated safely to an empty array serialization.

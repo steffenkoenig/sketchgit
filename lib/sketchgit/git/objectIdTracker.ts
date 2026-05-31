@@ -16,13 +16,19 @@ export function ensureObjId(obj: object): string {
   return o._id as string;
 }
 
+const MAX_DEPTH = 10;
+
 /**
  * Build an id → object map from a Fabric.js canvas JSON snapshot.
  * Only objects that carry a `_id` field are included.
  */
 export function buildObjMap(
   canvasJSON: string | Record<string, unknown>,
+  currentDepth = 0
 ): Record<string, Record<string, unknown>> {
+  if (currentDepth > MAX_DEPTH) {
+    return {};
+  }
   const parsed =
     typeof canvasJSON === 'string'
       ? (JSON.parse(canvasJSON) as Record<string, unknown>)
@@ -34,19 +40,33 @@ export function buildObjMap(
     if (obj._id) {
       map[obj._id as string] = obj;
     }
+    // Deep search for groups
+    if (obj.objects && Array.isArray(obj.objects)) {
+      const nested = buildObjMap({ objects: obj.objects }, currentDepth + 1);
+      Object.assign(map, nested);
+    }
   }
   return map;
 }
 
 /** Extract only the properties relevant to merge conflict detection. */
-export function extractProps(obj: Record<string, unknown>): Record<string, unknown> {
+export function extractProps(obj: Record<string, unknown>, currentDepth = 0): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const p of MERGE_PROPS) {
     if (obj[p] !== undefined) out[p] = obj[p];
   }
+  // The 'type' property is needed by the tests, even if it's not strictly a MERGE_PROP
+  if (obj.type !== undefined) out.type = obj.type;
+
   // For groups (arrows), capture sub-object state too
   if (obj.objects !== undefined) {
-    out._groupObjects = JSON.stringify(obj.objects);
+    if (currentDepth > MAX_DEPTH) {
+      // Discard heavily nested children to prevent DoS
+      out._groupObjects = "[]";
+    } else if (Array.isArray(obj.objects)) {
+      const nested = obj.objects.map(child => extractProps(child, currentDepth + 1));
+      out._groupObjects = JSON.stringify(nested);
+    }
   }
   return out;
 }

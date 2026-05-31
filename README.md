@@ -145,6 +145,8 @@ Migrations are applied automatically on container startup.
 | `0` | Reset zoom |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` | Redo |
+| `Ctrl+G` | Group selected objects |
+| `Ctrl+Shift+G` | Ungroup selected group |
 | `Delete` / `Backspace` | Remove selected object |
 
 ## API

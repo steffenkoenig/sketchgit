@@ -23,6 +23,39 @@ export const PropertiesPanel = React.memo(function PropertiesPanel({ call }: Pro
   return (
     <div id="props-panel" className="hide" role="complementary" aria-label={t("shapeProperties")}>
 
+
+      {/* ── Alignment & Grouping ────────────────────────────────────────────── */}
+      <div className="pp-section hide" id="pp-align-section">
+        <span className="pp-label">{t("alignmentAndGrouping") || "Alignment & Grouping"}</span>
+        <div className="pp-row" style={{ gap: "4px", flexWrap: "wrap" }}>
+          <button className="pp-btn" onClick={() => call("groupObjects")} title="Group (Ctrl+G)">
+            <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h4v4h-4z"/><path d="M8 6h8M8 18h8M6 8v8M18 8v8" strokeWidth="2" stroke="currentColor"/></svg>
+          </button>
+          <button className="pp-btn" onClick={() => call("ungroupObjects")} title="Ungroup (Ctrl+Shift+G)">
+            <svg viewBox="0 0 24 24"><path d="M6 6h2v2H6zM16 16h2v2h-2zM4 4h4v4H4zM16 16h4v4h-4z" opacity="0.3"/><path d="M10 14l4-4M14 14l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          </button>
+          <div className="tsep" style={{ margin: "0 2px" }} role="separator"></div>
+          <button className="pp-btn" onClick={() => call("alignSelection", "left")} title="Align Left">
+            <svg viewBox="0 0 24 24"><line x1="4" y1="4" x2="4" y2="20" stroke="currentColor" strokeWidth="2"/><rect x="8" y="7" width="10" height="4"/><rect x="8" y="13" width="6" height="4"/></svg>
+          </button>
+          <button className="pp-btn" onClick={() => call("alignSelection", "centerH")} title="Align Center Horizontal">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="2"/><rect x="7" y="7" width="10" height="4"/><rect x="9" y="13" width="6" height="4"/></svg>
+          </button>
+          <button className="pp-btn" onClick={() => call("alignSelection", "right")} title="Align Right">
+            <svg viewBox="0 0 24 24"><line x1="20" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth="2"/><rect x="6" y="7" width="10" height="4"/><rect x="10" y="13" width="6" height="4"/></svg>
+          </button>
+          <button className="pp-btn" onClick={() => call("alignSelection", "top")} title="Align Top">
+            <svg viewBox="0 0 24 24"><line x1="4" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="2"/><rect x="7" y="8" width="4" height="10"/><rect x="13" y="8" width="4" height="6"/></svg>
+          </button>
+          <button className="pp-btn" onClick={() => call("alignSelection", "centerV")} title="Align Center Vertical">
+            <svg viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2"/><rect x="7" y="7" width="4" height="10"/><rect x="13" y="9" width="4" height="6"/></svg>
+          </button>
+          <button className="pp-btn" onClick={() => call("alignSelection", "bottom")} title="Align Bottom">
+            <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20" stroke="currentColor" strokeWidth="2"/><rect x="7" y="6" width="4" height="10"/><rect x="13" y="10" width="4" height="6"/></svg>
+          </button>
+        </div>
+      </div>
+
       {/* ── Colors ──────────────────────────────────────────────────────────── */}
       <div className="pp-section" id="pp-color-section">
         <span className="pp-label">{t("colors")}</span>

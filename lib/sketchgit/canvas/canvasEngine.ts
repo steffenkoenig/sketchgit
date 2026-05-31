@@ -18,7 +18,7 @@
  */
 
 import {
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern, Control,
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, FabricImage, FabricObject, Point, Pattern, Control, ActiveSelection,
 } from 'fabric';
 import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
 
@@ -983,6 +983,14 @@ export class CanvasEngine {
     else if (k === '+' || k === '=') this.zoomIn();
     else if (k === '-') this.zoomOut();
     else if (k === '0') this.resetZoom();
+    else if ((e.ctrlKey || e.metaKey) && k === 'g') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        this.ungroupObjects();
+      } else {
+        this.groupObjects();
+      }
+    }
     else if ((e.ctrlKey || e.metaKey) && k === 'z') {
       e.preventDefault();
       if (e.shiftKey) {
@@ -2913,6 +2921,173 @@ export class CanvasEngine {
    * Sketch paths (artist/cartoonist/doodle) preserve their original shape type
    * via `_origGeom` so that the correct controls remain visible.
    */
+
+  // ── P095/Grouping ──────────────────────────────────────────────────────────
+
+  /**
+   * Group the currently selected objects into a single Group.
+   */
+
+  /**
+   * Align the currently selected objects or ActiveSelection.
+   * Single objects align to the canvas boundary. ActiveSelection aligns relative to its bounding box.
+   */
+  alignSelection(alignType: 'left' | 'right' | 'top' | 'bottom' | 'centerH' | 'centerV'): void {
+    if (!this.canvas) return;
+    const active = this.canvas.getActiveObject();
+    if (!active) return;
+
+    this.pushHistory();
+
+    const alignSingleObjectToCanvas = (obj: FabricObject) => {
+      if (!this.canvas) return;
+      const cvWidth = this.canvas.width ?? 0;
+      const cvHeight = this.canvas.height ?? 0;
+      const br = obj.getBoundingRect();
+
+      switch (alignType) {
+        case 'left':
+          obj.set({ left: obj.left - br.left });
+          break;
+        case 'right':
+          obj.set({ left: obj.left + (cvWidth - br.left - br.width) });
+          break;
+        case 'top':
+          obj.set({ top: obj.top - br.top });
+          break;
+        case 'bottom':
+          obj.set({ top: obj.top + (cvHeight - br.top - br.height) });
+          break;
+        case 'centerH':
+          obj.set({ left: obj.left + (cvWidth / 2 - br.left - br.width / 2) });
+          break;
+        case 'centerV':
+          obj.set({ top: obj.top + (cvHeight / 2 - br.top - br.height / 2) });
+          break;
+      }
+      obj.setCoords();
+      this.canvas.fire('object:modified', { target: obj });
+    };
+
+    if (active.type === 'activeselection') {
+      const sel = active as ActiveSelection;
+      const objs = sel.getObjects();
+
+      // Fabric 7 active selection alignment:
+      // The items in the selection have left/top relative to the center of the ActiveSelection.
+      // Easiest approach:
+      // 1. Un-group to canvas coords
+      this.canvas.discardActiveObject();
+      this.canvas.remove(...objs);
+      this.canvas.add(...objs);
+
+      // 2. Find bounding box of all objects
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      objs.forEach(o => {
+        const br = o.getBoundingRect();
+        if (br.left < minX) minX = br.left;
+        if (br.top < minY) minY = br.top;
+        if (br.left + br.width > maxX) maxX = br.left + br.width;
+        if (br.top + br.height > maxY) maxY = br.top + br.height;
+      });
+      const cx = minX + (maxX - minX) / 2;
+      const cy = minY + (maxY - minY) / 2;
+
+      // 3. Align each object relative to that bounding box
+      objs.forEach(obj => {
+        const br = obj.getBoundingRect();
+        switch (alignType) {
+          case 'left':
+            obj.set({ left: obj.left - (br.left - minX) });
+            break;
+          case 'right':
+            obj.set({ left: obj.left + (maxX - (br.left + br.width)) });
+            break;
+          case 'top':
+            obj.set({ top: obj.top - (br.top - minY) });
+            break;
+          case 'bottom':
+            obj.set({ top: obj.top + (maxY - (br.top + br.height)) });
+            break;
+          case 'centerH':
+            obj.set({ left: obj.left + (cx - (br.left + br.width / 2)) });
+            break;
+          case 'centerV':
+            obj.set({ top: obj.top + (cy - (br.top + br.height / 2)) });
+            break;
+        }
+        obj.setCoords();
+        this.canvas!.fire('object:modified', { target: obj });
+      });
+
+      // 4. Re-select
+      const newSel = new ActiveSelection(objs, { canvas: this.canvas });
+      this.canvas.setActiveObject(newSel);
+
+    } else {
+      alignSingleObjectToCanvas(active);
+    }
+
+    this.canvas.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  groupObjects(): void {
+    if (!this.canvas) return;
+    const active = this.canvas.getActiveObject();
+    if (!active || active.type !== 'activeselection') return;
+
+    // We must push history *before* the modification (memory project architecture constraint)
+    this.pushHistory();
+
+    const objs = (active as ActiveSelection).getObjects();
+    this.canvas.discardActiveObject();
+    this.canvas.remove(...objs);
+
+    const group = new Group(objs, {
+      canvas: this.canvas,
+      selectable: true,
+      evented: true,
+    });
+    // Ensure the new group is tracked in Git
+    ensureObjId(group);
+
+    this.canvas.add(group);
+    this.canvas.setActiveObject(group);
+    this.canvas.requestRenderAll();
+
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
+  /**
+   * Ungroup the currently selected Group into its constituent objects.
+   */
+  ungroupObjects(): void {
+    if (!this.canvas) return;
+    const active = this.canvas.getActiveObject();
+    if (!active || active.type !== 'group') return;
+
+    this.pushHistory();
+
+    const group = active as Group;
+    const objs = group.getObjects();
+    this.canvas.discardActiveObject();
+    this.canvas.remove(group);
+    group.removeAll(); // in-place empty
+
+    this.canvas.add(...objs);
+
+    // Select the newly ungrouped items
+    const sel = new ActiveSelection(objs, { canvas: this.canvas });
+    this.canvas.setActiveObject(sel);
+    this.canvas.requestRenderAll();
+
+    this.markDirty();
+    this.onBroadcastDraw(true);
+  }
+
   private getObjectShapeType(o: FabricObject): string {
     const oa = o as FabricObject & { _isArrow?: boolean; _isMermaid?: boolean; type?: string; _origGeom?: string };
     if (oa._isMermaid) return 'mermaid';
@@ -2935,6 +3110,8 @@ export class CanvasEngine {
       return 'pen';
     }
     if (t === 'i-text' || t === 'text') return 'text';
+    if (t === 'activeselection') return 'activeselection';
+    if (t === 'group') return 'group';
     return 'unknown';
   }
 
@@ -2960,6 +3137,9 @@ export class CanvasEngine {
     const hasFill    = isRect || isEllipse;
     // Mermaid objects support stroke (border) but not text-style (no stroke width/dash exclusion)
     const hasStroke  = !isText;
+    const isGroupOrSel = shapeType === 'activeselection' || shapeType === 'group';
+
+    isGroupOrSel ? show('pp-align-section') : hide('pp-align-section');
 
     // Colors: always visible
     show('pp-color-section');

@@ -218,6 +218,9 @@ export function createSketchGitApp() {
     zoomIn: () => canvas.zoomIn(),
     zoomOut: () => canvas.zoomOut(),
     resetZoom: () => canvas.resetZoom(),
+    groupObjects: () => canvas.groupObjects(),
+    ungroupObjects: () => canvas.ungroupObjects(),
+    alignSelection: (alignType: 'left' | 'right' | 'top' | 'bottom' | 'centerH' | 'centerV') => canvas.alignSelection(alignType),
 
     // Collaboration panel
     toggleCollabPanel: () => collaboration.toggleCollabPanel(),
