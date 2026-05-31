@@ -28,6 +28,7 @@ export interface PublicUser {
   email: string | null;
   name: string | null;
   image: string | null;
+  twoFactorEnabled: boolean;
   createdAt: Date;
 }
 
@@ -82,7 +83,7 @@ export async function createUser(input: CreateUserInput): Promise<PublicUser> {
       name: input.name,
       passwordHash,
     },
-    select: { id: true, email: true, name: true, image: true, createdAt: true },
+    select: { id: true, email: true, name: true, image: true, twoFactorEnabled: true, createdAt: true },
   });
 
   return user;
@@ -141,9 +142,70 @@ export async function verifyCredentials(
     email: user.email,
     name: user.name,
     image: user.image,
+    twoFactorEnabled: user.twoFactorEnabled,
     createdAt: user.createdAt,
   };
 }
+
+// ─── 2FA (Two-Factor Authentication) ──────────────────────────────────────────
+
+const TWO_FACTOR_TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Generate and persist a 6-digit 2FA token for `email`.
+ * Deletes any existing tokens for that email.
+ */
+export async function createTwoFactorToken(email: string): Promise<string> {
+  const { randomInt } = await import("node:crypto");
+  const token = randomInt(100000, 1000000).toString(); // 6-digit CSPRNG token
+  const expires = new Date(Date.now() + TWO_FACTOR_TOKEN_TTL_MS);
+
+  await prisma.$transaction([
+    prisma.twoFactorToken.deleteMany({ where: { identifier: email } }),
+    prisma.twoFactorToken.create({
+      data: { identifier: email, token, expires },
+    }),
+  ]);
+
+  return token;
+}
+
+/**
+ * Verify a 2FA token for `email`. If valid, it is consumed (deleted).
+ * Returns `true` if valid, `false` otherwise.
+ */
+export async function verifyTwoFactorToken(email: string, token: string): Promise<boolean> {
+  const record = await prisma.twoFactorToken.findFirst({
+    where: { identifier: email, token, expires: { gt: new Date() } },
+  });
+
+  if (!record) return false;
+
+  await prisma.twoFactorToken.delete({ where: { identifier: email, token } });
+  return true;
+}
+
+/**
+ * Enable or disable 2FA for a user.
+ */
+export async function setTwoFactorEnabled(userId: string, enabled: boolean): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { twoFactorEnabled: enabled },
+  });
+}
+
+/**
+ * Retrieve the current 2FA status for a user.
+ */
+export async function getTwoFactorStatus(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { twoFactorEnabled: true },
+  });
+  return !!user?.twoFactorEnabled;
+}
+
 
 // ─── P040: Password reset ──────────────────────────────────────────────────────
 
