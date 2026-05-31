@@ -6,6 +6,19 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.5.3](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.2...sketchgit-next-v0.5.3) (2026-05-30)
+
+
+### Bug Fixes
+
+* [milestone 1.0] Highest priority system fixes (Bugs, Licensing, Compliance) ([#158](https://github.com/steffenkoenig/sketchgit/issues/158)) ([a81342d](https://github.com/steffenkoenig/sketchgit/commit/a81342d8ecc31ed7ace2510cdb473b1cbc823082))
+* Resolve fonts CDN GAP-016 and implement P089 license scan ([#160](https://github.com/steffenkoenig/sketchgit/issues/160)) ([3889a45](https://github.com/steffenkoenig/sketchgit/commit/3889a455d0bc99a3703c586ba701fa413c346d65))
+
+
+### Documentation
+
+* add new platform improvement plans ([53ff64d](https://github.com/steffenkoenig/sketchgit/commit/53ff64d2213e9211efe7644ac17d156c0dab4764))
+
 ## [0.5.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.1...sketchgit-next-v0.5.2) (2026-05-28)
 
 

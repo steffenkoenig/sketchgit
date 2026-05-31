@@ -25,6 +25,8 @@ import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
 import { ensureObjId } from '../git/objectIdTracker';
 import { logger } from '../logger';
 import { renderMermaidToDataUrl } from './mermaidRenderer';
+import { nearestPointOnBounds } from './snapEngine';
+
 
 /** Shared type for arrow Group objects carrying endpoint + style metadata. */
 type ArrowGroupExt = FabricObject & {
@@ -503,70 +505,51 @@ export class CanvasEngine {
 
   // ── Event handlers ────────────────────────────────────────────────────────
 
-  private onMouseDown(e: TPointerEventInfo): void {
-    if (this.currentTool === 'select') return;
-    // If the user clicked on an existing object, let Fabric handle it (move/resize/select)
-    // instead of starting a new shape draw.  The eraser is excluded because its
-    // whole purpose is to act on existing objects.
-    if (e.target && this.currentTool !== 'eraser') return;
-    // P037: Snapshot the canvas state before this gesture so Ctrl+Z can restore it.
-    this.pushHistory();
-    // Fabric v7: scenePoint is supplied directly on the event info object
-    const p = e.scenePoint;
-    this.startX = p.x;
-    this.startY = p.y;
-    this.isDrawing = true;
-    if (this.canvas) this.canvas.selection = false;
+  private handleMouseDownPen(p: XY): void {
+    this.currentPenPath = [{ x: p.x, y: p.y }];
+    // P022: Use a Polyline for the in-progress stroke so points can be
+    // appended in-place during mousemove without creating a new object
+    // on every event.  The polyline is converted to a Path on mouseup.
+    const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
+    this.activeObj = new Polyline([{ x: p.x, y: p.y }], {
+      stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
+      selectable: false, evented: false,
+      strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
+      strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+      opacity: this.opacityValue / 100,
+      strokeUniform: true,
+    });
+    this.canvas?.add(this.activeObj);
+  }
 
-    if (this.currentTool === 'pen') {
-      this.currentPenPath = [{ x: p.x, y: p.y }];
-      // P022: Use a Polyline for the in-progress stroke so points can be
-      // appended in-place during mousemove without creating a new object
-      // on every event.  The polyline is converted to a Path on mouseup.
-      const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
-      this.activeObj = new Polyline([{ x: p.x, y: p.y }], {
-        stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
-        selectable: false, evented: false,
-        strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
-        strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
-        opacity: this.opacityValue / 100,
-        strokeUniform: true,
-      });
-      this.canvas?.add(this.activeObj);
-      return;
-    }
+  private handleMouseDownText(p: XY): void {
+    const t = new IText('Text', {
+      left: p.x, top: p.y,
+      fontSize: 18, fill: this.strokeColor,
+      fontFamily: 'Fira Code',
+      selectable: true, editable: true,
+      opacity: this.opacityValue / 100,
+    });
+    ensureObjId(t);
+    this.canvas?.add(t);
+    this.canvas?.setActiveObject(t);
+    t.enterEditing();
+    t.selectAll();
+    this.isDrawing = false;
+    this.markDirty();
+  }
 
-    if (this.currentTool === 'eraser') return;
+  private handleMouseDownMermaid(p: XY): void {
+    // Record placement position and show the mermaid code editor in the
+    // properties panel so the user can enter diagram code before rendering.
+    this.pendingMermaidPos = { x: p.x, y: p.y };
+    this.isDrawing = false;
+    // Focus the mermaid code textarea so the user can immediately start typing
+    const ta = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
+    if (ta) ta.focus();
+  }
 
-    if (this.currentTool === 'text') {
-      const t = new IText('Text', {
-        left: p.x, top: p.y,
-        fontSize: 18, fill: this.strokeColor,
-        fontFamily: 'Fira Code',
-        selectable: true, editable: true,
-        opacity: this.opacityValue / 100,
-      });
-      ensureObjId(t);
-      this.canvas?.add(t);
-      this.canvas?.setActiveObject(t);
-      t.enterEditing();
-      t.selectAll();
-      this.isDrawing = false;
-      this.markDirty();
-      return;
-    }
-
-    if (this.currentTool === 'mermaid') {
-      // Record placement position and show the mermaid code editor in the
-      // properties panel so the user can enter diagram code before rendering.
-      this.pendingMermaidPos = { x: p.x, y: p.y };
-      this.isDrawing = false;
-      // Focus the mermaid code textarea so the user can immediately start typing
-      const ta = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
-      if (ta) ta.focus();
-      return;
-    }
-
+  private handleMouseDownShape(p: XY): void {
     const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
     const shapeOpts = {
       left: p.x, top: p.y, width: 0, height: 0,
@@ -622,42 +605,64 @@ export class CanvasEngine {
     }
   }
 
-  private onMouseMove(e: TPointerEventInfo): void {
-    // Only broadcast cursor for mouse/pointer events (not touch events).
-    if (e.e instanceof MouseEvent) {
-      this.onBroadcastCursor({ e: e.e });
-    }
-    if (!this.isDrawing) return;
+  private onMouseDown(e: TPointerEventInfo): void {
+    if (this.currentTool === 'select') return;
+    // If the user clicked on an existing object, let Fabric handle it (move/resize/select)
+    // instead of starting a new shape draw.  The eraser is excluded because its
+    // whole purpose is to act on existing objects.
+    if (e.target && this.currentTool !== 'eraser') return;
+    // P037: Snapshot the canvas state before this gesture so Ctrl+Z can restore it.
+    this.pushHistory();
     // Fabric v7: scenePoint is supplied directly on the event info object
     const p = e.scenePoint;
+    this.startX = p.x;
+    this.startY = p.y;
+    this.isDrawing = true;
+    if (this.canvas) this.canvas.selection = false;
 
-    if (this.currentTool === 'eraser') {
-      const objs = this.canvas?.getObjects() ?? [];
-      for (let i = objs.length - 1; i >= 0; i--) {
-        if (objs[i].containsPoint(p)) {
-          this.canvas?.remove(objs[i]);
-          this.markDirty();
-          break;
-        }
+    if (this.currentTool === 'pen') {
+      this.handleMouseDownPen(p);
+      return;
+    }
+    if (this.currentTool === 'eraser') return;
+    if (this.currentTool === 'text') {
+      this.handleMouseDownText(p);
+      return;
+    }
+    if (this.currentTool === 'mermaid') {
+      this.handleMouseDownMermaid(p);
+      return;
+    }
+
+    this.handleMouseDownShape(p);
+  }
+
+  private handleMouseMoveEraser(p: XY): void {
+    const objs = this.canvas?.getObjects() ?? [];
+    const pt = new Point(p.x, p.y);
+    for (let i = objs.length - 1; i >= 0; i--) {
+      if (objs[i].containsPoint(pt)) {
+        this.canvas?.remove(objs[i]);
+        this.markDirty();
+        break;
       }
-      return;
     }
+  }
 
-    if (this.currentTool === 'pen' && this.currentPenPath) {
-      this.currentPenPath.push({ x: p.x, y: p.y });
-      // P022: Update the Polyline in-place instead of removing the old object
-      // and creating a new one on every mousemove event.
-      const poly = this.activeObj as Polyline;
-      poly.set('points', [...this.currentPenPath]);
-      poly.setCoords();
-      this.canvas?.requestRenderAll();
-      this.onBroadcastDraw(false); // throttled mid-stroke delta (immediate=false)
-      return;
-    }
+  private handleMouseMovePen(p: XY): void {
+    if (!this.currentPenPath) return;
+    this.currentPenPath.push({ x: p.x, y: p.y });
+    // P022: Update the Polyline in-place instead of removing the old object
+    // and creating a new one on every mousemove event.
+    const poly = this.activeObj as Polyline;
+    poly.set('points', [...this.currentPenPath]);
+    poly.setCoords();
+    this.canvas?.requestRenderAll();
+    this.onBroadcastDraw(false); // throttled mid-stroke delta (immediate=false)
+  }
 
-    const dx = p.x - this.startX, dy = p.y - this.startY;
+  private handleMouseMoveShape(dx: number, dy: number, p: XY): void {
     if (!this.activeObj) return;
-
     if (this.currentTool === 'rect') {
       if (dx < 0) { this.activeObj.set({ left: p.x, width: -dx }); }
       else { this.activeObj.set({ width: dx }); }
@@ -675,92 +680,127 @@ export class CanvasEngine {
     this.canvas?.requestRenderAll(); // P022: batch the render via rAF
   }
 
+  private onMouseMove(e: TPointerEventInfo): void {
+    // Only broadcast cursor for mouse/pointer events (not touch events).
+    if (e.e instanceof MouseEvent) {
+      this.onBroadcastCursor({ e: e.e });
+    }
+    if (!this.isDrawing) return;
+    // Fabric v7: scenePoint is supplied directly on the event info object
+    const p = e.scenePoint;
+
+    if (this.currentTool === 'eraser') {
+      this.handleMouseMoveEraser(p);
+      return;
+    }
+
+    if (this.currentTool === 'pen' && this.currentPenPath) {
+      this.handleMouseMovePen(p);
+      return;
+    }
+
+    const dx = p.x - this.startX, dy = p.y - this.startY;
+    if (!this.activeObj) return;
+
+    this.handleMouseMoveShape(dx, dy, p);
+  }
+
+  private handleMouseUpPen(): void {
+    if (!this.activeObj) return;
+    // P022: Convert the temporary Polyline to a permanent Path.
+    const penPoints = this.currentPenPath ?? [];
+    this.canvas?.remove(this.activeObj);
+
+    if (penPoints.length > 1) {
+      const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
+      const d = penPoints
+        .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
+        .join(' ');
+      const finalPath = new Path(d, {
+        stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
+        selectable: true, evented: true,
+        strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
+        strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
+        opacity: this.opacityValue / 100,
+        strokeUniform: true,
+      });
+      ensureObjId(finalPath);
+      Object.assign(finalPath, { _sloppiness: this.sloppiness });
+      this.canvas?.add(finalPath);
+      this.canvas?.setActiveObject(finalPath);
+    }
+
+    this.currentPenPath = null;
+    this.activeObj = null;
+    this.markDirty();
+    if (this.canvas) this.canvas.selection = false; // pen tool stays in drawing mode
+    this.onBroadcastDraw(true);
+  }
+
+  private handleMouseUpShape(p: XY): void {
+    if (!this.activeObj) return;
+    const dx = Math.abs(p.x - this.startX), dy = Math.abs(p.y - this.startY);
+    if (dx < 3 && dy < 3) {
+      this.canvas?.remove(this.activeObj);
+    } else {
+      ensureObjId(this.activeObj);
+      this.activeObj.set({ selectable: true, evented: true });
+      if ((this.activeObj as FabricObject & { _isArrow?: boolean })._isArrow) {
+        const arrowObj = this.activeObj as Line & { _arrowHeadStart?: string; _arrowHeadEnd?: string; _arrowType?: string };
+        const headStart = (arrowObj._arrowHeadStart ?? this.arrowHeadStart) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+        const headEnd = (arrowObj._arrowHeadEnd ?? this.arrowHeadEnd) as 'none' | 'open' | 'triangle' | 'triangle-outline';
+        const arrowType = (arrowObj._arrowType ?? this.arrowType) as 'sharp' | 'curved' | 'elbow';
+        // Store sloppiness/origGeom on arrow line before building group
+        this.stampOrigGeomAndSloppiness(this.activeObj);
+        // Snap arrow endpoints to nearby shapes before building the group so
+        // that the resulting group carries _attachedFrom/_attachedTo IDs.
+        this.snapLineAttachment(this.activeObj);
+        this.buildArrowGroup(this.activeObj as Line, headStart, headEnd, arrowType);
+      } else {
+        // For rect / ellipse / line: snap endpoints first (on the Line object, before
+        // conversion) so snapped coordinates are baked into the sketch path geometry.
+        this.snapLineAttachment(this.activeObj);
+        // Then stamp origGeom (captures the snapped endpoints for re-conversion).
+        this.stampOrigGeomAndSloppiness(this.activeObj);
+
+        if (this.sloppiness !== 'architect') {
+          const sketch = this.tryConvertToSketch(this.activeObj, this.sloppiness);
+          if (sketch) {
+            this.canvas?.remove(this.activeObj);
+            this.activeObj = sketch;
+            this.canvas?.add(this.activeObj);
+          }
+        }
+        // Apply endpoint controls for the line tool (architect = Line object,
+        // artist/cartoonist = sketch Path with _origGeom).
+        if (this.currentTool === 'line') {
+          if (this.activeObj instanceof Line) {
+            this.applyLineEndpointControls(this.activeObj as Line);
+          } else {
+            this.applySketchLineEndpointControls(this.activeObj);
+          }
+        }
+        this.canvas?.setActiveObject(this.activeObj);
+      }
+      this.markDirty();
+    }
+    this.activeObj = null;
+  }
+
   private onMouseUp(e: TPointerEventInfo): void {
     if (!this.isDrawing) return;
     this.isDrawing = false;
 
-      if (this.currentTool === 'pen' && this.activeObj) {
-        // P022: Convert the temporary Polyline to a permanent Path.
-        const penPoints = this.currentPenPath ?? [];
-        this.canvas?.remove(this.activeObj);
+    if (this.currentTool === 'pen' && this.activeObj) {
+      this.handleMouseUpPen();
+      return;
+    }
 
-        if (penPoints.length > 1) {
-          const sloppyOpts = this.getSloppinessOptions(this.sloppiness);
-          const d = penPoints
-            .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
-            .join(' ');
-          const finalPath = new Path(d, {
-            stroke: this.strokeColor, strokeWidth: this.strokeWidth, fill: 'transparent',
-            selectable: true, evented: true,
-            strokeLineCap: sloppyOpts.strokeLineCap, strokeLineJoin: sloppyOpts.strokeLineJoin,
-            strokeDashArray: this.getDashArray(this.strokeDashType, this.strokeWidth),
-            opacity: this.opacityValue / 100,
-            strokeUniform: true,
-          });
-          ensureObjId(finalPath);
-          Object.assign(finalPath, { _sloppiness: this.sloppiness });
-          this.canvas?.add(finalPath);
-          this.canvas?.setActiveObject(finalPath);
-        }
-
-        this.currentPenPath = null;
-        this.activeObj = null;
-        this.markDirty();
-        if (this.canvas) this.canvas.selection = false; // pen tool stays in drawing mode
-        this.onBroadcastDraw(true);
-        return;
-      }
-
-      if (this.activeObj) {
-        // Fabric v7: scenePoint is supplied directly on the event info object
-        const p = e.scenePoint;
-        const dx = Math.abs(p.x - this.startX), dy = Math.abs(p.y - this.startY);
-        if (dx < 3 && dy < 3) {
-          this.canvas?.remove(this.activeObj);
-        } else {
-          ensureObjId(this.activeObj);
-          this.activeObj.set({ selectable: true, evented: true });
-          if ((this.activeObj as FabricObject & { _isArrow?: boolean })._isArrow) {
-            const arrowObj = this.activeObj as Line & { _arrowHeadStart?: string; _arrowHeadEnd?: string; _arrowType?: string };
-            const headStart = (arrowObj._arrowHeadStart ?? this.arrowHeadStart) as 'none' | 'open' | 'triangle' | 'triangle-outline';
-            const headEnd = (arrowObj._arrowHeadEnd ?? this.arrowHeadEnd) as 'none' | 'open' | 'triangle' | 'triangle-outline';
-            const arrowType = (arrowObj._arrowType ?? this.arrowType) as 'sharp' | 'curved' | 'elbow';
-            // Store sloppiness/origGeom on arrow line before building group
-            this.stampOrigGeomAndSloppiness(this.activeObj);
-            // Snap arrow endpoints to nearby shapes before building the group so
-            // that the resulting group carries _attachedFrom/_attachedTo IDs.
-            this.snapLineAttachment(this.activeObj);
-            this.buildArrowGroup(this.activeObj as Line, headStart, headEnd, arrowType);
-          } else {
-            // For rect / ellipse / line: snap endpoints first (on the Line object, before
-            // conversion) so snapped coordinates are baked into the sketch path geometry.
-            this.snapLineAttachment(this.activeObj);
-            // Then stamp origGeom (captures the snapped endpoints for re-conversion).
-            this.stampOrigGeomAndSloppiness(this.activeObj);
-
-            if (this.sloppiness !== 'architect') {
-              const sketch = this.tryConvertToSketch(this.activeObj, this.sloppiness);
-              if (sketch) {
-                this.canvas?.remove(this.activeObj);
-                this.activeObj = sketch;
-                this.canvas?.add(this.activeObj);
-              }
-            }
-            // Apply endpoint controls for the line tool (architect = Line object,
-            // artist/cartoonist = sketch Path with _origGeom).
-            if (this.currentTool === 'line') {
-              if (this.activeObj instanceof Line) {
-                this.applyLineEndpointControls(this.activeObj as Line);
-              } else {
-                this.applySketchLineEndpointControls(this.activeObj);
-              }
-            }
-            this.canvas?.setActiveObject(this.activeObj);
-          }
-          this.markDirty();
-        }
-        this.activeObj = null;
-      }
+    if (this.activeObj) {
+      // Fabric v7: scenePoint is supplied directly on the event info object
+      const p = e.scenePoint;
+      this.handleMouseUpShape(p);
+    }
 
     if (this.canvas) this.canvas.selection = this.currentTool === 'select';
     this.canvas?.requestRenderAll(); // P022: batch via rAF
@@ -2300,13 +2340,13 @@ export class CanvasEngine {
 
       const d1 = distToBox(x1, y1);
       if (d1 < SNAP_RADIUS && (!bestFrom || d1 < bestFrom.dist)) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
         bestFrom = { id, anchor, anchorOffX: anchor.x - center.x, anchorOffY: anchor.y - center.y, dist: d1 };
       }
 
       const d2 = distToBox(x2, y2);
       if (d2 < SNAP_RADIUS && (!bestTo || d2 < bestTo.dist)) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
         bestTo = { id, anchor, anchorOffX: anchor.x - center.x, anchorOffY: anchor.y - center.y, dist: d2 };
       }
     }
@@ -2417,7 +2457,7 @@ export class CanvasEngine {
         };
         const d1 = distToBox(x1, y1);
         if (d1 < SNAP_RADIUS && d1 < fromDist) {
-          const anchor = CanvasEngine.nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
+          const anchor = nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
           ag._attachedFrom = id;
           ag._attachedFromAnchorX = anchor.x - center.x;
           ag._attachedFromAnchorY = anchor.y - center.y;
@@ -2428,7 +2468,7 @@ export class CanvasEngine {
         }
         const d2 = distToBox(x2, y2);
         if (d2 < SNAP_RADIUS && d2 < toDist) {
-          const anchor = CanvasEngine.nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
+          const anchor = nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
           ag._attachedTo = id;
           ag._attachedToAnchorX = anchor.x - center.x;
           ag._attachedToAnchorY = anchor.y - center.y;
@@ -2524,7 +2564,7 @@ export class CanvasEngine {
       };
       const d1 = distToBox(x1sp, y1sp);
       if (d1 < SNAP_RADIUS_SP && d1 < fromDistSp) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x1sp, y1sp, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x1sp, y1sp, bLeft, bTop, bRight, bBottom);
         sp._attachedFrom = id;
         sp._attachedFromAnchorX = anchor.x - center.x;
         sp._attachedFromAnchorY = anchor.y - center.y;
@@ -2535,7 +2575,7 @@ export class CanvasEngine {
       }
       const d2 = distToBox(x2sp, y2sp);
       if (d2 < SNAP_RADIUS_SP && d2 < toDistSp) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x2sp, y2sp, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x2sp, y2sp, bLeft, bTop, bRight, bBottom);
         sp._attachedTo = id;
         sp._attachedToAnchorX = anchor.x - center.x;
         sp._attachedToAnchorY = anchor.y - center.y;
@@ -2566,34 +2606,7 @@ export class CanvasEngine {
     }
   }
 
-  /**
-   * Return the nearest point on the perimeter of an axis-aligned bounding box.
-   * If the query point is inside the box it is projected to the nearest edge;
-   * if it is outside, it is clamped to the nearest border point.
-   */
-  private static nearestPointOnBounds(
-    px: number, py: number,
-    left: number, top: number, right: number, bottom: number,
-  ): { x: number; y: number } {
-    const inside = px >= left && px <= right && py >= top && py <= bottom;
-    if (inside) {
-      // Project to the nearest edge.
-      const dLeft = px - left;
-      const dRight = right - px;
-      const dTop = py - top;
-      const dBottom = bottom - py;
-      const minD = Math.min(dLeft, dRight, dTop, dBottom);
-      if (minD === dLeft) return { x: left, y: py };
-      if (minD === dRight) return { x: right, y: py };
-      if (minD === dTop) return { x: px, y: top };
-      return { x: px, y: bottom };
-    }
-    // Clamp to the nearest point on the perimeter.
-    return {
-      x: Math.max(left, Math.min(right, px)),
-      y: Math.max(top, Math.min(bottom, py)),
-    };
-  }
+
 
   /**
    * Schedule a connector-follow update for `movedObj` on the next animation frame.
