@@ -156,7 +156,8 @@ const TWO_FACTOR_TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes
  * Deletes any existing tokens for that email.
  */
 export async function createTwoFactorToken(email: string): Promise<string> {
-  const token = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+  const { randomInt } = await import("node:crypto");
+  const token = randomInt(100000, 1000000).toString(); // 6-digit CSPRNG token
   const expires = new Date(Date.now() + TWO_FACTOR_TOKEN_TTL_MS);
 
   await prisma.$transaction([
