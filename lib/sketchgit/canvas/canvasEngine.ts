@@ -25,6 +25,8 @@ import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
 import { ensureObjId } from '../git/objectIdTracker';
 import { logger } from '../logger';
 import { renderMermaidToDataUrl } from './mermaidRenderer';
+import { nearestPointOnBounds } from './snapEngine';
+
 
 /** Shared type for arrow Group objects carrying endpoint + style metadata. */
 type ArrowGroupExt = FabricObject & {
@@ -2338,13 +2340,13 @@ export class CanvasEngine {
 
       const d1 = distToBox(x1, y1);
       if (d1 < SNAP_RADIUS && (!bestFrom || d1 < bestFrom.dist)) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
         bestFrom = { id, anchor, anchorOffX: anchor.x - center.x, anchorOffY: anchor.y - center.y, dist: d1 };
       }
 
       const d2 = distToBox(x2, y2);
       if (d2 < SNAP_RADIUS && (!bestTo || d2 < bestTo.dist)) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
         bestTo = { id, anchor, anchorOffX: anchor.x - center.x, anchorOffY: anchor.y - center.y, dist: d2 };
       }
     }
@@ -2455,7 +2457,7 @@ export class CanvasEngine {
         };
         const d1 = distToBox(x1, y1);
         if (d1 < SNAP_RADIUS && d1 < fromDist) {
-          const anchor = CanvasEngine.nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
+          const anchor = nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
           ag._attachedFrom = id;
           ag._attachedFromAnchorX = anchor.x - center.x;
           ag._attachedFromAnchorY = anchor.y - center.y;
@@ -2466,7 +2468,7 @@ export class CanvasEngine {
         }
         const d2 = distToBox(x2, y2);
         if (d2 < SNAP_RADIUS && d2 < toDist) {
-          const anchor = CanvasEngine.nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
+          const anchor = nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
           ag._attachedTo = id;
           ag._attachedToAnchorX = anchor.x - center.x;
           ag._attachedToAnchorY = anchor.y - center.y;
@@ -2562,7 +2564,7 @@ export class CanvasEngine {
       };
       const d1 = distToBox(x1sp, y1sp);
       if (d1 < SNAP_RADIUS_SP && d1 < fromDistSp) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x1sp, y1sp, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x1sp, y1sp, bLeft, bTop, bRight, bBottom);
         sp._attachedFrom = id;
         sp._attachedFromAnchorX = anchor.x - center.x;
         sp._attachedFromAnchorY = anchor.y - center.y;
@@ -2573,7 +2575,7 @@ export class CanvasEngine {
       }
       const d2 = distToBox(x2sp, y2sp);
       if (d2 < SNAP_RADIUS_SP && d2 < toDistSp) {
-        const anchor = CanvasEngine.nearestPointOnBounds(x2sp, y2sp, bLeft, bTop, bRight, bBottom);
+        const anchor = nearestPointOnBounds(x2sp, y2sp, bLeft, bTop, bRight, bBottom);
         sp._attachedTo = id;
         sp._attachedToAnchorX = anchor.x - center.x;
         sp._attachedToAnchorY = anchor.y - center.y;
@@ -2604,34 +2606,7 @@ export class CanvasEngine {
     }
   }
 
-  /**
-   * Return the nearest point on the perimeter of an axis-aligned bounding box.
-   * If the query point is inside the box it is projected to the nearest edge;
-   * if it is outside, it is clamped to the nearest border point.
-   */
-  private static nearestPointOnBounds(
-    px: number, py: number,
-    left: number, top: number, right: number, bottom: number,
-  ): { x: number; y: number } {
-    const inside = px >= left && px <= right && py >= top && py <= bottom;
-    if (inside) {
-      // Project to the nearest edge.
-      const dLeft = px - left;
-      const dRight = right - px;
-      const dTop = py - top;
-      const dBottom = bottom - py;
-      const minD = Math.min(dLeft, dRight, dTop, dBottom);
-      if (minD === dLeft) return { x: left, y: py };
-      if (minD === dRight) return { x: right, y: py };
-      if (minD === dTop) return { x: px, y: top };
-      return { x: px, y: bottom };
-    }
-    // Clamp to the nearest point on the perimeter.
-    return {
-      x: Math.max(left, Math.min(right, px)),
-      y: Math.max(top, Math.min(bottom, py)),
-    };
-  }
+
 
   /**
    * Schedule a connector-follow update for `movedObj` on the next animation frame.

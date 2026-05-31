@@ -116,6 +116,8 @@ vi.mock('fabric', () => ({
 
 import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group, FabricObject } from 'fabric';
 import { CanvasEngine } from './canvasEngine';
+import { nearestPointOnBounds } from './snapEngine';
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -2173,30 +2175,22 @@ describe('CanvasEngine – connector snapping and following', () => {
 
   // ── nearestPointOnBounds helper ────────────────────────────────────────────
 
-  it('nearestPointOnBounds: point outside returns clamped border point', () => {
-    const eng = CanvasEngine as unknown as {
-      nearestPointOnBounds: (px: number, py: number, l: number, t: number, r: number, b: number) => { x: number; y: number };
-    };
-    // Point to the right of the box.
-    expect(eng.nearestPointOnBounds(120, 50, 0, 0, 100, 100)).toEqual({ x: 100, y: 50 });
+  it('nearestPointOnBounds: point outside returns clamped border point', () => {    // Point to the right of the box.
+    expect(nearestPointOnBounds(120, 50, 0, 0, 100, 100)).toEqual({ x: 100, y: 50 });
     // Point above the box.
-    expect(eng.nearestPointOnBounds(50, -20, 0, 0, 100, 100)).toEqual({ x: 50, y: 0 });
+    expect(nearestPointOnBounds(50, -20, 0, 0, 100, 100)).toEqual({ x: 50, y: 0 });
     // Point to the bottom-right corner region.
-    expect(eng.nearestPointOnBounds(110, 110, 0, 0, 100, 100)).toEqual({ x: 100, y: 100 });
+    expect(nearestPointOnBounds(110, 110, 0, 0, 100, 100)).toEqual({ x: 100, y: 100 });
   });
 
-  it('nearestPointOnBounds: point inside is projected to nearest edge', () => {
-    const eng = CanvasEngine as unknown as {
-      nearestPointOnBounds: (px: number, py: number, l: number, t: number, r: number, b: number) => { x: number; y: number };
-    };
-    // Closest to top edge (y=0, dist=5).
-    expect(eng.nearestPointOnBounds(50, 5, 0, 0, 100, 100)).toEqual({ x: 50, y: 0 });
+  it('nearestPointOnBounds: point inside is projected to nearest edge', () => {    // Closest to top edge (y=0, dist=5).
+    expect(nearestPointOnBounds(50, 5, 0, 0, 100, 100)).toEqual({ x: 50, y: 0 });
     // Closest to left edge (x=0, dist=3).
-    expect(eng.nearestPointOnBounds(3, 50, 0, 0, 100, 100)).toEqual({ x: 0, y: 50 });
+    expect(nearestPointOnBounds(3, 50, 0, 0, 100, 100)).toEqual({ x: 0, y: 50 });
     // Closest to right edge (x=100, dist=4).
-    expect(eng.nearestPointOnBounds(96, 50, 0, 0, 100, 100)).toEqual({ x: 100, y: 50 });
+    expect(nearestPointOnBounds(96, 50, 0, 0, 100, 100)).toEqual({ x: 100, y: 50 });
     // Closest to bottom edge (y=100, dist=2).
-    expect(eng.nearestPointOnBounds(50, 98, 0, 0, 100, 100)).toEqual({ x: 50, y: 100 });
+    expect(nearestPointOnBounds(50, 98, 0, 0, 100, 100)).toEqual({ x: 50, y: 100 });
   });
 
   // ── Artist / cartoonist style snap ─────────────────────────────────────────
