@@ -41,7 +41,7 @@ While the recently added grouping and alignment tools help organize existing obj
 
 ### Proposed Changes
 - **Canvas Engine**:
-  - Render a scalable, lightweight background grid on the Fabric.js canvas (using pattern brushes or optimized rendering).
+  - Render a scalable, lightweight background grid on the Fabric.js canvas using `fabric.Pattern` or highly optimized custom background drawing (avoiding less performant pattern brushes to ensure high frame rates).
   - Implement collision and coordinate rounding logic during object creation, moving, and scaling events (`object:moving`, `object:scaling`) to snap objects to the nearest grid intersection.
 - **Frontend UI**:
   - Add a "Grid Settings" dropdown in the top toolbar to toggle grid visibility, toggle snapping, and adjust grid size (e.g., 10px, 20px, 50px).
@@ -73,6 +73,7 @@ Network instability is a reality for many users (e.g., working on a train, exper
 - **Local Persistence**: Utilize IndexedDB (via a wrapper like `idb`) to locally store the current room state, including uncommitted drawing deltas and pending commits.
 - **State Machine**: Enhance the WebSocket connection manager to gracefully handle disconnected states, switching the UI to "Offline Mode".
 - **Sync Engine**: When the connection is restored, the client will push locally stored changes to the server. The server's 3-way merge engine will treat offline changes identically to branch merges, seamlessly resolving conflicts if other users modified the canvas during the offline period.
+- **Base Commit Tracking**: Explicitly track the base commit SHA on the client prior to disconnection to facilitate robust 3-way merges on the server upon reconnection, using the base commit SHA as the common ancestor.
 - **Frontend UI**: Add clear connection status indicators (Online, Offline, Syncing) to the top toolbar.
 
 ### Definitions of Done
