@@ -1591,11 +1591,12 @@ export class CanvasEngine {
     this.pushHistory();
 
     const group = o as Group;
-    // Snapshot items before destroying — destroy() restores each item's
-    // absolute canvas transform (undoing the group's local offset).
     const items = group.getObjects() as FabricObject[];
-    group.destroy();
 
+    // Disassociate items from group which automatically updates their positioning using final transforms
+    group.removeAll();
+
+    // Remove group from canvas
     this.canvas.remove(group);
 
     for (const item of items) {

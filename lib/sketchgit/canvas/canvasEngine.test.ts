@@ -3063,8 +3063,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         removeAll: removeAllMock,
         destroy: vi.fn(),
         set: vi.fn(),
-        setCoords: vi.fn()
-      };
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
+      } as any;
 
       mockCanvasInstance.getObjects.mockReturnValue([group]);
       mockCanvasInstance.getActiveObject.mockReturnValue(group);
