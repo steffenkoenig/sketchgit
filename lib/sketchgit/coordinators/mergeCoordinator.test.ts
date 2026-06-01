@@ -331,4 +331,171 @@ describe('MergeCoordinator', () => {
       expect(ctx.collab.sendCommit).not.toHaveBeenCalled();
     });
   });
+
+  // ─── Mermaid and UI formatting ───────────────────────────────────────────
+
+  describe('Mermaid conflict handling and value formatting', () => {
+    it('resolveAllOurs and resolveAllTheirs handles mermaid line conflicts', () => {
+      const conflictPayload = {
+        conflicts: [
+          {
+            label: 'mermaid',
+            oursObj: { _id: 'obj1', _mermaidCode: 'graph TD' },
+            propConflicts: [
+              {
+                prop: '_mermaidCode',
+                ours: 'graph TD',
+                theirs: 'graph LR',
+                chosen: 'theirs' as const,
+                mermaidLineConflicts: [
+                  { lineNumber: 1, ours: 'A', theirs: 'B', chosen: 'theirs' as const }
+                ]
+              },
+            ],
+          },
+        ],
+        cleanObjects: [null],
+        oursData: '{"objects":[]}',
+        mergedCanvasProps: {},
+        branchNames: {
+          ours: 'main', theirs: 'feature',
+          targetBranch: 'main', sourceBranch: 'feature',
+          targetSHA: 'sha0', sourceSHA: 'sha1',
+        },
+      };
+
+      ctx = makeCtx({ conflicts: conflictPayload });
+      coord = new MergeCoordinator(ctx, refresh);
+      coord.openMergeModal();
+      coord.doMerge();
+
+      coord.resolveAllOurs();
+      let pm = (coord as any).pendingMerge;
+      expect(pm.conflicts[0].propConflicts[0].chosen).toBe('ours');
+      expect(pm.conflicts[0].propConflicts[0].mermaidLineConflicts[0].chosen).toBe('ours');
+
+      coord.resolveAllTheirs();
+      pm = (coord as any).pendingMerge;
+      expect(pm.conflicts[0].propConflicts[0].chosen).toBe('theirs');
+      expect(pm.conflicts[0].propConflicts[0].mermaidLineConflicts[0].chosen).toBe('theirs');
+    });
+
+    it('applyMergeResolution reconstructs mermaidCode correctly', () => {
+      const conflictPayload = {
+        conflicts: [
+          {
+            label: 'mermaid',
+            oursObj: { _id: 'obj1', _mermaidCode: 'graph TD' },
+            propConflicts: [
+              {
+                prop: '_mermaidCode',
+                ours: 'graph TD',
+                theirs: 'graph LR',
+                chosen: 'theirs' as const,
+                mermaidLineConflicts: [
+                  { lineNumber: 2, ours: 'graph TD\nA', theirs: 'graph LR\nB', chosen: 'theirs' as const }
+                ],
+                mermaidPartialLines: [
+                  'title Diagram',
+                  null,
+                  'C'
+                ]
+              },
+            ],
+          },
+        ],
+        cleanObjects: [null],
+        oursData: '{"objects":[]}',
+        mergedCanvasProps: {},
+        branchNames: {
+          ours: 'main', theirs: 'feature',
+          targetBranch: 'main', sourceBranch: 'feature',
+          targetSHA: 'sha0', sourceSHA: 'sha1',
+        },
+      };
+
+      ctx = makeCtx({ conflicts: conflictPayload });
+      coord = new MergeCoordinator(ctx, refresh);
+      coord.openMergeModal();
+      coord.doMerge();
+      coord.applyMergeResolution();
+
+      expect(ctx.canvas.loadCanvasData).toHaveBeenCalledWith(
+        expect.stringContaining('Diagram\\ngraph LR\\nB\\nC')
+      );
+    });
+
+    it('tests _createPropValueElement with special types (colors, numbers, complex data)', () => {
+      ctx = makeCtx();
+      coord = new MergeCoordinator(ctx, refresh);
+
+      // We can access private methods using any cast
+      const fn = (coord as any)._createPropValueElement.bind(coord);
+
+      // null / undefined
+      expect(fn('stroke', null).textContent).toBe('—');
+
+      // Colors
+      const hexColor = fn('stroke', '#ff0000');
+      expect(hexColor.textContent).toBe('#ff0000');
+      expect(hexColor.querySelector('.color-swatch')).toBeDefined();
+
+      const rgbColor = fn('fill', 'rgb(255,0,0)');
+      expect(rgbColor.textContent).toBe('rgb(255,0,0)');
+
+      const emptyColor = fn('fill', '');
+      expect(emptyColor.textContent).toBe('transparent');
+
+      // Numbers
+      expect(fn('strokeWidth', 2.3456).textContent).toBe('2.35');
+
+      // Complex data
+      expect(fn('path', 'M 0 0').textContent).toBe('[complex data]');
+      expect(fn('_groupObjects', '[]').textContent).toBe('[complex data]');
+
+      // Mermaid code
+      const longMermaid = fn('_mermaidCode', 'A'.repeat(100));
+      expect(longMermaid.querySelector('code').textContent).toContain('…');
+
+      // Text truncation
+      const longText = fn('text', 'A'.repeat(50));
+      expect(longText.textContent).toContain('…');
+    });
+
+    it('tests UI interactions and rebuilding UI', () => {
+      const conflictPayload = {
+        conflicts: [
+          {
+            label: 'rect',
+            oursObj: { _id: 'obj1', fill: 'red' },
+            propConflicts: [
+              { prop: 'fill', ours: 'red', theirs: 'blue', chosen: 'ours' as const },
+            ],
+          },
+        ],
+        cleanObjects: [null],
+        oursData: '{"objects":[]}',
+        mergedCanvasProps: {},
+        branchNames: {
+          ours: 'main', theirs: 'feature',
+          targetBranch: 'main', sourceBranch: 'feature',
+          targetSHA: 'sha0', sourceSHA: 'sha1',
+        },
+      };
+
+      ctx = makeCtx({ conflicts: conflictPayload });
+      coord = new MergeCoordinator(ctx, refresh);
+      coord.openMergeModal();
+      coord.doMerge();
+
+      // Trigger selection of choice
+      const optionEl = document.querySelector('.prop-option') as HTMLElement;
+      expect(optionEl).toBeDefined();
+      optionEl.click();
+
+      // Trigger rebuild UI
+      (coord as any)._rebuildConflictChoiceUI();
+      expect(mockOpenModal).toHaveBeenCalledWith('conflictModal');
+    });
+  });
 });
