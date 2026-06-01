@@ -3114,6 +3114,7 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
+        setCoords: vi.fn(),
         destroy: vi.fn()
       };
 
@@ -3137,6 +3138,7 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
+        setCoords: vi.fn(),
         destroy: vi.fn()
       };
 
@@ -3159,6 +3161,7 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
+        setCoords: vi.fn(),
         destroy: vi.fn()
       };
 
@@ -3181,6 +3184,7 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
+        setCoords: vi.fn(),
         destroy: vi.fn()
       };
 
@@ -3203,6 +3207,7 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
+        setCoords: vi.fn(),
         destroy: vi.fn()
       };
 
@@ -3225,6 +3230,7 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
+        setCoords: vi.fn(),
         destroy: vi.fn()
       };
 
