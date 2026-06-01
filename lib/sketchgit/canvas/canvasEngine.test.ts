@@ -3036,7 +3036,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
       const objects = [rect, circle];
 
       mockCanvasInstance.getObjects.mockReturnValue(objects);
-      const activeSelection = { type: 'activeSelection', getObjects: () => objects, removeAll: vi.fn().mockReturnValue(objects), destroy: vi.fn() };
+      const activeSelection = { type: 'activeSelection', getObjects: () => objects, removeAll: vi.fn().mockReturnValue(objects), destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn() };
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
 
       // stub pushHistory to just trigger the mock, or we can just mock pushHistory
@@ -3059,12 +3061,13 @@ describe('CanvasEngine – endpoint selection controls', () => {
         type: 'group',
         _id: 'g1',
         _isArrow: false,
-        getObjects: () => [rect, circle],
+        getObjects: vi.fn(() => [rect, circle]),
         removeAll: removeAllMock,
         destroy: vi.fn(),
         set: vi.fn(),
-        setCoords: vi.fn()
-      };
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
+      } as any;
 
       mockCanvasInstance.getObjects.mockReturnValue([group]);
       mockCanvasInstance.getActiveObject.mockReturnValue(group);
@@ -3087,6 +3090,27 @@ describe('CanvasEngine – endpoint selection controls', () => {
     it('does nothing if no selection is made for grouping', () => {
       mockCanvasInstance.getActiveObject.mockReturnValue(null);
       engine.groupSelection();
+      expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+    });
+
+    it('does nothing if active object is not an active selection for grouping', () => {
+      const rect = makeFabricObject({ type: 'rect', _id: 'r1' });
+      mockCanvasInstance.getActiveObject.mockReturnValue(rect);
+      engine.groupSelection();
+      expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+    });
+
+    it('does nothing if active object is not a group for ungrouping', () => {
+      const rect = makeFabricObject({ type: 'rect', _id: 'r1' });
+      mockCanvasInstance.getActiveObject.mockReturnValue(rect);
+      engine.ungroupSelection();
+      expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+    });
+
+    it('does nothing if active object is an arrow group for ungrouping', () => {
+      const arrowGrp = makeFabricObject({ type: 'group', _isArrow: true, _id: 'a1' });
+      mockCanvasInstance.getActiveObject.mockReturnValue(arrowGrp);
+      engine.ungroupSelection();
       expect(mockCanvasInstance.add).not.toHaveBeenCalled();
     });
   });
@@ -3114,7 +3138,8 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn(),
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3137,7 +3162,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn(),
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3159,7 +3186,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3181,7 +3210,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3203,7 +3234,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3225,7 +3258,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3234,6 +3269,82 @@ describe('CanvasEngine – endpoint selection controls', () => {
 
       expect(rect1.set).toHaveBeenCalled();
       expect(rect2.set).toHaveBeenCalled();
+    });
+    it('aligns selected objects in a group', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const mockGroup = {
+        type: 'group',
+        _isArrow: false,
+        getObjects: () => [rect1, rect2],
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(mockGroup);
+      (engine as any).pushHistory = vi.fn();
+      engine.alignSelection('left');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
+    });
+
+    it('does nothing if group has fewer than two objects', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const mockGroup = {
+        type: 'group',
+        _isArrow: false,
+        getObjects: () => [rect1],
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(mockGroup);
+      (engine as any).pushHistory = vi.fn();
+      engine.alignSelection('left');
+
+      expect(rect1.set).not.toHaveBeenCalled();
+      expect((engine as any).pushHistory).not.toHaveBeenCalled();
+    });
+
+    it('does nothing if active object is a single object', () => {
+      const rect1 = makeFabricObject({ type: 'rect', left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(rect1);
+      (engine as any).pushHistory = vi.fn();
+      engine.alignSelection('left');
+
+      expect(rect1.set).not.toHaveBeenCalled();
+      expect((engine as any).pushHistory).not.toHaveBeenCalled();
+    });
+
+    it('does nothing if active object is an arrow group', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const mockGroup = {
+        type: 'group',
+        _isArrow: true,
+        getObjects: () => [rect1, rect2],
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(mockGroup);
+      (engine as any).pushHistory = vi.fn();
+      engine.alignSelection('left');
+
+      expect(rect1.set).not.toHaveBeenCalled();
+      expect((engine as any).pushHistory).not.toHaveBeenCalled();
     });
   });
 });

@@ -11,3 +11,9 @@ If a developer reports that their Pull Request is failing the "License complianc
 1. **Identify the Dependency:** Have the developer review the GitHub Actions log to identify which new or updated package is failing the check.
 2. **Check Policy:** Refer them to `reports/license-policy.md`.
 3. **Resolution:** The developer must either switch to an alternative package with an allowed license, or request an exception (which requires a PR to update the policy and the `check-licenses.mjs` script).
+
+## Grouping and Alignment UI Issues (Milestone 1.1)
+If a user reports that they are unable to align or ungroup items on the canvas, or that properties are overlapping:
+1. **Selection:** Verify the user is attempting to align elements as part of an ActiveSelection or a generic Group (Arrow groups cannot be aligned internally).
+2. **Keyboard Access:** Users can also execute grouping operations via keyboard shortcuts (`Ctrl+G` / `Cmd+G`).
+3. **Merge Conflicts:** If grouped elements display out-of-order visually, check timeline merge nodes. 3-way merge conflict resolution on deeply nested grouped items defaults to keeping the base properties visually intact until explicitly changed by the end-user.
