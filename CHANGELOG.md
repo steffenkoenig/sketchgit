@@ -6,6 +6,33 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.7.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.6.0...sketchgit-next-v0.7.0) (2026-06-01)
+
+
+### Features
+
+* [milestone 1.1] Implement deep property merging for grouped objects ([f1c4f04](https://github.com/steffenkoenig/sketchgit/commit/f1c4f0420e16f31b07e22c1964524a0d768cb2b7))
+* [milestone 1.1] Implement deep property merging for grouped objects ([647b842](https://github.com/steffenkoenig/sketchgit/commit/647b842322eb05c17d671a6f8b5eccc9ac0aabe6))
+* [milestone 1.1] Implement deep property merging for grouped objects ([cf69414](https://github.com/steffenkoenig/sketchgit/commit/cf69414a2cb715a674d9457edc95b9efe82202f4))
+* add implementation plans for next step improvements ([d1f528f](https://github.com/steffenkoenig/sketchgit/commit/d1f528f48eeeed383b1202a3ae8b2b5b1b89fe49))
+* add next steps implementation plans ([16c03ce](https://github.com/steffenkoenig/sketchgit/commit/16c03ced22a1175a9fdf3db802b7c8adfcce9012))
+
+
+### Bug Fixes
+
+* [milestone 1.1] resolve ungrouping and alignment bugs ([b6b05d6](https://github.com/steffenkoenig/sketchgit/commit/b6b05d622b9b4b98398da32486193bb1b6295eb7))
+* [milestone 1.1] resolve ungrouping and alignment bugs ([f26de02](https://github.com/steffenkoenig/sketchgit/commit/f26de0274618f26b97a014e761a61cb8e3d81eea))
+* [milestone 1.1] resolve ungrouping and alignment bugs ([b7b3665](https://github.com/steffenkoenig/sketchgit/commit/b7b3665af3c4f9690d35d4f801616f6db7456c50))
+* [milestone 1.1] resolve ungrouping and alignment bugs ([bf23bd6](https://github.com/steffenkoenig/sketchgit/commit/bf23bd6d3b646bb2edb18567e4bf2a10b1b1c214))
+* [milestone 1.1] resolve ungrouping and alignment bugs ([5a59a17](https://github.com/steffenkoenig/sketchgit/commit/5a59a17d64de349fcf2edd62c886edf027662129))
+* resolve comments on PR 188 (revert next-env.d.ts, restore branch coverage threshold to 62%, and expand unit tests) ([e9c83f8](https://github.com/steffenkoenig/sketchgit/commit/e9c83f8ada297b0170d37dba142c87d01230e1ec))
+* resolve ungrouping matrix decomposition and disassociation bugs ([c100e6b](https://github.com/steffenkoenig/sketchgit/commit/c100e6baf7dc041ce34446eb8399b7894d589fd8))
+
+
+### Documentation
+
+* resolve comments on PR 187 (optimize grid system performance and add base commit tracking) ([21c73c3](https://github.com/steffenkoenig/sketchgit/commit/21c73c3b011b45035dbc4f39772d372517c78a6b))
+
 ## [0.6.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.5.3...sketchgit-next-v0.6.0) (2026-05-31)
 
 
