@@ -3063,8 +3063,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         removeAll: removeAllMock,
         destroy: vi.fn(),
         set: vi.fn(),
-        setCoords: vi.fn()
-      };
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
+      } as any;
 
       mockCanvasInstance.getObjects.mockReturnValue([group]);
       mockCanvasInstance.getActiveObject.mockReturnValue(group);
@@ -3114,7 +3115,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3137,7 +3140,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3159,7 +3164,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3181,7 +3188,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3203,7 +3212,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
@@ -3225,7 +3236,9 @@ describe('CanvasEngine – endpoint selection controls', () => {
         left: 100, top: 100, width: 150, height: 150,
         set: vi.fn(),
         removeAll: vi.fn(),
-        destroy: vi.fn()
+        destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn()
       };
 
       mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
