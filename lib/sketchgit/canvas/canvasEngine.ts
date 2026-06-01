@@ -1593,19 +1593,8 @@ export class CanvasEngine {
     const group = o as Group;
     const items = group.getObjects() as FabricObject[];
 
-    // In Fabric v7, we recalculate positions before removing to maintain relative positioning
-    // as destroy() no longer exists for groups to do this automatically.
-    for (const item of items) {
-      const transformMatrix = item.calcTransformMatrix();
-      const point = new Point(transformMatrix[4], transformMatrix[5]);
-      item.set({
-          left: point.x,
-          top: point.y,
-          scaleX: transformMatrix[0],
-          scaleY: transformMatrix[3],
-      });
-      item.setCoords();
-    }
+    // Disassociate items from group which automatically updates their positioning using final transforms
+    group.removeAll();
 
     // Remove group from canvas
     this.canvas.remove(group);

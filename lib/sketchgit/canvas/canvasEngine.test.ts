@@ -3080,6 +3080,7 @@ describe('CanvasEngine – endpoint selection controls', () => {
 
       engine.ungroupSelection();
 
+      expect(removeAllMock).toHaveBeenCalled();
       expect(addMock).toHaveBeenCalled();
       expect((engine as any).pushHistory).toHaveBeenCalled();
     });
