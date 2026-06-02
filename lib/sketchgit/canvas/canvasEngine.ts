@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * canvasEngine – encapsulates Fabric.js canvas setup and all drawing tools.
  *
@@ -1594,7 +1596,7 @@ export class CanvasEngine {
     // Snapshot items before destroying — destroy() restores each item's
     // absolute canvas transform (undoing the group's local offset).
     const items = group.getObjects() as FabricObject[];
-    group.destroy();
+    group.removeAll();
 
     this.canvas.remove(group);
 

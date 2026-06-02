@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * Unit tests for the P043 graceful-shutdown drain helpers.
  *

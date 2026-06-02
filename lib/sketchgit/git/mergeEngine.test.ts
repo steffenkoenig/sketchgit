@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 import { describe, it, expect } from 'vitest';
 import { findLCA, getObjLabel, threeWayMerge, mergeTextLineByLine, computeMermaidLineMergeDetails } from './mergeEngine';
 import { Commit } from '../types';

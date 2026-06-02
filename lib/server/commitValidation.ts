@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * P057 – Server-side validation for incoming commit WebSocket messages.
  *
