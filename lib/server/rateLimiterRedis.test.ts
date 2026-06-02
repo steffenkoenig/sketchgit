@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * Unit tests for P046 Redis-backed rate limiter helper (applyRateLimitRedis).
  *

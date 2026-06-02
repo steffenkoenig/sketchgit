@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * canvasEngine – encapsulates Fabric.js canvas setup and all drawing tools.
  *

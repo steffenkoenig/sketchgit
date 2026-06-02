@@ -171,8 +171,34 @@ export function computeMermaidLineMergeDetails(
  * Returns the merged array string, or `null` if there is an unresolvable conflict
  * inside the group.
  */
+function processGroupChild(id: string, b: unknown, o: unknown, t: unknown, result: unknown[]): boolean {
+  if (!o && !t) return true;
+  if (o && !t) {
+    if (!b) result.push(o);
+    return true;
+  }
+  if (!o && t) {
+    if (!b) result.push(t);
+    return true;
+  }
+  const bStr = b ? JSON.stringify(b) : null;
+  const oStr = o ? JSON.stringify(o) : null;
+  const tStr = t ? JSON.stringify(t) : null;
+  const oursChanged = bStr !== oStr;
+  const theirsChanged = bStr !== tStr;
+
+  if (!oursChanged || !theirsChanged) {
+    result.push(theirsChanged ? t! : o!);
+    return true;
+  }
+  if (oStr === tStr) {
+    result.push(o!);
+    return true;
+  }
+  return false;
+}
+
 function mergeGroupObjects(baseStr: string, oursStr: string, theirsStr: string): string | null {
-  // Fast paths
   if (oursStr === theirsStr) return oursStr;
   if (oursStr === baseStr) return theirsStr;
   if (theirsStr === baseStr) return oursStr;
@@ -185,9 +211,7 @@ function mergeGroupObjects(baseStr: string, oursStr: string, theirsStr: string):
     if (baseStr) baseArr = JSON.parse(baseStr) as Record<string, unknown>[];
     if (oursStr) oursArr = JSON.parse(oursStr) as Record<string, unknown>[];
     if (theirsStr) theirsArr = JSON.parse(theirsStr) as Record<string, unknown>[];
-  } catch {
-    return null; // Parse error = conflict
-  }
+  } catch { return null; }
 
   const baseMap = new Map(baseArr.filter(o => o._id).map(o => [o._id as string, o]));
   const oursMap = new Map(oursArr.filter(o => o._id).map(o => [o._id as string, o]));
@@ -197,46 +221,8 @@ function mergeGroupObjects(baseStr: string, oursStr: string, theirsStr: string):
   const result: Record<string, unknown>[] = [];
 
   for (const id of allIds) {
-    const b = baseMap.get(id);
-    const o = oursMap.get(id);
-    const t = theirsMap.get(id);
-
-    // Deleted in both
-    if (!o && !t) continue;
-
-    // Only in one side: respect intentional deletions.
-    if (o && !t) {
-      if (!b) { result.push(o); continue; } // brand-new in ours
-      continue; // theirs deleted it — propagate the deletion
-    }
-    if (!o && t) {
-      if (!b) { result.push(t); continue; } // brand-new in theirs
-      continue; // ours deleted it — propagate the deletion
-    }
-
-    // Present in both - compare properties
-    const bStr = b ? JSON.stringify(b) : null;
-    const oStr = o ? JSON.stringify(o) : null;
-    const tStr = t ? JSON.stringify(t) : null;
-
-    const oursChanged = bStr !== oStr;
-    const theirsChanged = bStr !== tStr;
-
-    if (!oursChanged && !theirsChanged) { result.push(o!); continue; }
-    if (oursChanged && !theirsChanged) { result.push(o!); continue; }
-    if (!oursChanged && theirsChanged) { result.push(t!); continue; }
-
-    // Both changed
-    if (oStr === tStr) {
-      result.push(o!);
-    } else {
-      // For groups, if there are overlapping property changes on a child object,
-      // we bubble it up as a conflict on the entire `_groupObjects` property
-      // because we don't currently have UI to drill down into nested group conflicts.
-      return null;
-    }
+    if (!processGroupChild(id, baseMap.get(id), oursMap.get(id), theirsMap.get(id), result)) return null;
   }
-
   return JSON.stringify(result);
 }
 
@@ -317,50 +303,14 @@ function mergeCanvasProperties(
   return mergedCanvasProps;
 }
 
-function mergeSingleObject(
-  id: string,
-  base: Record<string, unknown> | undefined,
-  ours: Record<string, unknown> | undefined,
-  theirs: Record<string, unknown> | undefined,
-  resultObjects: (Record<string, unknown> | null)[],
-  conflicts: MergeConflict[]
-): void {
-  const baseProps = base ? extractProps(base) : null;
-  const oursProps = ours ? extractProps(ours) : null;
-  const theirsProps = theirs ? extractProps(theirs) : null;
-
-  // ── Deleted in both → skip
-  if (!ours && !theirs) return;
-
-  // ── Only in one side: distinguish new additions from intentional deletions.
-  // If the object existed in base, the absent side explicitly deleted it → respect that.
-  // If it was not in base, it is new in the present side → keep it.
-  if (ours && !theirs) {
-    if (!base) { resultObjects.push(ours); return; } // brand-new in ours
-    return; // theirs deleted it — propagate the deletion
-  }
-  if (!ours && theirs) {
-    if (!base) { resultObjects.push(theirs); return; } // brand-new in theirs
-    return; // ours deleted it — propagate the deletion
-  }
-
-  // ── Present in both
-  const oursChanged = base ? !propsEqual(baseProps!, oursProps!) : true;
-  const theirsChanged = base ? !propsEqual(baseProps!, theirsProps!) : false;
-
-  if (!oursChanged && !theirsChanged) { resultObjects.push(ours!); return; }
-  if (oursChanged && !theirsChanged) { resultObjects.push(ours!); return; }
-  if (!oursChanged && theirsChanged) { resultObjects.push(theirs!); return; }
-
-  // ── Both changed → check for property-level conflicts
+function detectPropertyConflicts(
+  allPropKeys: Set<string>,
+  baseProps: Record<string, unknown> | null,
+  oursProps: Record<string, unknown> | null,
+  theirsProps: Record<string, unknown> | null
+): { propConflicts: MergeConflict['propConflicts']; lineMergedProps: Map<string, unknown> } {
   const propConflicts: MergeConflict['propConflicts'] = [];
-  const mergedObj: Record<string, unknown> = { ...ours! };
   const lineMergedProps = new Map<string, unknown>();
-
-  const allPropKeys = new Set([
-    ...Object.keys(oursProps ?? {}),
-    ...Object.keys(theirsProps ?? {}),
-  ]);
 
   for (const prop of allPropKeys) {
     const baseValue = baseProps ? baseProps[prop] : undefined;
@@ -371,63 +321,75 @@ function mergeSingleObject(
     const theirsChangedProp = JSON.stringify(baseValue) !== JSON.stringify(theirsValue);
 
     if (oursChangedProp && theirsChangedProp && JSON.stringify(oursValue) !== JSON.stringify(theirsValue)) {
-      // Deep 3-way merge for nested group child objects
-      if (
-        prop === '_groupObjects' &&
-        typeof oursValue === 'string' &&
-        typeof theirsValue === 'string'
-      ) {
-        const bStr = typeof baseValue === 'string' ? baseValue : '';
-        const groupMerged = mergeGroupObjects(bStr, oursValue, theirsValue);
+      if (prop === '_groupObjects' && typeof oursValue === 'string' && typeof theirsValue === 'string') {
+        const groupMerged = mergeGroupObjects(typeof baseValue === 'string' ? baseValue : '', oursValue, theirsValue);
         if (groupMerged !== null) {
           lineMergedProps.set(prop, groupMerged);
           continue;
         }
       }
 
-      if (
-        prop === '_mermaidCode' &&
-        typeof baseValue === 'string' &&
-        typeof oursValue === 'string' &&
-        typeof theirsValue === 'string'
-      ) {
+      if (prop === '_mermaidCode' && typeof baseValue === 'string' && typeof oursValue === 'string' && typeof theirsValue === 'string') {
         const lineMerged = mergeTextLineByLine(baseValue, oursValue, theirsValue);
         if (lineMerged !== null) {
           lineMergedProps.set(prop, lineMerged);
           continue;
         }
         const { partialLines, lineConflicts } = computeMermaidLineMergeDetails(baseValue, oursValue, theirsValue);
-        propConflicts.push({
-          prop, base: baseValue, ours: oursValue, theirs: theirsValue, chosen: 'ours',
-          mermaidLineConflicts: lineConflicts,
-          mermaidPartialLines: partialLines,
-        });
+        propConflicts.push({ prop, base: baseValue, ours: oursValue, theirs: theirsValue, chosen: 'ours', mermaidLineConflicts: lineConflicts, mermaidPartialLines: partialLines });
         continue;
       }
       propConflicts.push({ prop, base: baseValue, ours: oursValue, theirs: theirsValue, chosen: 'ours' });
     }
   }
 
+  return { propConflicts, lineMergedProps };
+}
+
+function mergeSingleObject(
+  id: string,
+  base: Record<string, unknown> | undefined,
+  ours: Record<string, unknown> | undefined,
+  theirs: Record<string, unknown> | undefined,
+  resultObjects: (Record<string, unknown> | null)[],
+  conflicts: MergeConflict[]
+): void {
+  if (!ours && !theirs) return;
+
+  if (ours && !theirs) {
+    if (!base) resultObjects.push(ours);
+    return;
+  }
+  if (!ours && theirs) {
+    if (!base) resultObjects.push(theirs);
+    return;
+  }
+
+  const baseProps = base ? extractProps(base) : null;
+  const oursProps = ours ? extractProps(ours) : null;
+  const theirsProps = theirs ? extractProps(theirs) : null;
+
+  const oursChanged = base ? !propsEqual(baseProps!, oursProps!) : true;
+  const theirsChanged = base ? !propsEqual(baseProps!, theirsProps!) : false;
+
+  if (!oursChanged || !theirsChanged) {
+    resultObjects.push(theirsChanged ? theirs! : ours!);
+    return;
+  }
+
+  const allPropKeys = new Set([...Object.keys(oursProps ?? {}), ...Object.keys(theirsProps ?? {})]);
+  const { propConflicts, lineMergedProps } = detectPropertyConflicts(allPropKeys, baseProps, oursProps, theirsProps);
+
+  const mergedObj: Record<string, unknown> = { ...ours! };
+
   if (propConflicts.length === 0) {
     for (const prop of allPropKeys) {
-      const baseValue = baseProps ? baseProps[prop] : undefined;
-      const theirsValue = theirsProps ? theirsProps[prop] : undefined;
-      if (lineMergedProps.has(prop)) {
-        mergedObj[prop] = lineMergedProps.get(prop);
-      } else if (JSON.stringify(baseValue) !== JSON.stringify(theirsValue)) {
-        mergedObj[prop] = theirsValue;
-      }
+      if (lineMergedProps.has(prop)) mergedObj[prop] = lineMergedProps.get(prop);
+      else if (JSON.stringify(baseProps ? baseProps[prop] : undefined) !== JSON.stringify(theirsProps ? theirsProps[prop] : undefined)) mergedObj[prop] = theirsProps ? theirsProps[prop] : undefined;
     }
     resultObjects.push(mergedObj);
   } else {
-    conflicts.push({
-      id,
-      label: getObjLabel(ours ?? theirs),
-      oursObj: ours!,
-      theirsObj: theirs!,
-      propConflicts,
-      mergedObj,
-    });
+    conflicts.push({ id, label: getObjLabel(ours ?? theirs), oursObj: ours!, theirsObj: theirs!, propConflicts, mergedObj });
     resultObjects.push(null);
   }
 }

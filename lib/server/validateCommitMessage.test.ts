@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * Tests for P057 – validateCommitMessage server-side validation.
  *

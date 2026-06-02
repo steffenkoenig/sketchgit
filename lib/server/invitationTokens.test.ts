@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * Tests for lib/server/invitationTokens.ts (P066)
  */

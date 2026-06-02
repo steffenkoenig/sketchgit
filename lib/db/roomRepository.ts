@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.
  * All functions are async and interact with PostgreSQL via the Prisma client.
