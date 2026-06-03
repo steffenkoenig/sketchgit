@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 import { describe, it, expect, vi } from 'vitest';
 import { getGlobalPresence, REDIS_PRESENCE_PREFIX } from './presence';
 

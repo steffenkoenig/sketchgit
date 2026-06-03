@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { _fixSvgDimensions } from './mermaidRenderer';
