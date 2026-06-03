@@ -180,6 +180,10 @@ export class CanvasEngine {
     this.canvas.on('mouse:down', (e: TPointerEventInfo) => this.onMouseDown(e));
     this.canvas.on('mouse:move', (e: TPointerEventInfo) => this.onMouseMove(e));
     this.canvas.on('mouse:up', (e: TPointerEventInfo) => this.onMouseUp(e));
+    // Capture state BEFORE the transformation (P037 undo support)
+    this.canvas.on('before:transform', () => {
+      this.pushHistory();
+    });
     this.canvas.on('object:modified', (e: { target?: FabricObject }) => {
       // Guard against re-entrant calls: Fabric.js v7 can re-fire object:modified
       // for the already-removed arrow group when setActiveObject triggers
@@ -187,7 +191,6 @@ export class CanvasEngine {
       // remove() becomes a no-op while buildArrowGroup keeps adding new arrows,
       // accumulating hundreds of groups and crashing the tab.
       if (this._reSnapping) return;
-      this.pushHistory();
       this.markDirty();
       // Re-run snap so an already-placed line or arrow group can be attached
       // to a shape by moving it next to one (or detached by moving it away).

@@ -30,6 +30,8 @@ describe('Proxy Config', () => {
     expect(config.matcher).toContain('/dashboard/:path*');
     expect(config.matcher).toContain('/api/auth/register');
     expect(config.matcher).toContain('/api/auth/signin');
-    expect(config.matcher.length).toBe(3);
+    expect(config.matcher).toContain('/api/auth/forgot-password');
+    expect(config.matcher).toContain('/api/auth/reset-password');
+    expect(config.matcher.length).toBe(5);
   });
 });

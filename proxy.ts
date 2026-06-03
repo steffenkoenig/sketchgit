@@ -34,7 +34,12 @@ const store = new Map<string, WindowEntry>();
 // usage without a background timer (opportunistic GC on each request).
 const MAX_STORE_ENTRIES = 10_000;
 
-const RATE_LIMITED_PATHS = new Set(["/api/auth/register", "/api/auth/signin"]);
+const RATE_LIMITED_PATHS = new Set([
+  "/api/auth/register",
+  "/api/auth/signin",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+]);
 
 function getRateLimit(): { max: number; windowMs: number } {
   const max = parseInt(process.env.RATE_LIMIT_MAX ?? "10", 10);
@@ -202,5 +207,11 @@ export default auth(async (req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/api/auth/register", "/api/auth/signin"],
+  matcher: [
+    "/dashboard/:path*",
+    "/api/auth/register",
+    "/api/auth/signin",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+  ],
 };

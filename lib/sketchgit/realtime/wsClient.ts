@@ -85,6 +85,12 @@ export class WsClient {
 
   /** Open (or switch to) a room connection. Safe to call multiple times. */
   connect(roomId: string, myName: string, myColor: string): void {
+    if (this.socket) {
+      const old = this.socket;
+      this.socket = null;
+      this.intentionalClose = true;
+      try { old.close(1000, 'room-switch'); } catch { /* ignore */ }
+    }
     this.roomId = roomId;
     this.myName = myName;
     this.myColor = myColor;
