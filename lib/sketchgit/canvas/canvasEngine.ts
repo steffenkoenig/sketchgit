@@ -1675,7 +1675,7 @@ export class CanvasEngine {
     // Recalculate the parent selection/group bounding box so controls and
     // selection borders reflect the new child positions.
     (active as unknown as { _calcBounds?: (skip?: boolean) => void })._calcBounds?.(true);
-    active.setCoords();
+    (active as unknown as { setCoords?: () => void }).setCoords?.();
 
     this.canvas.requestRenderAll();
     this.markDirty();
@@ -2530,145 +2530,116 @@ export class CanvasEngine {
    * half-delta stored in `_origGeom`, then runs the same snap logic and rebuilds
    * via `rebuildSketchPathForMove` if any endpoint snaps.
    */
-  private reSnapOnModified(obj: FabricObject): void {
-    if (!this.canvas) return;
 
-    if (obj instanceof Line) {
-      // Clear all existing attachments — the line was just repositioned by the user
-      // so old attachment IDs are stale.  snapLineAttachment will re-add them if
-      // the endpoints are still near (or newly near) a shape.
-      const tl = obj as AnchoredLine;
-      tl._attachedFrom = undefined;
-      tl._attachedTo = undefined;
-      tl._attachedFromAnchorX = undefined;
-      tl._attachedFromAnchorY = undefined;
-      tl._attachedToAnchorX = undefined;
-      tl._attachedToAnchorY = undefined;
-      this.snapLineAttachment(obj);
-      return;
-    }
+  private reSnapLine(tl: AnchoredLine): void {
+    tl._attachedFrom = undefined;
+    tl._attachedTo = undefined;
+    tl._attachedFromAnchorX = undefined;
+    tl._attachedFromAnchorY = undefined;
+    tl._attachedToAnchorX = undefined;
+    tl._attachedToAnchorY = undefined;
+    this.snapLineAttachment(tl);
+  }
 
-    const ag = obj as AnchoredArrowGroup;
-    if (ag._isArrow) {
-      // BUG-021: Cancel any pending connector-follow rAF from the object:moving
-      // phase so it doesn't run with a stale reference to the removed arrow group.
-      if (this._attachmentRafId !== null) {
-        cancelAnimationFrame(this._attachmentRafId);
-        this._attachmentRafId = null;
-        this._attachmentRafTarget = null;
-      }
-
-      // Determine where the arrow endpoints are after the group was moved.
-      // _gcx/_gcy is the group center when _x1/_y1/_x2/_y2 were last set;
-      // the difference gives the movement delta.
-      const newCenter = ag.getCenterPoint();
-      const dx = newCenter.x - (ag._gcx ?? newCenter.x);
-      const dy = newCenter.y - (ag._gcy ?? newCenter.y);
-      const x1 = (ag._x1 ?? 0) + dx;
-      const y1 = (ag._y1 ?? 0) + dy;
-      const x2 = (ag._x2 ?? 0) + dx;
-      const y2 = (ag._y2 ?? 0) + dy;
-
-      // Clear stale attachment IDs before re-evaluating.
-      ag._attachedFrom = undefined;
-      ag._attachedTo = undefined;
-      ag._attachedFromAnchorX = undefined;
-      ag._attachedFromAnchorY = undefined;
-      ag._attachedToAnchorX = undefined;
-      ag._attachedToAnchorY = undefined;
-
-      const SNAP_RADIUS = 30;
-      const shapes = this.canvas.getObjects().filter(
-        (o) => o !== obj && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
-      );
-
-      let snapX1 = x1, snapY1 = y1, snapX2 = x2, snapY2 = y2;
-      let didSnap = false;
-      let fromDist = Infinity, toDist = Infinity;
-
-      for (const shape of shapes) {
-        const center = shape.getCenterPoint();
-        const id = (shape as FabricObject & { _id?: string })._id;
-        if (!id) continue;
-        const w = ((shape.get('width') as number) ?? 0) * ((shape.get('scaleX') as number) ?? 1);
-        const h = ((shape.get('height') as number) ?? 0) * ((shape.get('scaleY') as number) ?? 1);
-        const bLeft = center.x - w / 2;
-        const bRight = center.x + w / 2;
-        const bTop = center.y - h / 2;
-        const bBottom = center.y + h / 2;
-        const distToBox = (px: number, py: number): number => {
-          const clampedX = Math.max(bLeft, Math.min(bRight, px));
-          const clampedY = Math.max(bTop, Math.min(bBottom, py));
-          return Math.hypot(px - clampedX, py - clampedY);
-        };
-        const d1 = distToBox(x1, y1);
-        if (d1 < SNAP_RADIUS && d1 < fromDist) {
-          const anchor = nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
-          ag._attachedFrom = id;
-          ag._attachedFromAnchorX = anchor.x - center.x;
-          ag._attachedFromAnchorY = anchor.y - center.y;
-          snapX1 = anchor.x;
-          snapY1 = anchor.y;
-          fromDist = d1;
-          didSnap = true;
-        }
-        const d2 = distToBox(x2, y2);
-        if (d2 < SNAP_RADIUS && d2 < toDist) {
-          const anchor = nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
-          ag._attachedTo = id;
-          ag._attachedToAnchorX = anchor.x - center.x;
-          ag._attachedToAnchorY = anchor.y - center.y;
-          snapX2 = anchor.x;
-          snapY2 = anchor.y;
-          toDist = d2;
-          didSnap = true;
-        }
-      }
-
-      // Always commit the updated endpoint positions (snapped or free) so that
-      // _x1/_y1/_x2/_y2 reflect the arrow's actual current location.
-      ag._x1 = snapX1;
-      ag._y1 = snapY1;
-      ag._x2 = snapX2;
-      ag._y2 = snapY2;
-
-      if (didSnap) {
-        // Cancel any pending attachment rAF so it cannot run with a stale
-        // reference to the old arrow group after it has been removed.
-        if (this._attachmentRafId !== null) {
-          cancelAnimationFrame(this._attachmentRafId);
-          this._attachmentRafId = null;
-          this._attachmentRafTarget = null;
-        }
-        // Rebuild the arrow at the snapped coordinates.
-        this.rebuildArrowGroupInPlace(obj, snapX1, snapY1, snapX2, snapY2);
-      } else {
-        // No snap: just persist the new group center so the next delta is correct.
-        ag._gcx = newCenter.x;
-        ag._gcy = newCenter.y;
-      }
-      return;
-    }
-
-    // Handle sketch-path connectors: Path objects with `_origGeom` type `line`.
-    const sp = obj as AnchoredLine & { _origGeom?: string; _sloppiness?: string; type?: string };
-    if (sp.type !== 'path' || !sp._origGeom) return;
-    let geom: { type: string; x1: number; y1: number; x2: number; y2: number };
-    try { geom = JSON.parse(sp._origGeom) as typeof geom; } catch { return; }
-    if (geom.type !== 'line') return;
-
-    // BUG-021: Cancel any pending connector-follow rAF from the object:moving
-    // phase so it doesn't run with a stale reference to the removed sketch path.
+  private reSnapArrowGroup(ag: AnchoredArrowGroup, SNAP_RADIUS: number): void {
     if (this._attachmentRafId !== null) {
       cancelAnimationFrame(this._attachmentRafId);
       this._attachmentRafId = null;
       this._attachmentRafTarget = null;
     }
 
-    // Derive current logical endpoint positions from the path's new center and the
-    // half-deltas stored in _origGeom.  This mirrors how tryConvertToSketch positions
-    // lines (srcCenter ± dx/dy), giving the logical endpoints after the drag.
-    const pathCenter = obj.getCenterPoint();
+    const newCenter = ag.getCenterPoint();
+    const dx = newCenter.x - (ag._gcx ?? newCenter.x);
+    const dy = newCenter.y - (ag._gcy ?? newCenter.y);
+    const x1 = (ag._x1 ?? 0) + dx;
+    const y1 = (ag._y1 ?? 0) + dy;
+    const x2 = (ag._x2 ?? 0) + dx;
+    const y2 = (ag._y2 ?? 0) + dy;
+
+    ag._attachedFrom = undefined;
+    ag._attachedTo = undefined;
+    ag._attachedFromAnchorX = undefined;
+    ag._attachedFromAnchorY = undefined;
+    ag._attachedToAnchorX = undefined;
+    ag._attachedToAnchorY = undefined;
+
+    const shapes = this.canvas!.getObjects().filter(
+      (o) => o !== ag && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
+    );
+
+    let snapX1 = x1, snapY1 = y1, snapX2 = x2, snapY2 = y2;
+    let didSnap = false;
+    let fromDist = Infinity, toDist = Infinity;
+
+    for (const shape of shapes) {
+      const center = shape.getCenterPoint();
+      const id = (shape as FabricObject & { _id?: string })._id;
+      if (!id) continue;
+      const w = ((shape.get('width') as number) ?? 0) * ((shape.get('scaleX') as number) ?? 1);
+      const h = ((shape.get('height') as number) ?? 0) * ((shape.get('scaleY') as number) ?? 1);
+      const bLeft = center.x - w / 2;
+      const bRight = center.x + w / 2;
+      const bTop = center.y - h / 2;
+      const bBottom = center.y + h / 2;
+      const distToBox = (px: number, py: number): number => {
+        const clampedX = Math.max(bLeft, Math.min(bRight, px));
+        const clampedY = Math.max(bTop, Math.min(bBottom, py));
+        return Math.hypot(px - clampedX, py - clampedY);
+      };
+      const d1 = distToBox(x1, y1);
+      if (d1 < SNAP_RADIUS && d1 < fromDist) {
+        const anchor = nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
+        ag._attachedFrom = id;
+        ag._attachedFromAnchorX = anchor.x - center.x;
+        ag._attachedFromAnchorY = anchor.y - center.y;
+        snapX1 = anchor.x;
+        snapY1 = anchor.y;
+        fromDist = d1;
+        didSnap = true;
+      }
+      const d2 = distToBox(x2, y2);
+      if (d2 < SNAP_RADIUS && d2 < toDist) {
+        const anchor = nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
+        ag._attachedTo = id;
+        ag._attachedToAnchorX = anchor.x - center.x;
+        ag._attachedToAnchorY = anchor.y - center.y;
+        snapX2 = anchor.x;
+        snapY2 = anchor.y;
+        toDist = d2;
+        didSnap = true;
+      }
+    }
+
+    ag._x1 = snapX1;
+    ag._y1 = snapY1;
+    ag._x2 = snapX2;
+    ag._y2 = snapY2;
+
+    if (didSnap) {
+      if (this._attachmentRafId !== null) {
+        cancelAnimationFrame(this._attachmentRafId);
+        this._attachmentRafId = null;
+        this._attachmentRafTarget = null;
+      }
+      this.rebuildArrowGroupInPlace(ag, snapX1, snapY1, snapX2, snapY2);
+    } else {
+      ag._gcx = newCenter.x;
+      ag._gcy = newCenter.y;
+    }
+  }
+
+  private reSnapSketchPath(sp: AnchoredLine & { _origGeom?: string; _sloppiness?: string; type?: string }, SNAP_RADIUS_SP: number): void {
+    let geom: { type: string; x1: number; y1: number; x2: number; y2: number };
+    try { geom = JSON.parse(sp._origGeom ?? '') as typeof geom; } catch { return; }
+    if (geom.type !== 'line') return;
+
+    if (this._attachmentRafId !== null) {
+      cancelAnimationFrame(this._attachmentRafId);
+      this._attachmentRafId = null;
+      this._attachmentRafTarget = null;
+    }
+
+    const pathCenter = sp.getCenterPoint();
     const halfDx = (geom.x2 - geom.x1) / 2;
     const halfDy = (geom.y2 - geom.y1) / 2;
     const x1sp = pathCenter.x - halfDx;
@@ -2676,7 +2647,6 @@ export class CanvasEngine {
     const x2sp = pathCenter.x + halfDx;
     const y2sp = pathCenter.y + halfDy;
 
-    // Clear stale attachment IDs.
     sp._attachedFrom = undefined;
     sp._attachedTo = undefined;
     sp._attachedFromAnchorX = undefined;
@@ -2684,9 +2654,8 @@ export class CanvasEngine {
     sp._attachedToAnchorX = undefined;
     sp._attachedToAnchorY = undefined;
 
-    const SNAP_RADIUS_SP = 30;
-    const spShapes = this.canvas.getObjects().filter(
-      (o) => o !== obj && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
+    const spShapes = this.canvas!.getObjects().filter(
+      (o) => o !== sp && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
     );
 
     let snapX1sp = x1sp, snapY1sp = y1sp, snapX2sp = x2sp, snapY2sp = y2sp;
@@ -2733,24 +2702,43 @@ export class CanvasEngine {
     }
 
     if (didSnapSp) {
-      // Cancel any pending attachment rAF (same reason as for arrow groups above).
       if (this._attachmentRafId !== null) {
         cancelAnimationFrame(this._attachmentRafId);
         this._attachmentRafId = null;
         this._attachmentRafTarget = null;
       }
-      // Rebuild the sketch path at the snapped coordinates and restore selection.
-      const wasActive = this.canvas.getActiveObject() === obj;
+      const wasActive = this.canvas!.getActiveObject() === sp;
       const spId = (sp as FabricObject & { _id?: string })._id;
-      this.rebuildSketchPathForMove(obj, snapX1sp, snapY1sp, snapX2sp, snapY2sp);
+      this.rebuildSketchPathForMove(sp, snapX1sp, snapY1sp, snapX2sp, snapY2sp);
       if (wasActive && spId) {
-        const newPath = this.canvas.getObjects().find(
+        const newPath = this.canvas!.getObjects().find(
           (o) => (o as FabricObject & { _id?: string })._id === spId,
         );
-        if (newPath) this.canvas.setActiveObject(newPath);
+        if (newPath) this.canvas!.setActiveObject(newPath);
       }
     }
   }
+
+  private reSnapOnModified(obj: FabricObject): void {
+    if (!this.canvas) return;
+
+    if (obj instanceof Line) {
+      this.reSnapLine(obj as AnchoredLine);
+      return;
+    }
+
+    const ag = obj as AnchoredArrowGroup;
+    if (ag._isArrow) {
+      this.reSnapArrowGroup(ag, 30);
+      return;
+    }
+
+    const sp = obj as AnchoredLine & { _origGeom?: string; _sloppiness?: string; type?: string };
+    if (sp.type === 'path' && sp._origGeom) {
+      this.reSnapSketchPath(sp, 30);
+    }
+  }
+
 
 
 
