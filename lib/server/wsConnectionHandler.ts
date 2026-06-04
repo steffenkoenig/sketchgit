@@ -42,7 +42,7 @@ export interface ConnectionHandlerDeps {
   safeColor: (value: string | null) => string;
   getRoom: (roomId: string) => Map<string, ClientState>;
   dbEnsureRoom: (roomId: string, ownerId: string | null) => Promise<void>;
-  sendTo: (ws: unknown, payload: WsMessage) => void;
+  sendTo: (ws: WebSocket, payload: WsMessage) => void;
   schedulePushPresence: (roomId: string) => void;
   dbLoadSnapshot: (roomId: string, prisma: PrismaClient, logger: pino.Logger) => Promise<RoomSnapshot | null>;
   ROOM_CLEANUP_DELAY_MS: number;
@@ -61,8 +61,10 @@ export function createWsConnectionHandler(deps: ConnectionHandlerDeps) {
   };
 }
 
-async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId: string, inviteToken?: string | null): Promise<unknown> {
-  let access: unknown = await checkRoomAccess(roomId, client.userId);
+import { RoomAccessResult } from "../db/roomRepository";
+
+async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId: string, inviteToken?: string | null): Promise<RoomAccessResult> {
+  let access: RoomAccessResult = await checkRoomAccess(roomId, client.userId);
   if (!access.allowed && inviteToken) {
     const invitation = await prisma.roomInvitation.findUnique({ where: { token: inviteToken }, select: { roomId: true, expiresAt: true, maxUses: true, useCount: true } });
     if (invitation && invitation.roomId === roomId && invitation.expiresAt > new Date() && (invitation.maxUses === null || invitation.useCount < invitation.maxUses)) {
@@ -89,7 +91,7 @@ async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId
   return access;
 }
 
-export async function handleWsMessage(client: ClientState, message: WsMessage, roomId: string, clientId: string, logger: pino.Logger, sendTo: (ws: unknown, payload: WsMessage) => void, broadcastRoom: (roomId: string, payload: WsMessage, excludeClientId?: string | null) => void): Promise<void> {
+export async function handleWsMessage(client: ClientState, message: WsMessage, roomId: string, clientId: string, logger: pino.Logger, sendTo: (ws: WebSocket, payload: WsMessage) => void, broadcastRoom: (roomId: string, payload: WsMessage, excludeClientId?: string | null) => void): Promise<void> {
   if (message.type === "ping" || message.type === "pong") return;
   if (client.shareScope === "COMMIT") {
     if (message.type !== "fullsync-request") { sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Share link grants read-only commit access" } as unknown as WsMessage); return; }
