@@ -18,6 +18,8 @@ const config: UserConfig = {
   rules: {
     // Allow up to 120 characters to accommodate descriptive feature messages.
     "header-max-length": [2, "always", 120],
+    // Disable subject-case rule to allow capitalized subjects
+    "subject-case": [0, "always"],
   },
 };
 
