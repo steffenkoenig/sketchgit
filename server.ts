@@ -703,7 +703,7 @@ void app.prepare()
 
     wss.on("connection", createWsConnectionHandler({
       logger, prisma, env, rooms, roomCache, roomCleanupTimers, connectionsPerIp, safeRoomId, safeName, safeColor,
-      getRoom, dbEnsureRoom, sendTo, schedulePushPresence, dbLoadSnapshot, ROOM_CLEANUP_DELAY_MS, broadcastRoom,
+      getRoom, dbEnsureRoom, sendTo: sendTo as unknown as (ws: unknown, payload: WsMessage) => void, schedulePushPresence, dbLoadSnapshot, ROOM_CLEANUP_DELAY_MS, broadcastRoom,
     }));
 
     server.listen(port, host, () => {
