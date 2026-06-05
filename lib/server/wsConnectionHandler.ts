@@ -4,7 +4,7 @@ import type pino from "pino";
 import type { PrismaClient } from "@prisma/client";
 
 import type { Env } from "../env.js";
-import { checkRoomAccess, addRoomMember, resolveRoomId, appendRoomEvent, type ClientRole } from "../db/roomRepository.js";
+import { checkRoomAccess, addRoomMember, resolveRoomId, appendRoomEvent, type ClientRole, type RoomAccessResult } from "../db/roomRepository.js";
 import type { WsMessage } from "../sketchgit/types.js";
 import type { RoomSnapshot } from "../db/dbLoadSnapshot.js";
 
@@ -61,8 +61,8 @@ export function createWsConnectionHandler(deps: ConnectionHandlerDeps) {
   };
 }
 
-async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId: string, inviteToken?: string | null): Promise<unknown> {
-  let access: unknown = await checkRoomAccess(roomId, client.userId);
+async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId: string, inviteToken?: string | null): Promise<RoomAccessResult> {
+  let access: RoomAccessResult = await checkRoomAccess(roomId, client.userId);
   if (!access.allowed && inviteToken) {
     const invitation = await prisma.roomInvitation.findUnique({ where: { token: inviteToken }, select: { roomId: true, expiresAt: true, maxUses: true, useCount: true } });
     if (invitation && invitation.roomId === roomId && invitation.expiresAt > new Date() && (invitation.maxUses === null || invitation.useCount < invitation.maxUses)) {

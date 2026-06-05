@@ -306,9 +306,10 @@ function getRoom(roomId: string): Map<string, ClientState> {
   return rooms.get(roomId)!;
 }
 
-function sendTo(ws: WebSocket, payload: WsMessage): void {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
+function sendTo(ws: unknown, payload: WsMessage): void {
+  const websocket = ws as WebSocket;
+  if (websocket.readyState === WebSocket.OPEN) {
+    websocket.send(JSON.stringify(payload));
   }
 }
 
