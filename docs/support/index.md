@@ -1,6 +1,10 @@
 # SketchGit Support Documentation
 ## Bug Fixes (Milestone 1.0)
 - Addressed bugs BUG-020 and BUG-021 which previously caused tab crashes when snapping arrows near boundaries. The engine now safely halts redundant animation frames.
+- BUG-012: Moving and resizing objects can now be accurately undone with a single Ctrl+Z action.
+- BUG-013: Fixed a WebSocket issue where switching rooms would orphan existing connections and cause continuous spurious reconnections.
+- BUG-014: Switching branches via the timeline SVG label now instantly notifies peers and updates their presence panels.
+- BUG-016: Password reset and forgot password endpoints are now properly rate-limited to protect against abuse.
 
 ## Known Constraints & Troubleshooting
 
