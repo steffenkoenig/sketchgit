@@ -89,6 +89,11 @@ export class WsClient {
       const old = this.socket;
       this.socket = null;
       this.intentionalClose = true;
+      // Silence all further events from the old socket before closing it.
+      // Without this, the async close event fires after intentionalClose is reset
+      // to false (line 98), bypassing the guard in the close handler and
+      // triggering a spurious reconnect that corrupts the new connection.
+      (old as unknown as { dispatchEvent: () => boolean }).dispatchEvent = () => false;
       try { old.close(1000, 'room-switch'); } catch { /* ignore */ }
     }
     this.roomId = roomId;

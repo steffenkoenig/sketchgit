@@ -92,6 +92,7 @@ export class CanvasEngine {
   private readonly MAX_HISTORY = 50;
   private undoStack: string[] = [];
   private redoStack: string[] = [];
+  private _preTransformState: string | null = null;
 
   // ── P020: Bound listener references for proper cleanup ───────────────────
   private boundResize: (() => void) | null = null;
@@ -180,9 +181,11 @@ export class CanvasEngine {
     this.canvas.on('mouse:down', (e: TPointerEventInfo) => this.onMouseDown(e));
     this.canvas.on('mouse:move', (e: TPointerEventInfo) => this.onMouseMove(e));
     this.canvas.on('mouse:up', (e: TPointerEventInfo) => this.onMouseUp(e));
-    // Capture state BEFORE the transformation (P037 undo support)
+    // Save state BEFORE the transformation; only commit to history on object:modified
+    // so that merely selecting/clicking an object doesn't litter the undo stack or
+    // clear the redo stack (P037 undo support).
     this.canvas.on('before:transform', () => {
-      this.pushHistory();
+      this._preTransformState = this.getCanvasData();
     });
     this.canvas.on('object:modified', (e: { target?: FabricObject }) => {
       // Guard against re-entrant calls: Fabric.js v7 can re-fire object:modified
@@ -191,6 +194,14 @@ export class CanvasEngine {
       // remove() becomes a no-op while buildArrowGroup keeps adding new arrows,
       // accumulating hundreds of groups and crashing the tab.
       if (this._reSnapping) return;
+      if (this._preTransformState) {
+        this.undoStack.push(this._preTransformState);
+        if (this.undoStack.length > this.MAX_HISTORY) {
+          this.undoStack.shift();
+        }
+        this.redoStack = [];
+        this._preTransformState = null;
+      }
       this.markDirty();
       // Re-run snap so an already-placed line or arrow group can be attached
       // to a shape by moving it next to one (or detached by moving it away).
