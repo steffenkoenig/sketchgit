@@ -72,41 +72,43 @@ Files scanned (excluding test files, migrations, generated code):
 
 ## Open Bug Detail Index
 
-### BUG-012 – Undo saves post-transform state; move/resize cannot be undone
+### BUG-012 - Undo saves post-transform state; move/resize cannot be undone ✅
 
 **Severity**: Medium
 
-`CanvasEngine` calls `pushHistory()` from the Fabric.js `object:modified` event listener, which fires **after** the transformation (move/resize/rotate) has already been applied. The snapshot captured is therefore the post-modification state, which is identical to the current canvas state at the time undo is invoked. Pressing Ctrl+Z after a move or resize does not visibly restore the previous position — undo appears to be a no-op. A second Ctrl+Z then removes the entire drawn shape, skipping the pre-move state entirely. Operations that do save the correct pre-action state (new shape drawing, eraser, delete key) are unaffected.
+Fixed by listening to `before:transform` instead of `object:modified` to capture the pre-modification snapshot.
 
 ---
 
-### BUG-013 – `WsClient.connect()` orphans the old socket; stale close handler triggers spurious reconnects
+### BUG-013 - WsClient.connect() orphans the old socket, causing spurious reconnects ✅
 
 **Severity**: High
 
-`WsClient.connect()` creates a new WebSocket without first closing the existing one. The old socket remains open and its `onclose` event listener (which uses `this` — the shared WsClient instance) fires later when the old connection terminates server-side. Because `connect()` resets `this.intentionalClose = false`, the guard in the close handler is bypassed, and `_scheduleReconnect()` is called. This creates a third socket (overwriting the current live connection), corrupts `retryCount`, and cancels the new socket's heartbeat monitor via `this._clearHeartbeat()`. Each room switch compounds the issue, creating a growing chain of orphaned socket close handlers.
+Fixed by intentionally closing `this.socket` before creating a new connection.
 
 ---
 
-### BUG-014 – Clicking a branch label in the timeline SVG doesn't notify peers of the branch switch
+### BUG-014 - Clicking a branch label in the timeline SVG doesn't notify peers ✅
 
 **Severity**: Low
 
-The timeline SVG renders a clickable label for each branch. When clicked, `TimelineCoordinator.render()`'s `onBranchClick` callback checks out the branch and updates the local canvas, but never sends a `branch-update` or `profile` WebSocket message. Peers' presence panels and branch modals therefore display a stale branch for the switching user. The equivalent action via the branch modal (`BranchCoordinator.openBranchModal()`) correctly sends both messages; the timeline label path was not updated to match.
-
-### BUG-015 – Color/fill changes to selected objects are not undoable
-
-**Severity**: Low
-
-`CanvasEngine.updateStrokeColor()` and `updateFillColor()` both modify the active canvas object and call `markDirty()` + `onBroadcastDraw()`, but neither calls `pushHistory()` before the change. Pressing Ctrl+Z after a color/fill change does not revert the color — it instead undoes the last *drawing* action (or does nothing if the stack is empty). The pattern is inconsistent with the Delete-key handler and the drawing-gesture handler, which both call `pushHistory()` before their mutations.
+Fixed by adding `collab.sendBranchUpdate` and `collab.sendProfile` calls inside the timeline SVG `onBranchClick` callback.
 
 ---
 
-### BUG-016 – `/api/auth/forgot-password` and `/api/auth/reset-password` bypass the rate limiter
+### BUG-015 - Color/fill changes to selected objects are not undoable ✅
+
+**Severity**: Low
+
+Fixed by ensuring `this.pushHistory()` is called before `obj.set()` inside `updateStrokeColor` and `updateFillColor`.
+
+---
+
+### BUG-016 - /api/auth/forgot-password and /api/auth/reset-password bypass the rate limiter ✅
 
 **Severity**: Medium
 
-`proxy.ts` is the only rate-limiting layer for authentication endpoints. Its `config.matcher` activates the middleware only for `/dashboard/:path*`, `/api/auth/register`, and `/api/auth/signin`. The password-reset endpoints are absent from both the matcher and the `RATE_LIMITED_PATHS` set, so an unauthenticated attacker can call `/api/auth/forgot-password` in a tight loop, triggering unlimited password-reset emails to any target address. The fix is to add both routes to `RATE_LIMITED_PATHS` and to `config.matcher`; the existing rate-limiting infrastructure requires no further changes.
+Fixed by adding the routes to `RATE_LIMITED_PATHS` and `config.matcher` in `proxy.ts`.
 
 ---
 
