@@ -70,7 +70,7 @@ export class TimelineCoordinator {
 
   /** Re-render the SVG timeline from current git state. */
   render(): void {
-    const { git, canvas } = this.ctx;
+    const { git, canvas, collab, ws } = this.ctx;
 
     // Pass scroll position for virtualization when the container exists
     const tlscroll = document.getElementById('tlscroll');
@@ -81,13 +81,23 @@ export class TimelineCoordinator {
       git,
       (sha, x, y) => this.onCommitClick?.(sha, x, y),
       (name) => {
+        const branchTip = git.branches[name];
         git.checkout(name);
-        const c = git.commits[git.branches[name]];
+        const c = git.commits[branchTip];
         if (c) canvas.loadCanvasData(c.canvas);
         canvas.clearDirty();
         this.updateUI();
         this.render();
         showToast(`Switched to '${name}'`);
+
+        // Notify peers of the branch switch
+        collab.sendBranchUpdate(name, branchTip, { isRollback: false });
+        collab.sendProfile(
+          ws.name,
+          ws.color,
+          name,
+          branchTip ?? null,
+        );
       },
       scrollLeft,
       viewportWidth,
