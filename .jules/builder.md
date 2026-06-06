@@ -12,3 +12,16 @@
 
 **Active Step:** Complete.
 **Blockers/Constraints:** None.
+
+
+## Bug Fixes (Milestone 1.0)
+**Current State Audit:** Verified fixes for BUG-012, BUG-013, BUG-014, BUG-015, and BUG-016.
+**Completed Items:**
+- [x] Fixed undo state post-transform (BUG-012)
+- [x] Fixed WsClient.connect orphaning sockets (BUG-013)
+- [x] Fixed timeline branch peer notification (BUG-014)
+- [x] Verified fix for color change undo (BUG-015)
+- [x] Rate limited forgot-password and reset-password routes (BUG-016)
+- [x] Updated docs/support/index.md
+**Active Step:** Complete.
+**Blockers/Constraints:** None.
