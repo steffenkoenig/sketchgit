@@ -6,6 +6,20 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.7.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.7.0...sketchgit-next-v0.7.1) (2026-06-06)
+
+
+### Bug Fixes
+
+* **milestone-1.0:** fix BUG-012, BUG-013, BUG-014, BUG-016 + address review comments ([92f6b7f](https://github.com/steffenkoenig/sketchgit/commit/92f6b7ffbefc75ec1d7297bc6136b411cb0f1fce))
+* **server:** resolve pre-existing TypeScript errors in wsConnectionHandler ([9022b0d](https://github.com/steffenkoenig/sketchgit/commit/9022b0dcb91d4cfb47cd1fdd26d67263ac6e9663))
+
+
+### Refactoring
+
+* decompose mergeEngine, extract dbLoadSnapshot, improve wsConnectionHandler ([d83e691](https://github.com/steffenkoenig/sketchgit/commit/d83e6917bfc73c525a6cf58d04648c75e13af3b9))
+* decompose reSnapOnModified into focused private helpers in canvasEngine ([2537219](https://github.com/steffenkoenig/sketchgit/commit/2537219a6cf4413e162419d71fe545b6885fa633))
+
 ## [0.7.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.6.0...sketchgit-next-v0.7.0) (2026-06-01)
 
 
