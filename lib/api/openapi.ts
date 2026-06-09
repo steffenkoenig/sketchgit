@@ -301,7 +301,7 @@ export function buildOpenApiSpec(): object {
               name: "format",
               in: "query",
               required: false,
-              schema: { type: "string", enum: ["png", "svg"], default: "png" },
+              schema: { type: "string", enum: ["png", "svg", "pdf"], default: "png" },
             },
             {
               name: "sha",
@@ -317,6 +317,7 @@ export function buildOpenApiSpec(): object {
               content: {
                 "image/png": { schema: { type: "string", format: "binary" } },
                 "image/svg+xml": { schema: { type: "string", format: "binary" } },
+                "application/pdf": { schema: { type: "string", format: "binary" } },
               },
             },
             "304": { description: "Not Modified (ETag matched)." },

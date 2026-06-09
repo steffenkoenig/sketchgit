@@ -112,7 +112,7 @@ Fixed by adding the routes to `RATE_LIMITED_PATHS` and `config.matcher` in `prox
 
 ---
 
-### BUG-017 – Rate-limit 429 response uses wrong error body format
+### BUG-017 ✅ – Rate-limit 429 response uses wrong error body format
 
 **Severity**: Low
 
@@ -120,7 +120,7 @@ Fixed by adding the routes to `RATE_LIMITED_PATHS` and `config.matcher` in `prox
 
 ---
 
-### BUG-018 – OpenAPI spec documents export `format` enum without `"pdf"`
+### BUG-018 ✅ – OpenAPI spec documents export `format` enum without `"pdf"`
 
 **Severity**: Low
 
@@ -128,7 +128,7 @@ Fixed by adding the routes to `RATE_LIMITED_PATHS` and `config.matcher` in `prox
 
 ---
 
-### BUG-020 – `reSnapOnModified` missing re-entrancy guard causes infinite arrow rebuild loop
+### BUG-020 ✅ – `reSnapOnModified` missing re-entrancy guard causes infinite arrow rebuild loop
 
 **Severity**: Critical
 
@@ -148,7 +148,7 @@ entry of the `object:modified` handler or `reSnapOnModified`, wrapped in `try/fi
 
 ---
 
-### BUG-021 – Stale `scheduleAttachmentUpdate` rAF not cancelled after snap rebuild
+### BUG-021 ✅ – Stale `scheduleAttachmentUpdate` rAF not cancelled after snap rebuild
 
 **Severity**: Low
 

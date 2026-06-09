@@ -118,4 +118,4 @@ This follows the exact same pattern already used in `destroy()` and ensures that
   chain.
 
 ## Status
-`open`
+`closed`

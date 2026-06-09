@@ -40,4 +40,4 @@ The middleware (`proxy.ts`) was implemented before the standardised `apiError()`
 The two affected code paths cover both the Redis-backed and the in-memory fallback rate-limiter.  Both must be updated.  The inconsistent body shape would cause any client that parses `data.code` on a 429 response to silently receive `undefined` instead of a matchable error code.
 
 ## Status
-`open`
+`closed`

@@ -122,17 +122,17 @@ function applyRateLimitInMemory(
   entry.count += 1;
   if (entry.count > max) {
     const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
-    return NextResponse.json(
-      { error: "Too many requests. Please try again later." },
+    return apiError(
+      ApiErrorCode.RATE_LIMITED,
+      "Too many requests. Please try again later.",
+      429,
+      undefined,
       {
-        status: 429,
-        headers: {
-          "Retry-After": String(retryAfterSec),
-          "X-RateLimit-Limit": String(max),
-          "X-RateLimit-Remaining": "0",
-          "X-RateLimit-Reset": String(Math.ceil(entry.resetAt / 1000)),
-        },
-      },
+        "Retry-After": String(retryAfterSec),
+        "X-RateLimit-Limit": String(max),
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": String(Math.ceil(entry.resetAt / 1000)),
+      }
     );
   }
   return null;
@@ -157,16 +157,16 @@ function applyRateLimit(req: NextRequest): NextResponse | null | Promise<NextRes
   if (getRedisClient()) {
     return applyRateLimitRedis(key, max, windowMs).then(({ limited, retryAfterSec }) => {
       if (!limited) return null;
-      return NextResponse.json(
-        { error: "Too many requests. Please try again later." },
+      return apiError(
+        ApiErrorCode.RATE_LIMITED,
+        "Too many requests. Please try again later.",
+        429,
+        undefined,
         {
-          status: 429,
-          headers: {
-            "Retry-After": String(retryAfterSec),
-            "X-RateLimit-Limit": String(max),
-            "X-RateLimit-Remaining": "0",
-          },
-        },
+          "Retry-After": String(retryAfterSec),
+          "X-RateLimit-Limit": String(max),
+          "X-RateLimit-Remaining": "0",
+        }
       );
     });
   }

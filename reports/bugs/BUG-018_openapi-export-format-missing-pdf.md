@@ -51,4 +51,4 @@ Replace the hardcoded inline `format` parameter schema in the `/api/rooms/{roomI
 No runtime defect; the route itself works correctly for all three formats.  The impact is limited to developers relying on the generated `/api/docs` UI to discover the API — they would be unaware that PDF export is available.
 
 ## Status
-`open`
+`closed`

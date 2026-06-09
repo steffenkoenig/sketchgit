@@ -46,6 +46,7 @@ export const ApiErrorCode = {
   // ── Server ────────────────────────────────────────────────────────────────
   INTERNAL_ERROR: "INTERNAL_ERROR",
   WS_UNAVAILABLE: "WS_UNAVAILABLE",
+  RATE_LIMITED: "RATE_LIMITED",
 } as const;
 
 /** Union type of all valid error code string literals. */
@@ -72,6 +73,7 @@ export function apiError(
   message: string,
   status: number,
   details?: unknown,
+  headers?: Record<string, string>,
 ): NextResponse<ApiErrorBody> {
-  return NextResponse.json({ code, message, details }, { status });
+  return NextResponse.json({ code, message, details }, { status, headers });
 }
