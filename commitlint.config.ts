@@ -16,6 +16,7 @@ const config: UserConfig = {
   // enforcement in this repository.
   ignores: [(msg: string) => /^Initial\s/i.test(msg.trim())],
   rules: {
+    'body-max-line-length': [0],
     // Allow up to 120 characters to accommodate descriptive feature messages.
     "header-max-length": [2, "always", 120],
   },
