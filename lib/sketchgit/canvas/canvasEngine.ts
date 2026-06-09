@@ -2736,6 +2736,12 @@ export class CanvasEngine {
   private reSnapOnModified(obj: FabricObject): void {
     if (!this.canvas) return;
 
+    if (this._attachmentRafId !== null) {
+      cancelAnimationFrame(this._attachmentRafId);
+      this._attachmentRafId = null;
+      this._attachmentRafTarget = null;
+    }
+
     // BUG-021: Cancel any pending rAF from object:moving so it doesn't fire with a stale reference
     if (this._attachmentRafId !== null) {
       cancelAnimationFrame(this._attachmentRafId);

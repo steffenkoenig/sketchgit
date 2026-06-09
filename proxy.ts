@@ -17,6 +17,8 @@
  */
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { apiError, ApiErrorCode } from "@/lib/api/errors";
+
 import { getRedisClient } from "@/lib/redis";
 import { randomBytes } from "node:crypto";
 import { buildCsp } from "@/lib/server/csp";

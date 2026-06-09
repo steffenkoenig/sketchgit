@@ -55,6 +55,31 @@ describe('proxy.ts', () => {
     } as unknown as NextRequest;
   };
 
+  describe('Rate Limiting (BUG-017)', () => {
+    it('returns RATE_LIMITED apiError payload on 429', async () => {
+      // Create a mock request to a rate-limited path
+      const req = {
+        nextUrl: { pathname: '/api/auth/register' },
+        headers: new Headers({
+          'x-forwarded-for': '127.0.0.1',
+        }),
+      } as unknown as NextRequest;
+
+      // Force it to use in-memory and exceed max
+      for (let i = 0; i < 15; i++) {
+        await proxyMiddleware(req, {} as any);
+      }
+
+      const response = await proxyMiddleware(req, {} as any) as any;
+      expect(response).toBeDefined();
+      expect(response.options.status).toBe(429);
+      expect(response.body).toEqual(expect.objectContaining({
+        code: 'RATE_LIMITED',
+        message: expect.any(String),
+      }));
+    });
+  });
+
   describe('Rate Limiting Error Paths (fail-open)', () => {
     it('should fail-open and return next() when redis.eval throws an exception', async () => {
       vi.mocked(getRedisClient).mockReturnValue({
