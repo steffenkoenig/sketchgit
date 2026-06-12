@@ -99,6 +99,7 @@ export class CanvasEngine {
   // ── P020: Bound listener references for proper cleanup ───────────────────
   private boundResize: (() => void) | null = null;
   private boundKeydown: ((e: KeyboardEvent) => void) | null = null;
+  private boundContextMenu: ((e: MouseEvent) => void) | null = null;
 
   // ── P067: Remote object locks (clientId → { objectIds, color, origStyles }) ─
   private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number | undefined; strokeDashArray: number[] | undefined }> }>();
@@ -179,6 +180,32 @@ export class CanvasEngine {
       selection: true,
       renderOnAddRemove: true,
     });
+
+    // Emit right-click events to coordinate the React context menu overlay
+    this.boundContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+
+      const active = this.canvas?.getActiveObjects() || [];
+      const hasSelection = active.length > 0;
+      let canGroup = false;
+      let canUngroup = false;
+
+      if (hasSelection) {
+        if (active.length > 1) canGroup = true;
+        if (active.length === 1 && active[0].type === 'group' && !(active[0] as any)._isArrow) canUngroup = true;
+      }
+
+      window.dispatchEvent(new CustomEvent('sketchgit-context-menu', {
+        detail: {
+          x: e.clientX,
+          y: e.clientY,
+          hasSelection,
+          canGroup,
+          canUngroup
+        }
+      }));
+    };
+    wrap.addEventListener('contextmenu', this.boundContextMenu);
 
     this.canvas.on('mouse:down', (e: TPointerEventInfo) => this.onMouseDown(e));
     this.canvas.on('mouse:move', (e: TPointerEventInfo) => this.onMouseMove(e));
@@ -308,6 +335,11 @@ export class CanvasEngine {
     if (this.boundKeydown) {
       window.removeEventListener('keydown', this.boundKeydown);
       this.boundKeydown = null;
+    }
+    if (this.boundContextMenu) {
+      const wrap = document.getElementById('canvas-wrap');
+      if (wrap) wrap.removeEventListener('contextmenu', this.boundContextMenu as any);
+      this.boundContextMenu = null;
     }
     // P085 – remove pinch-to-zoom listeners
     if (this.touchWrapEl) {
@@ -1057,14 +1089,7 @@ export class CanvasEngine {
       e.preventDefault();
       this.redo();
     } else if (k === 'delete' || k === 'backspace') {
-      const objs = this.canvas?.getActiveObjects();
-      if (objs && objs.length > 0) {
-        this.pushHistory();
-        this.canvas?.remove(...objs);
-        this.canvas?.discardActiveObject();
-        this.markDirty();
-        this.onBroadcastDraw(true);
-      }
+      this.deleteSelection();
     }
   }
 
@@ -1570,6 +1595,18 @@ export class CanvasEngine {
 
 
   // ── Grouping and Alignment ──────────────────────────────────────────────
+
+
+  deleteSelection(): void {
+    const objs = this.canvas?.getActiveObjects();
+    if (objs && objs.length > 0) {
+      this.pushHistory();
+      this.canvas?.remove(...objs);
+      this.canvas?.discardActiveObject();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
 
   groupSelection(): void {
     const o = this.canvas?.getActiveObject();

@@ -11,3 +11,7 @@
 ### Object Grouping & Merging (Milestone 1.1)
 - **Nested Conflict Resolution:** While standard group property changes merge automatically, overlapping edits to the *exact same property* on the exact same child object inside a group will bubble up and mark the *entire group* as conflicting. Non-overlapping property changes on the same child object will merge automatically. If users complain about missing deep-conflict UI for groups, inform them that they must choose between the two group states entirely during a branch merge.
 - **Lost Objects in Groups:** If users experience objects disappearing when grouped, verify that they aren't placing very large groups far outside the viewport. Fabric.js culling may hide them.
+
+### Canvas Context Menus (Milestone 1.2)
+- **Menu Visibility:** If users report the right-click menu not appearing, ensure they are not overriding right-click behavior via system tools or extensions. The menu relies on the `contextmenu` HTML event.
+- **Missing Group Option:** The "Group" option will only appear if *multiple* objects are selected. The "Ungroup" option will only appear if exactly *one* group object is selected. Inform users to left-click or drag-select multiple objects first before right-clicking to access these options.

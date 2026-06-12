@@ -25,3 +25,16 @@
 - [x] Updated docs/support/index.md
 **Active Step:** Complete.
 **Blockers/Constraints:** None.
+
+## Milestone 1.2 - Canvas Context Menus
+**Current State Audit:** Verified the codebase. The canvas lacks context menus, users need to use properties panel for layer ordering and delete key for deletion.
+**Completed Items:**
+- [x] Added `deleteSelection` method to `CanvasEngine`.
+- [x] Implemented right-click interception in `CanvasEngine` that emits `sketchgit-context-menu` event.
+- [x] Added `ContextMenu` React component acting as portal overlay.
+- [x] Added grouping, layer manipulation, and delete buttons to ContextMenu.
+- [x] Verify tests run successfully without regressions.
+- [x] Updated docs (customer, technical, support).
+
+**Active Step:** Complete.
+**Blockers/Constraints:** None.
