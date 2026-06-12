@@ -9,7 +9,7 @@ Provide users with the ability to leave contextual, threaded comments on specifi
 Currently, users who want to discuss a specific part of a diagram must either use the text tool to add temporary notes directly onto the canvas, or use an external communication tool and attempt to describe the location (e.g., "Look at the blue rectangle in the top left"). Adding text to the canvas pollutes the diagram's structure and version history with meta-discussion, making the actual design harder to read and maintain.
 
 ### Proposed Changes
-- **Data Model:** Add a `Comment` and `CommentThread` model to Prisma, linking them to specific coordinates (`x`, `y`) or specific `objectId`s within a room.
+- **Data Model:** Add a `Comment` and `CommentThread` model to Prisma, linking them to specific coordinates (`x`, `y`) or specific `objectId`s within a room, and defining cascade/cleanup behavior for deleted objects (e.g., convert to coordinate-based comments at the object's last known position, or cascade-delete threads on object removal).
 - **Backend API:** Implement REST endpoints and WebSocket events to handle the creation, replying, resolving, and deletion of comments in real time.
 - **Canvas UI:** Introduce a "Comment Tool" allowing users to click anywhere on the canvas to drop a comment pin. Clicking a pin opens a sidebar or popover showing the threaded discussion.
 - **Email Notifications:** Integrate with the existing email service (Resend) to optionally notify room members when they are mentioned in a comment or when a thread they participated in is updated.
@@ -17,7 +17,7 @@ Currently, users who want to discuss a specific part of a diagram must either us
 ### Definitions of Done
 - **Documentation:** Update user documentation (`/docs/customer`) with instructions on how to create, reply to, and resolve comments. Update `/docs/technical` detailing the real-time event broadcasting for the new comment models.
 - **Testing:** Unit tests verifying the Prisma comment repository logic. Playwright E2E tests for dropping a comment pin, typing a reply, and resolving the thread, ensuring updates broadcast instantly to other connected clients.
-- **Security:** Strict server-side validation using Zod ensures comment text cannot contain malicious payloads (XSS protection). Users can only comment in rooms where they hold at least an `EDITOR` role.
+- **Security:** Strict server-side validation using Zod ensures comment text cannot contain malicious payloads (XSS protection). Users can only comment in rooms where they hold at least a `COMMITTER` role (consistent with drawing permissions; EDITOR and OWNER roles are also permitted).
 - **Reliability:** Comment markers render efficiently on the Fabric.js canvas without slowing down standard drawing operations, even with hundreds of resolved/unresolved threads.
 - **Accessibility:** Comment pins can be navigated using the keyboard (`Tab` indexing). The comment sidebar utilizes appropriate ARIA live regions to announce incoming replies to screen readers.
 - **GDPR:** Comments are treated as user-generated data. They can be deleted individually by the author and are automatically scrubbed from the database when a user requests an account deletion.
@@ -37,7 +37,7 @@ Implement a comprehensive layer management panel that allows users to easily vie
 As users build highly complex, overlapping diagrams (such as intricate UI mockups or layered architectural designs), managing the z-index (depth) of objects becomes incredibly difficult. Selecting an object hidden behind a larger shape is frustrating, and users often accidentally move background elements while trying to select foreground details. The current system relies entirely on right-click context menus to send objects forward or backward, which is opaque and tedious.
 
 ### Proposed Changes
-- **UI Component:** Build a new "Layers" sidebar panel on the right side of the screen, displaying a hierarchical tree view of all objects and groups currently on the canvas.
+- **UI Component:** Build a new "Layers" sidebar panel integrated with the existing PropertiesPanel as tabbed sections within a unified right-side sidebar (to avoid overlapping UI), displaying a hierarchical tree view of all objects and groups currently on the canvas.
 - **Canvas Integration:** Bidirectionally bind the Fabric.js canvas state to the Layers panel. Selecting an item in the panel selects it on the canvas, and vice versa.
 - **Features:** Add drag-and-drop support within the Layers panel to adjust z-index. Add toggle buttons on each row to hide/show objects and lock/unlock them (preventing selection/modification).
 - **State Synchronization:** Ensure that visibility and locking metadata are correctly synced across clients via WebSockets and properly serialized into commits.
@@ -65,7 +65,7 @@ Provide users with a dedicated interface to remap the default keyboard shortcuts
 SketchGit features a robust set of predefined keyboard shortcuts (e.g., 'P' for Pen, 'Ctrl+Z' for Undo). However, hardcoded shortcuts do not work for everyone. Users coming from other design tools often have deeply ingrained muscle memory for different key bindings. Furthermore, hardcoded single-key shortcuts can create significant accessibility barriers for users utilizing alternative input devices, voice commands, or non-standard keyboard layouts.
 
 ### Proposed Changes
-- **Database Schema:** Add a `ShortcutPreferences` JSON field to the existing `User` model to store personalized key bindings.
+- **Database Schema:** Add a `ShortcutPreferences` JSON field to the existing `User` model to store personalized key bindings, with a `localStorage` fallback (via `userPreferences.ts`) for anonymous/unauthenticated users so custom bindings are preserved across sessions.
 - **Shortcut Engine:** Refactor the frontend event listeners to decouple actions from specific keys, routing keydown events through a dynamic shortcut resolution manager.
 - **User Interface:** Create a new "Keyboard Shortcuts" modal accessible from the user settings menu, displaying a searchable list of all actions and allowing users to record new key combinations.
 - **Conflict Resolution:** Implement logic in the settings modal to warn users if they attempt to assign a key combination that is already in use by another action or the browser itself.
