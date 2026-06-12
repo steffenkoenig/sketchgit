@@ -179,7 +179,6 @@ export class CanvasEngine {
       backgroundColor: '#0a0a0f',
       selection: true,
       renderOnAddRemove: true,
-    renderOnAddRemove: true,
       fireRightClick: true,
       stopContextMenu: true,
     });
@@ -316,7 +315,7 @@ export class CanvasEngine {
     }
     if (this.boundContextMenu) {
       const wrap = document.getElementById('canvas-wrap');
-      if (wrap) wrap.removeEventListener('contextmenu', this.boundContextMenu as any);
+      if (wrap) wrap.removeEventListener('contextmenu', this.boundContextMenu as EventListener);
       this.boundContextMenu = null;
     }
     // P085 – remove pinch-to-zoom listeners
@@ -642,7 +641,7 @@ export class CanvasEngine {
 
       if (hasSelection) {
         if (active.length > 1) canGroup = true;
-        if (active.length === 1 && active[0].type === 'group' && !(active[0] as any)._isArrow) canUngroup = true;
+        if (active.length === 1 && active[0].type === 'group' && !(active[0] as FabricObject & { _isArrow?: boolean })._isArrow) canUngroup = true;
       }
 
       window.dispatchEvent(new CustomEvent('sketchgit-context-menu', {
