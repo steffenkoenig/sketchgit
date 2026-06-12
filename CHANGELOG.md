@@ -6,6 +6,18 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.8.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.7.1...sketchgit-next-v0.8.0) (2026-06-12)
+
+
+### Features
+
+* create new platform improvement plans ([ac6947c](https://github.com/steffenkoenig/sketchgit/commit/ac6947cc282c5a0955f31877e4e2a364ef185eea))
+
+
+### Bug Fixes
+
+* [milestone 1.0] Resolve batch bugs 017 and 018, verify 020 and 021 ([cf43e48](https://github.com/steffenkoenig/sketchgit/commit/cf43e481e9d0dd4c1b66b186abbd42a266e13abc))
+
 ## [0.7.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.7.0...sketchgit-next-v0.7.1) (2026-06-06)
 
 
