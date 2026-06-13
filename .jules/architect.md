@@ -45,3 +45,11 @@
 2. Extract the connection parsing, access checks, fullsync delivery, and message setup logic into a new `handleWsConnection` function.
 3. Replace the inline callback in `server.ts` with a delegation to `handleWsConnection`.
 4. Validate changes using `npm run build:server` and `npm run test` to guarantee structural equivalence.
+
+## Refactor Ledger - Completion Status
+- `lib/sketchgit/git/mergeEngine.ts`: **Completed**. Extracted `mergeCanvasProperties` and `mergeSingleObject`. Cryptic variable names refactored.
+- `lib/sketchgit/canvas/canvasEngine.ts` (Interaction Loops): **Completed**. Extracted tool logic into specialized delegates (`handleMouseDownPen`, `handleMouseDownText`, `handleMouseDownShape`, etc.).
+- `lib/sketchgit/canvas/canvasEngine.ts` (Snapping): **Completed**. Extracted `syncPropertiesPanelToSelection` into a new `UISyncManager` class in `lib/sketchgit/canvas/uiSyncManager.ts`. Also extracted `tryConvertToSketch` and `rebuildSketchPathForMove` into `lib/sketchgit/canvas/snappingLogic.ts`.
+- `server.ts` / `wss.on("connection")`: **Completed**. Extracted `handleWsConnection` logic into `lib/server/wsConnectionHandler.ts` with safe type delegation and extracted functions.
+
+Tests pass and functionality remains intact.
