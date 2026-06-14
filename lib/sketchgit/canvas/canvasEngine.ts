@@ -1,4 +1,6 @@
+
 /* eslint-disable max-lines-per-function */
+import { UISyncManager } from './uiSyncManager.js';
 
 /**
  * canvasEngine – encapsulates Fabric.js canvas setup and all drawing tools.
@@ -657,33 +659,18 @@ export class CanvasEngine {
       return;
     }
     if (this.currentTool === 'select') return;
-    // If the user clicked on an existing object, let Fabric handle it (move/resize/select)
-    // instead of starting a new shape draw.  The eraser is excluded because its
-    // whole purpose is to act on existing objects.
     if (e.target && this.currentTool !== 'eraser') return;
-    // P037: Snapshot the canvas state before this gesture so Ctrl+Z can restore it.
     this.pushHistory();
-    // Fabric v7: scenePoint is supplied directly on the event info object
     const p = e.scenePoint;
     this.startX = p.x;
     this.startY = p.y;
     this.isDrawing = true;
     if (this.canvas) this.canvas.selection = false;
 
-    if (this.currentTool === 'pen') {
-      this.handleMouseDownPen(p);
-      return;
-    }
+    if (this.currentTool === 'pen') { this.handleMouseDownPen(p); return; }
     if (this.currentTool === 'eraser') return;
-    if (this.currentTool === 'text') {
-      this.handleMouseDownText(p);
-      return;
-    }
-    if (this.currentTool === 'mermaid') {
-      this.handleMouseDownMermaid(p);
-      return;
-    }
-
+    if (this.currentTool === 'text') { this.handleMouseDownText(p); return; }
+    if (this.currentTool === 'mermaid') { this.handleMouseDownMermaid(p); return; }
     this.handleMouseDownShape(p);
   }
 
@@ -731,12 +718,10 @@ export class CanvasEngine {
   }
 
   private onMouseMove(e: TPointerEventInfo): void {
-    // Only broadcast cursor for mouse/pointer events (not touch events).
     if (e.e instanceof MouseEvent) {
       this.onBroadcastCursor({ e: e.e });
     }
     if (!this.isDrawing) return;
-    // Fabric v7: scenePoint is supplied directly on the event info object
     const p = e.scenePoint;
 
     if (this.currentTool === 'eraser') {
@@ -847,13 +832,12 @@ export class CanvasEngine {
     }
 
     if (this.activeObj) {
-      // Fabric v7: scenePoint is supplied directly on the event info object
       const p = e.scenePoint;
       this.handleMouseUpShape(p);
     }
 
     if (this.canvas) this.canvas.selection = this.currentTool === 'select';
-    this.canvas?.requestRenderAll(); // P022: batch via rAF
+    this.canvas?.requestRenderAll();
     if (this.currentTool !== 'select') this.onBroadcastDraw(true);
   }
 
@@ -2444,7 +2428,7 @@ export class CanvasEngine {
   }
 
   /** Reverse of getDashArray: infer the dash type from a stored strokeDashArray. */
-  private getDashTypeFromArray(da: number[] | null | undefined): 'solid' | 'dashed' | 'dotted' {
+  public getDashTypeFromArray(da: number[] | null | undefined): 'solid' | 'dashed' | 'dotted' {
     if (!da || da.length === 0) return 'solid';
     // dotted: first value (dot) ≤ second value (gap), dashed: first > second
     return da[0] <= (da[1] ?? 0) ? 'dotted' : 'dashed';
@@ -2916,23 +2900,17 @@ export class CanvasEngine {
    * Updates `_origGeom` on the existing Path, regenerates it via `tryConvertToSketch`,
    * and replaces it on the canvas without disturbing the active selection.
    */
-  private rebuildSketchPathForMove(
+  public rebuildSketchPathForMove(
     pathObj: FabricObject,
     x1: number, y1: number, x2: number, y2: number,
   ): void {
-    if (!this.canvas) return;
     const sp = pathObj as AnchoredLine & { _origGeom?: string; _sloppiness?: string };
-
-    // Update origGeom with the new snapped endpoint coordinates.
     sp._origGeom = JSON.stringify({ type: 'line', x1, y1, x2, y2 });
 
     const sloppiness = (sp._sloppiness as 'architect' | 'artist' | 'cartoonist') ?? 'artist';
     const rebuilt = this.tryConvertToSketch(pathObj, sloppiness);
     if (!rebuilt) return;
 
-    // tryConvertToSketch positions the result at the source object's getCenterPoint()
-    // (the old center). For a moved connector the correct center is the midpoint of
-    // the new endpoints — override it here.
     rebuilt.set({
       left: (x1 + x2) / 2,
       top: (y1 + y2) / 2,
@@ -2940,179 +2918,18 @@ export class CanvasEngine {
     });
     rebuilt.setCoords();
 
-    const prevActive = this.canvas.getActiveObject();
-    this.canvas.remove(pathObj);
-    this.canvas.add(rebuilt);
+    const prevActive = this.canvas?.getActiveObject();
+    this.canvas?.remove(pathObj);
+    this.canvas?.add(rebuilt);
     if (prevActive && prevActive !== pathObj) {
-      this.canvas.setActiveObject(prevActive);
+      this.canvas?.setActiveObject(prevActive);
     }
   }
 
   /** Sync the toolbar and properties panel UI to the currently selected object. */
-  private syncPropertiesPanelToSelection(): void {
-    const o = this.canvas?.getActiveObject();
-    const panel = document.getElementById('props-panel');
-    if (!panel) return;
-
-    if (!o) {
-      // Nothing selected: if on the select tool, hide panel; drawing tools keep their own view.
-      if (this.currentTool === 'select') panel.classList.add('hide');
-      return;
-    }
-
-    // Determine shape type from the selected object and show matching sections.
-    const shapeType = this.getObjectShapeType(o);
-    this.showPropertiesPanelForShape(shapeType, true);
-
-    // Sync opacity slider
-    const opacity = ((o.get('opacity') as number) ?? 1) * 100;
-    const slider = document.getElementById('opacitySlider') as HTMLInputElement | null;
-    if (slider) slider.value = String(Math.round(opacity));
-    const opLabel = document.getElementById('opacityValue');
-    if (opLabel) opLabel.textContent = `${Math.round(opacity)}%`;
-
-    // Sync stroke color dot AND the underlying color input value
-    const stroke = (o.get('stroke') as string) ?? this.strokeColor;
-    this.strokeColor = stroke; // keep engine state in sync
-    const strokeDot = document.getElementById('strokeDot');
-    if (strokeDot) strokeDot.style.background = stroke;
-    const strokeColorInput = document.getElementById('strokeColorInput') as HTMLInputElement | null;
-    if (strokeColorInput) strokeColorInput.value = stroke;
-
-    // Sync stroke width engine state + buttons
-    const sw = (o.get('strokeWidth') as number) ?? 1.5;
-    this.strokeWidth = sw; // keep engine state in sync
-    ['sz1', 'sz3', 'sz5'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.remove('on');
-      el.setAttribute('aria-pressed', 'false');
-    });
-    const swId = sw <= 2 ? 'sz1' : sw <= 4 ? 'sz3' : 'sz5';
-    const swEl = document.getElementById(swId);
-    swEl?.classList.add('on');
-    swEl?.setAttribute('aria-pressed', 'true');
-
-    // Sync dash type buttons AND engine state so setStrokeWidth() rescales dashes correctly
-    const da = o.get('strokeDashArray') as number[] | null;
-    const dashType = this.getDashTypeFromArray(da);
-    this.strokeDashType = dashType; // keep engine state in sync
-    ['dash-solid', 'dash-dashed', 'dash-dotted'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.remove('on');
-      el.setAttribute('aria-pressed', 'false');
-    });
-    document.getElementById(`dash-${dashType}`)?.classList.add('on');
-    document.getElementById(`dash-${dashType}`)?.setAttribute('aria-pressed', 'true');
-
-    // Sync link input
-    const link = (o as FabricObject & { _link?: string })._link ?? '';
-    const linkInput = document.getElementById('linkInput') as HTMLInputElement | null;
-    if (linkInput) linkInput.value = link;
-
-    // Sync mermaid code textarea when a mermaid image is selected
-    const mermaidCode = (o as FabricObject & { _mermaidCode?: string })._mermaidCode ?? '';
-    const mermaidInput = document.getElementById('mermaidCodeInput') as HTMLTextAreaElement | null;
-    if (mermaidInput) mermaidInput.value = mermaidCode;
-
-    // Sync fill-enabled toggle from the object's actual fill state
-    const fillVal2 = o.get('fill');
-    const objHasFill = fillVal2 !== 'transparent' && fillVal2 != null;
-    this.fillEnabled = !!objHasFill;
-    const fillToggle = document.getElementById('tfillToggle');
-    if (fillToggle) {
-      fillToggle.textContent = this.fillEnabled ? '⊠' : '⊡';
-      fillToggle.setAttribute('aria-pressed', this.fillEnabled ? 'true' : 'false');
-    }
-
-    // Sync fill dot and fill color input — use the object's stored _fillColor for correct
-    // representation even when the fill is a Pattern.
-    const objFillColorStored = (o as FabricObject & { _fillColor?: string })._fillColor ?? this.fillColor;
-    const fillDot = document.getElementById('fillDot');
-    if (fillDot) {
-      if (typeof fillVal2 === 'string' && fillVal2 !== 'transparent') {
-        fillDot.style.background = fillVal2;
-      } else if (fillVal2 instanceof Pattern || (fillVal2 !== null && typeof fillVal2 === 'object')) {
-        fillDot.style.background = objFillColorStored;
-      } else {
-        // transparent or null fill
-        fillDot.style.background = 'transparent';
-      }
-    }
-    const fillColorInput = document.getElementById('fillColorInput') as HTMLInputElement | null;
-    if (fillColorInput) fillColorInput.value = objFillColorStored;
-    this.fillColor = objFillColorStored; // keep engine state in sync
-
-    // Sync fill-pattern buttons from the object's stored _fillPattern
-    const objFillPattern = ((o as FabricObject & { _fillPattern?: string })._fillPattern
-      ?? 'filled') as 'filled' | 'striped' | 'crossed';
-    ['fp-filled', 'fp-striped', 'fp-crossed'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.remove('on');
-      el.setAttribute('aria-pressed', 'false');
-    });
-    const fpActive = `fp-${objFillPattern}`;
-    document.getElementById(fpActive)?.classList.add('on');
-    document.getElementById(fpActive)?.setAttribute('aria-pressed', 'true');
-
-    // Sync sloppiness buttons from the object's stored sloppiness
-    const objSloppiness = ((o as FabricObject & { _sloppiness?: string })._sloppiness
-      ?? 'architect') as 'architect' | 'artist' | 'cartoonist' | 'doodle';
-    ['sloppy-architect', 'sloppy-artist', 'sloppy-cartoonist', 'sloppy-doodle'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.remove('on');
-      el.setAttribute('aria-pressed', 'false');
-    });
-    document.getElementById(`sloppy-${objSloppiness}`)?.classList.add('on');
-    document.getElementById(`sloppy-${objSloppiness}`)?.setAttribute('aria-pressed', 'true');
-
-    // Sync border-radius buttons from the selected rect (native or sketch)
-    const shapeTypeForBr = this.getObjectShapeType(o);
-    if (shapeTypeForBr === 'rect') {
-      let objRx: number;
-      if (o.isType('rect')) {
-        objRx = (o.get('rx') as number) ?? 0;
-      } else {
-        // Sketch path: read rx from stored _origGeom
-        const origGeomStr = (o as FabricObject & { _origGeom?: string })._origGeom;
-        try {
-          const g = JSON.parse(origGeomStr ?? '') as { rx?: number };
-          objRx = g.rx ?? 0;
-        } catch { objRx = 0; }
-      }
-      const brType = objRx > 3 ? 'rounded' : 'sharp';
-      ['br-sharp', 'br-rounded'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.classList.remove('on');
-        el.setAttribute('aria-pressed', 'false');
-      });
-      document.getElementById(`br-${brType}`)?.classList.add('on');
-      document.getElementById(`br-${brType}`)?.setAttribute('aria-pressed', 'true');
-      this.borderRadiusEnabled = brType === 'rounded';
-    }
-
-    // Sync arrow type and arrowhead buttons from the selected arrow group
-    const oa = o as ArrowGroupExt;
-    if (oa._isArrow) {
-      const at = (oa._arrowType ?? 'sharp') as string;
-      (['sharp', 'curved', 'elbow'] as const).forEach((t) => {
-        document.getElementById(`at-${t}`)?.classList.toggle('on', t === at);
-        document.getElementById(`at-${t}`)?.setAttribute('aria-pressed', t === at ? 'true' : 'false');
-      });
-      const ahs = (oa._arrowHeadStart ?? 'none') as string;
-      const ahe = (oa._arrowHeadEnd ?? 'open') as string;
-      (['none', 'open', 'triangle', 'triangle-outline'] as const).forEach((t) => {
-        const suffix = t.replace(/-/g, '');
-        document.getElementById(`ahs-${suffix}`)?.classList.toggle('on', t === ahs);
-        document.getElementById(`ahs-${suffix}`)?.setAttribute('aria-pressed', t === ahs ? 'true' : 'false');
-        document.getElementById(`ahe-${suffix}`)?.classList.toggle('on', t === ahe);
-        document.getElementById(`ahe-${suffix}`)?.setAttribute('aria-pressed', t === ahe ? 'true' : 'false');
-      });
-    }
+  public syncPropertiesPanelToSelection(): void {
+    const manager = new UISyncManager(this);
+    manager.syncPropertiesPanelToSelection();
   }
 
   /**
@@ -3121,7 +2938,7 @@ export class CanvasEngine {
    * Sketch paths (artist/cartoonist/doodle) preserve their original shape type
    * via `_origGeom` so that the correct controls remain visible.
    */
-  private getObjectShapeType(o: FabricObject): string {
+  public getObjectShapeType(o: FabricObject): string {
     const oa = o as FabricObject & { _isArrow?: boolean; _isMermaid?: boolean; type?: string; _origGeom?: string };
     if (oa._isMermaid) return 'mermaid';
     if (oa._isArrow) return 'arrow';
