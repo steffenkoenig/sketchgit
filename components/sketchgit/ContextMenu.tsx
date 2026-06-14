@@ -15,6 +15,7 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
   useEffect(() => {
     const handleContext = (e: Event) => {
       const ce = e as CustomEvent;
+      if (!ce?.detail) return;
       // Use client coordinates for position overlay correctly
       setMenuState({
         x: ce.detail.x,
@@ -31,8 +32,9 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
 
     window.addEventListener("sketchgit-context-menu", handleContext);
     window.addEventListener("click", handleClick);
-    // Any scroll event or tool change should close it
+    // Any scroll event, wheel zoom, or tool change should close it
     window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("wheel", handleScroll, true);
 
     // Support escape to close
     const handleKey = (e: KeyboardEvent) => {
@@ -44,6 +46,7 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
       window.removeEventListener("sketchgit-context-menu", handleContext);
       window.removeEventListener("click", handleClick);
       window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("wheel", handleScroll, true);
       window.removeEventListener("keydown", handleKey);
     };
   }, []);
@@ -104,7 +107,7 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
         </>
       ) : (
         <div style={{ padding: "8px 12px", color: "var(--tx2)", fontSize: "12px", textAlign: "center" }}>
-          No selection
+          {t("noSelection") || "No selection"}
         </div>
       )}
     </div>

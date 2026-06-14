@@ -75,7 +75,9 @@
     "alignRight": "Align Right",
     "alignTop": "Align Top",
     "alignCenterV": "Align Center Vertical",
-    "alignBottom": "Align Bottom"
+    "alignBottom": "Align Bottom",
+    "noSelection": "No selection",
+    "delete": "Delete"
   },
   "topbar": {
     "collab": "Collab",

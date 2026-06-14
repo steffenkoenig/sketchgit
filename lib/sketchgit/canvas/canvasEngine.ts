@@ -314,8 +314,9 @@ export class CanvasEngine {
       this.boundKeydown = null;
     }
     if (this.boundContextMenu) {
-      const wrap = document.getElementById('canvas-wrap');
-      if (wrap) wrap.removeEventListener('contextmenu', this.boundContextMenu as EventListener);
+      if (this.touchWrapEl) {
+        this.touchWrapEl.removeEventListener('contextmenu', this.boundContextMenu);
+      }
       this.boundContextMenu = null;
     }
     // P085 – remove pinch-to-zoom listeners
@@ -1604,6 +1605,7 @@ export class CanvasEngine {
       this.pushHistory();
       this.canvas?.remove(...objs);
       this.canvas?.discardActiveObject();
+      this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
     }
