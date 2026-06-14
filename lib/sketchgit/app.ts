@@ -220,6 +220,7 @@ export function createSketchGitApp() {
     resetZoom: () => canvas.resetZoom(),
 
     // Grouping & Alignment
+    deleteSelection: () => canvas.deleteSelection(),
     groupSelection: () => canvas.groupSelection(),
     ungroupSelection: () => canvas.ungroupSelection(),
     alignLeft: () => canvas.alignLeft(),

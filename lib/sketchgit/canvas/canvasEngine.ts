@@ -99,6 +99,7 @@ export class CanvasEngine {
   // ── P020: Bound listener references for proper cleanup ───────────────────
   private boundResize: (() => void) | null = null;
   private boundKeydown: ((e: KeyboardEvent) => void) | null = null;
+  private boundContextMenu: ((e: MouseEvent) => void) | null = null;
 
   // ── P067: Remote object locks (clientId → { objectIds, color, origStyles }) ─
   private remoteLocks = new Map<string, { objectIds: Set<string>; color: string; origStyles: Map<string, { stroke: string | undefined; strokeWidth: number | undefined; strokeDashArray: number[] | undefined }> }>();
@@ -178,7 +179,10 @@ export class CanvasEngine {
       backgroundColor: '#0a0a0f',
       selection: true,
       renderOnAddRemove: true,
+      fireRightClick: true,
+      stopContextMenu: true,
     });
+
 
     this.canvas.on('mouse:down', (e: TPointerEventInfo) => this.onMouseDown(e));
     this.canvas.on('mouse:move', (e: TPointerEventInfo) => this.onMouseMove(e));
@@ -308,6 +312,12 @@ export class CanvasEngine {
     if (this.boundKeydown) {
       window.removeEventListener('keydown', this.boundKeydown);
       this.boundKeydown = null;
+    }
+    if (this.boundContextMenu) {
+      if (this.touchWrapEl) {
+        this.touchWrapEl.removeEventListener('contextmenu', this.boundContextMenu);
+      }
+      this.boundContextMenu = null;
     }
     // P085 – remove pinch-to-zoom listeners
     if (this.touchWrapEl) {
@@ -622,6 +632,30 @@ export class CanvasEngine {
   }
 
   private onMouseDown(e: TPointerEventInfo): void {
+    // Handle right click context menu
+    if (e.e && (e.e as MouseEvent).button === 2) {
+      e.e.preventDefault();
+      const active = this.canvas?.getActiveObjects() || [];
+      const hasSelection = active.length > 0;
+      let canGroup = false;
+      let canUngroup = false;
+
+      if (hasSelection) {
+        if (active.length > 1) canGroup = true;
+        if (active.length === 1 && active[0].type === 'group' && !(active[0] as FabricObject & { _isArrow?: boolean })._isArrow) canUngroup = true;
+      }
+
+      window.dispatchEvent(new CustomEvent('sketchgit-context-menu', {
+        detail: {
+          x: (e.e as MouseEvent).clientX,
+          y: (e.e as MouseEvent).clientY,
+          hasSelection,
+          canGroup,
+          canUngroup
+        }
+      }));
+      return;
+    }
     if (this.currentTool === 'select') return;
     // If the user clicked on an existing object, let Fabric handle it (move/resize/select)
     // instead of starting a new shape draw.  The eraser is excluded because its
@@ -1057,14 +1091,7 @@ export class CanvasEngine {
       e.preventDefault();
       this.redo();
     } else if (k === 'delete' || k === 'backspace') {
-      const objs = this.canvas?.getActiveObjects();
-      if (objs && objs.length > 0) {
-        this.pushHistory();
-        this.canvas?.remove(...objs);
-        this.canvas?.discardActiveObject();
-        this.markDirty();
-        this.onBroadcastDraw(true);
-      }
+      this.deleteSelection();
     }
   }
 
@@ -1570,6 +1597,19 @@ export class CanvasEngine {
 
 
   // ── Grouping and Alignment ──────────────────────────────────────────────
+
+
+  deleteSelection(): void {
+    const objs = this.canvas?.getActiveObjects();
+    if (objs && objs.length > 0) {
+      this.pushHistory();
+      this.canvas?.remove(...objs);
+      this.canvas?.discardActiveObject();
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
+    }
+  }
 
   groupSelection(): void {
     const o = this.canvas?.getActiveObject();

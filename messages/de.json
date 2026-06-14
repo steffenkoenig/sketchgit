@@ -75,7 +75,9 @@
     "alignRight": "Rechts ausrichten",
     "alignTop": "Oben ausrichten",
     "alignCenterV": "Vertikal zentrieren",
-    "alignBottom": "Unten ausrichten"
+    "alignBottom": "Unten ausrichten",
+    "noSelection": "Keine Auswahl",
+    "delete": "Löschen"
   },
   "topbar": {
     "collab": "Zusammenarbeit",

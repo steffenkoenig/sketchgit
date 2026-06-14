@@ -29,6 +29,7 @@ import { ModalErrorBoundary } from "./errors/ModalErrorBoundary";
 import { AppTopbar } from "./sketchgit/AppTopbar";
 import { LeftToolbar } from "./sketchgit/LeftToolbar";
 import { PropertiesPanel } from "./sketchgit/PropertiesPanel";
+import { ContextMenu } from "./sketchgit/ContextMenu";
 import { ShareModal } from "./sketchgit/ShareModal";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
@@ -149,6 +150,9 @@ export default function SketchGitApp() {
             {/* Properties panel – shown when a drawing tool is active or a shape is selected */}
             <PropertiesPanel call={call} />
           </main>
+
+          {/* Right-click context menu overlay */}
+          <ContextMenu call={call} />
         </div>
 
         {/* P025: complementary landmark for the timeline panel */}
