@@ -6,6 +6,18 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.9.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.8.0...sketchgit-next-v0.9.0) (2026-06-14)
+
+
+### Features
+
+* [milestone 1.2] implement canvas right-click context menu ([#242](https://github.com/steffenkoenig/sketchgit/issues/242)) ([56d5c12](https://github.com/steffenkoenig/sketchgit/commit/56d5c126a4edea01b0e8c48e1133cabc8d17f60c))
+
+
+### Refactoring
+
+* [structure] Decompose monolithic canvas handlers and merge algorithms ([#245](https://github.com/steffenkoenig/sketchgit/issues/245)) ([6bcbe2c](https://github.com/steffenkoenig/sketchgit/commit/6bcbe2c334adf7dc0ca4b8b0e33fd0e5d441ea04))
+
 ## [0.8.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.7.1...sketchgit-next-v0.8.0) (2026-06-12)
 
 
