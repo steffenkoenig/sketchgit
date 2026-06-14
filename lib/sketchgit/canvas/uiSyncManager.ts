@@ -141,8 +141,8 @@ export class UISyncManager {
   }
 
   private syncFont(o: FabricObject): void {
-    const ff = (o.get('fontFamily') as string) ?? (this.engine as unknown as { fontFamily: string }).fontFamily;
-    (this.engine as unknown as { fontFamily: string }).fontFamily = ff;
+    const ff = o.get('fontFamily') as string | undefined;
+    if (!ff) return;
     ['font-sans', 'font-serif', 'font-mono'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
