@@ -6,6 +6,13 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.9.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.9.1...sketchgit-next-v0.9.2) (2026-06-15)
+
+
+### Bug Fixes
+
+* **tsconfig:** revert ignoreDeprecations to 6.0 for TS 6.0.3 compatibility ([2cb049d](https://github.com/steffenkoenig/sketchgit/commit/2cb049d30af88b99dd355d4cadfb5919d072cb52))
+
 ## [0.9.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.9.0...sketchgit-next-v0.9.1) (2026-06-15)
 
 
