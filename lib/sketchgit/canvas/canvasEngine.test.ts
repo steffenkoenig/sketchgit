@@ -3053,6 +3053,26 @@ describe('CanvasEngine – endpoint selection controls', () => {
       expect((engine as any).pushHistory).toHaveBeenCalled();
     });
 
+    it('groups multiple selected objects with lowercase activeselection type', () => {
+      const rect = makeFabricObject({ type: 'rect', _id: 'r1' });
+      const circle = makeFabricObject({ type: 'circle', _id: 'c1' });
+      const objects = [rect, circle];
+
+      mockCanvasInstance.getObjects.mockReturnValue(objects);
+      const activeSelection = { type: 'activeselection', getObjects: () => objects, removeAll: vi.fn().mockReturnValue(objects), destroy: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn() };
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+
+      (engine as any).pushHistory = vi.fn();
+
+      engine.groupSelection();
+
+      expect(activeSelection.removeAll).toHaveBeenCalled();
+      expect(mockCanvasInstance.setActiveObject).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
+    });
+
     it('ungroups a selected group', () => {
       const rect = makeFabricObject({ type: 'rect', _id: 'r1', _set: vi.fn() });
       const circle = makeFabricObject({ type: 'circle', _id: 'c1', _set: vi.fn() });
@@ -3135,6 +3155,30 @@ describe('CanvasEngine – endpoint selection controls', () => {
 
       const activeSelection = {
         type: 'activeSelection',
+        getObjects: () => [rect1, rect2],
+        forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
+        left: 100, top: 100, width: 150, height: 150,
+        set: vi.fn(),
+        removeAll: vi.fn(),
+        setCoords: vi.fn(),
+        _calcBounds: vi.fn(),
+      };
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(activeSelection);
+      (engine as any).pushHistory = vi.fn();
+      engine.alignSelection('left');
+
+      expect(rect1.set).toHaveBeenCalled();
+      expect(rect2.set).toHaveBeenCalled();
+      expect((engine as any).pushHistory).toHaveBeenCalled();
+    });
+
+    it('aligns selected objects to the left with lowercase activeselection type', () => {
+      const rect1 = makeFabricObject({ left: 10, top: 10, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+      const rect2 = makeFabricObject({ left: 110, top: 110, width: 50, height: 50, scaleX: 1, scaleY: 1, set: vi.fn(), setCoords: vi.fn() });
+
+      const activeSelection = {
+        type: 'activeselection',
         getObjects: () => [rect1, rect2],
         forEachObject: (cb: any) => [rect1, rect2].forEach(cb),
         left: 100, top: 100, width: 150, height: 150,
