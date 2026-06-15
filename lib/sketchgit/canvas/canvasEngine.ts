@@ -1,6 +1,6 @@
 
 /* eslint-disable max-lines-per-function */
-import { UISyncManager } from './uiSyncManager.js';
+import { UISyncManager } from './uiSyncManager';
 
 /**
  * canvasEngine – encapsulates Fabric.js canvas setup and all drawing tools.
