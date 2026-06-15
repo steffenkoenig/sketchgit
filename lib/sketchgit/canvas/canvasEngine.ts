@@ -1,6 +1,6 @@
 
 /* eslint-disable max-lines-per-function */
-import { UISyncManager } from './uiSyncManager.js';
+import { UISyncManager } from './uiSyncManager';
 
 /**
  * canvasEngine – encapsulates Fabric.js canvas setup and all drawing tools.
@@ -1041,42 +1041,56 @@ export class CanvasEngine {
     e.e.stopPropagation();
   }
 
+  private handleToolShortcuts(k: string): boolean {
+    const tools: Record<string, string> = {
+      's': 'select', 'p': 'pen', 'l': 'line', 'a': 'arrow',
+      'r': 'rect', 'e': 'ellipse', 't': 'text', 'm': 'mermaid', 'x': 'eraser'
+    };
+    if (tools[k]) {
+      this.setTool(tools[k]);
+      return true;
+    }
+    return false;
+  }
+
+  private handleZoomShortcuts(k: string): boolean {
+    if (k === '+' || k === '=') { this.zoomIn(); return true; }
+    if (k === '-') { this.zoomOut(); return true; }
+    if (k === '0') { this.resetZoom(); return true; }
+    return false;
+  }
+
+  private handleActionShortcuts(e: KeyboardEvent, k: string): boolean {
+    if ((e.ctrlKey || e.metaKey) && k === 'g') {
+      e.preventDefault();
+      e.shiftKey ? this.ungroupSelection() : this.groupSelection();
+      return true;
+    }
+    if ((e.ctrlKey || e.metaKey) && k === 'z') {
+      e.preventDefault();
+      e.shiftKey ? this.redo() : this.undo();
+      return true;
+    }
+    if ((e.ctrlKey || e.metaKey) && k === 'y') {
+      e.preventDefault();
+      this.redo();
+      return true;
+    }
+    if (k === 'delete' || k === 'backspace') {
+      this.deleteSelection();
+      return true;
+    }
+    return false;
+  }
+
   private onKey(e: KeyboardEvent): void {
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
     const k = e.key.toLowerCase();
-    if (k === 's') this.setTool('select');
-    else if (k === 'p') this.setTool('pen');
-    else if (k === 'l') this.setTool('line');
-    else if (k === 'a') this.setTool('arrow');
-    else if (k === 'r') this.setTool('rect');
-    else if (k === 'e') this.setTool('ellipse');
-    else if (k === 't') this.setTool('text');
-    else if (k === 'm') this.setTool('mermaid');
-    else if (k === 'x') this.setTool('eraser');
-    else if (k === '+' || k === '=') this.zoomIn();
-    else if (k === '-') this.zoomOut();
-    else if (k === '0') this.resetZoom();
-    else if ((e.ctrlKey || e.metaKey) && k === 'g') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        this.ungroupSelection();
-      } else {
-        this.groupSelection();
-      }
-    } else if ((e.ctrlKey || e.metaKey) && k === 'z') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        this.redo();
-      } else {
-        this.undo();
-      }
-    } else if ((e.ctrlKey || e.metaKey) && k === 'y') {
-      e.preventDefault();
-      this.redo();
-    } else if (k === 'delete' || k === 'backspace') {
-      this.deleteSelection();
-    }
+
+    if (this.handleToolShortcuts(k)) return;
+    if (this.handleZoomShortcuts(k)) return;
+    this.handleActionShortcuts(e, k);
   }
 
   // ── Tool & style controls ─────────────────────────────────────────────────
@@ -1651,67 +1665,52 @@ export class CanvasEngine {
     this.onBroadcastDraw(true);
   }
 
+  private getAlignableSelection(active: FabricObject | null | undefined): { items: FabricObject[], boundingRect: { left: number, top: number, width: number, height: number } } | null {
+    if (!active) return null;
+    let items: FabricObject[];
+    if (active.type === 'activeSelection') {
+      items = (active as ActiveSelection).getObjects();
+    } else if (active.type === 'group' && !(active as unknown as Group & { _isArrow?: boolean })._isArrow) {
+      items = (active as Group).getObjects();
+    } else {
+      return null;
+    }
+    const boundingRect = {
+      left: active.width ? -active.width / 2 : 0,
+      top: active.height ? -active.height / 2 : 0,
+      width: active.width ?? 0,
+      height: active.height ?? 0
+    };
+    return { items, boundingRect };
+  }
+
+  private applyAlignment(obj: FabricObject, alignment: string, boundingRect: { left: number, top: number, width: number, height: number }): void {
+    const objW = (obj.width ?? 0) * (obj.scaleX ?? 1);
+    const objH = (obj.height ?? 0) * (obj.scaleY ?? 1);
+    switch (alignment) {
+      case 'left': obj.set({ left: boundingRect.left + objW / 2 }); break;
+      case 'centerH': obj.set({ left: 0 }); break;
+      case 'right': obj.set({ left: boundingRect.left + boundingRect.width - objW / 2 }); break;
+      case 'top': obj.set({ top: boundingRect.top + objH / 2 }); break;
+      case 'centerV': obj.set({ top: 0 }); break;
+      case 'bottom': obj.set({ top: boundingRect.top + boundingRect.height - objH / 2 }); break;
+    }
+  }
+
   alignSelection(alignment: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom'): void {
     const active = this.canvas?.getActiveObject();
     if (!active || !this.canvas) return;
 
-    let boundingRect: { left: number, top: number, width: number, height: number };
-    let items: FabricObject[];
-
-    if (active.type === 'activeSelection') {
-      items = (active as ActiveSelection).getObjects();
-      // Active selection uses group coordinates internally
-      boundingRect = {
-        left: active.width ? -active.width / 2 : 0,
-        top: active.height ? -active.height / 2 : 0,
-        width: active.width ?? 0,
-        height: active.height ?? 0
-      };
-    } else if (active.type === 'group' && !(active as unknown as Group & { _isArrow?: boolean })._isArrow) {
-      items = (active as Group).getObjects();
-      boundingRect = {
-        left: active.width ? -active.width / 2 : 0,
-        top: active.height ? -active.height / 2 : 0,
-        width: active.width ?? 0,
-        height: active.height ?? 0
-      };
-    } else {
-      return; // Single object or arrow group cannot be internally aligned
-    }
-
-    if (items.length <= 1) return;
+    const selection = this.getAlignableSelection(active);
+    if (!selection || selection.items.length <= 1) return;
 
     this.pushHistory();
 
-    for (const obj of items) {
-      const objW = (obj.width ?? 0) * (obj.scaleX ?? 1);
-      const objH = (obj.height ?? 0) * (obj.scaleY ?? 1);
-
-      switch (alignment) {
-        case 'left':
-          obj.set({ left: boundingRect.left + objW / 2 });
-          break;
-        case 'centerH':
-          obj.set({ left: 0 }); // Center in group coords is 0
-          break;
-        case 'right':
-          obj.set({ left: boundingRect.left + boundingRect.width - objW / 2 });
-          break;
-        case 'top':
-          obj.set({ top: boundingRect.top + objH / 2 });
-          break;
-        case 'centerV':
-          obj.set({ top: 0 });
-          break;
-        case 'bottom':
-          obj.set({ top: boundingRect.top + boundingRect.height - objH / 2 });
-          break;
-      }
+    for (const obj of selection.items) {
+      this.applyAlignment(obj, alignment, selection.boundingRect);
       obj.setCoords();
     }
 
-    // Recalculate the parent selection/group bounding box so controls and
-    // selection borders reflect the new child positions.
     (active as unknown as { _calcBounds?: (skip?: boolean) => void })._calcBounds?.(true);
     (active as unknown as { setCoords?: () => void }).setCoords?.();
 
