@@ -101,3 +101,101 @@ Currently, anyone with a room link or an invitation token has full editing capab
 ### Future Press Release
 **SketchGit Unveils Advanced Sharing and Read-Only Access**
 Collaborating with external stakeholders just got a lot safer. Today, SketchGit introduces Advanced Role-Based Access Control (RBAC) and Public Read-Only Links. We understand that sometimes you need to showcase a complex diagram to a large audience without worrying about accidental edits or unwanted commits. Room owners can now explicitly assign Viewer or Editor roles to collaborators, ensuring your master designs remain pristine. Furthermore, you can instantly generate a public read-only link, perfect for embedding in company wikis or sharing broadly. This update fortifies SketchGit as an enterprise-ready tool, balancing seamless real-time collaboration with strict access governance. Try out the new Share Settings menu in your next session!
+
+
+---
+
+## 4. In-Canvas Commenting and Feedback Threads
+
+### Goal
+Enable users to add context-specific comments and start feedback threads directly on canvas objects to facilitate asynchronous communication.
+
+### Problem
+Currently, users collaborate in real-time but lack a built-in way to leave feedback or questions asynchronously. They have to rely on external chat tools or text objects on the canvas, which clutters the design and disconnects discussion from specific components.
+
+### Proposed Changes
+- **Database Schema**: Add `Comment` and `Thread` models. A thread attaches to a specific canvas object ID.
+- **Backend API**:
+  - `POST /api/rooms/[roomId]/threads`: Create a thread on an object.
+  - `POST /api/threads/[threadId]/comments`: Add a comment to an existing thread.
+  - Implement WebSocket events to broadcast thread creation and comment additions to active users.
+- **Frontend UI**:
+  - Introduce a new "Comment" tool in the toolbar.
+  - Render thread markers over associated objects. Clicking a marker opens a side panel with the thread's discussion.
+- **Email Service**: Send email notifications (via Resend) to room members or mentioned users when a new comment is added.
+
+### Definitions of Done
+- **Functionality**: Users can create threads attached to specific objects, reply to threads, and receive email notifications. Thread markers are visible on the canvas.
+- **Testing**: Vitest unit tests verify thread creation and commenting API logic. Playwright E2E tests confirm the thread sidebar functionality and marker placement.
+- **Security**: The API endpoints verify that the user has at least `VIEWER` access to the room to read threads, and `EDITOR` or `OWNER` to create threads/comments.
+- **Reliability**: Comment creation is optimistic on the frontend to ensure a snappy user experience, while WebSocket syncing handles long-polling and network interruptions gracefully.
+- **Accessibility**: The comment side panel is keyboard-navigable and screen-reader accessible. ARIA labels clarify thread markers on the canvas.
+- **GDPR**: Users can delete their own comments. If an account is deleted, all their comments are either anonymized or completely deleted according to GDPR requirements.
+- **Documentation**: Update `README.md` to detail the commenting feature. Update `/docs/customer`, `/docs/technical`, and `/docs/support` to reflect the new functionality.
+
+### Future Press Release
+**SketchGit Brings Conversations to the Canvas with In-Canvas Commenting**
+We are excited to introduce In-Canvas Commenting and Feedback Threads to SketchGit, bridging the gap between asynchronous feedback and real-time design. Previously, teams had to use disconnected chat applications or clutter the canvas with text boxes to discuss specific diagram elements. Now, you can pin a discussion thread directly to any object, creating a focused space for questions, approvals, and reviews. Whether you are reviewing an architectural diagram or brainstorming a wireframe, your team's feedback is now perfectly contextualized. When you are tagged in a comment, you'll receive a convenient email notification keeping you in the loop. This update transforms SketchGit from just a drawing tool into a comprehensive collaboration hub. Try out the new comment tool in your next design review!
+
+---
+
+## 5. Offline Mode with Auto-Sync
+
+### Goal
+Provide an offline mode that allows users to continue working on their canvas without an internet connection, automatically syncing changes once the connection is restored.
+
+### Problem
+SketchGit currently requires an active WebSocket connection to function fully. If a user experiences a temporary network drop or wants to work while traveling without internet access, their ability to draw, create commits, or manage branches is severely impaired or blocked completely.
+
+### Proposed Changes
+- **Database / Local Storage**: Leverage IndexedDB on the client side to locally store canvas state, commits, and pending actions when offline.
+- **Backend API**:
+  - Create a batch-sync endpoint `/api/rooms/[roomId]/sync` to receive and process a queue of offline actions.
+  - Implement robust conflict resolution for changes made offline that conflict with server-side updates from other users.
+- **Frontend UI**:
+  - Add an offline status indicator in the top toolbar to clearly communicate network state.
+  - Queue mutations in a local store and replay them when the WebSocket connection is re-established.
+
+### Definitions of Done
+- **Functionality**: Users can draw, undo, redo, and make local commits while offline. Upon reconnection, local changes are synchronized with the server seamlessly.
+- **Testing**: Playwright E2E tests simulate network disconnection and reconnection to verify offline drawing and subsequent synchronization. Vitest tests cover the batch-sync resolution logic.
+- **Security**: Batch sync payloads are strictly validated against Zod schemas and checked for correct room authorization before processing.
+- **Reliability**: The synchronization queue handles failed sync attempts with exponential backoff and prevents data loss by persisting the queue in IndexedDB.
+- **Accessibility**: The offline status indicator is accompanied by a screen reader announcement so visually impaired users are aware of their network state.
+- **GDPR**: Offline data is stored purely locally in the user's browser. Clearing local site data effectively purges offline storage, ensuring user control over data.
+- **Documentation**: Update `/docs/customer`, `/docs/technical`, and `/docs/support` outlining the offline capabilities, limitations, and sync conflict resolution mechanisms.
+
+### Future Press Release
+**Draw Anywhere with SketchGit's New Offline Mode**
+We know inspiration doesn't always wait for a stable Wi-Fi connection, which is why we are thrilled to launch Offline Mode with Auto-Sync for SketchGit. Whether you are on a flight or experiencing network instability, you can now continue drawing, creating commits, and managing branches entirely locally. Our new intelligent synchronization engine works seamlessly in the background to store your changes and automatically push them to the server the moment you reconnect. You no longer have to worry about losing your progress due to dropped connections. The intuitive offline indicator ensures you always know your network status. Enjoy uninterrupted creativity wherever you are!
+
+---
+
+## 6. Advanced Layer Management and Object Grouping
+
+### Goal
+Introduce a robust layer management system and advanced object grouping capabilities to simplify the organization of complex canvas designs.
+
+### Problem
+As users create more intricate diagrams, the canvas becomes difficult to manage. Without layers or deep grouping, selecting overlapping objects, locking specific background elements (like grids or templates), or toggling the visibility of complex object clusters is cumbersome and error-prone.
+
+### Proposed Changes
+- **Canvas State / Backend**: Extend the internal canvas state to support Layer objects. A layer contains an ordered list of grouped and individual objects.
+- **Frontend UI**:
+  - Introduce a comprehensive "Layers" side panel that displays the hierarchy of layers and objects.
+  - Add UI controls to toggle layer visibility, lock/unlock entire layers, and reorder layers via drag-and-drop.
+  - Enhance grouping logic to support nested groups (groups within groups).
+- **Backend/WebSocket**: Broadcast layer visibility and locking states to ensure consistency across collaborative sessions.
+
+### Definitions of Done
+- **Functionality**: Users can create, rename, reorder, lock, and toggle the visibility of layers. Objects can be grouped, nested, and assigned to specific layers.
+- **Testing**: Vitest tests validate layer serialization and grouping logic within the Git merge engine. Playwright E2E tests confirm drag-and-drop layer reordering and visibility toggling.
+- **Security**: Layer modification events are validated server-side to ensure the user has appropriate permissions to modify the room's structural layout.
+- **Reliability**: Layer operations (especially dragging large groups) are optimized to avoid blocking the main browser thread, ensuring 60fps rendering performance.
+- **Accessibility**: The layer panel is fully accessible via keyboard navigation, supporting drag-and-drop alternatives (like up/down arrow keys for reordering) and appropriate ARIA attributes.
+- **GDPR**: Layer metadata does not introduce any new personal data tracking, maintaining full compliance with existing data erasure policies.
+- **Documentation**: Update `/docs/customer`, `/docs/technical`, and `/docs/support` detailing the layer panel features, nested grouping, and locking mechanisms.
+
+### Future Press Release
+**Master Complex Diagrams with SketchGit's Layer Management**
+Today, we are elevating SketchGit from a simple drawing board to a professional-grade diagramming tool with the introduction of Advanced Layer Management and Object Grouping. As your designs grow in complexity, keeping them organized is crucial. Our new Layers panel allows you to effortlessly manage overlapping elements, lock background templates, and toggle the visibility of specific annotations. Furthermore, you can now nest groups within groups, providing unparalleled control over your diagram's structure. Whether you are building intricate architectural blueprints or multi-layered UI mockups, SketchGit provides the structural tools you need to stay organized. Dive into your dashboard and start building better, structured designs today!
