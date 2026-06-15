@@ -3135,6 +3135,27 @@ describe('CanvasEngine – endpoint selection controls', () => {
       engine.ungroupSelection();
       expect(mockCanvasInstance.add).not.toHaveBeenCalled();
     });
+
+    it('applies styling recursively to all objects inside a group', () => {
+      const child1 = makeFabricObject({ type: 'rect', stroke: '#000000', strokeWidth: 1, fill: 'transparent', set: vi.fn() });
+      const child2 = makeFabricObject({ type: 'ellipse', stroke: '#000000', strokeWidth: 1, fill: 'transparent', set: vi.fn() });
+      const group = makeFabricObject({
+        type: 'group',
+        getObjects: () => [child1, child2],
+        set: vi.fn(),
+      });
+
+      mockCanvasInstance.getActiveObject.mockReturnValue(group);
+      (engine as any).pushHistory = vi.fn();
+
+      engine.updateStrokeColor('#ffffff');
+      expect(child1.set).toHaveBeenCalledWith('stroke', '#ffffff');
+      expect(child2.set).toHaveBeenCalledWith('stroke', '#ffffff');
+
+      engine.setStrokeWidth(5);
+      expect(child1.set).toHaveBeenCalledWith('strokeWidth', 5);
+      expect(child2.set).toHaveBeenCalledWith('strokeWidth', 5);
+    });
   });
 
   describe('Alignment', () => {

@@ -1179,6 +1179,24 @@ export class CanvasEngine {
     }
   }
 
+  private setStrokeColorOnObject(obj: FabricObject, v: string): void {
+    if ((obj as FabricObject & { _isArrow?: boolean })._isArrow) {
+      const children = (obj as Group).getObjects?.() ?? [];
+      const firstChild = children[0];
+      if (firstChild) firstChild.set('stroke', v);
+      const ag = obj as AnchoredArrowGroup;
+      this.rebuildArrowGroupInPlace(obj, ag._x1 ?? 0, ag._y1 ?? 0, ag._x2 ?? 0, ag._y2 ?? 0);
+    } else if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setStrokeColorOnObject(child, v);
+      }
+      obj.set('dirty', true);
+    } else {
+      obj.set('stroke', v);
+    }
+  }
+
   updateStrokeColor(v: string): void {
     this.strokeColor = v;
     const dot = document.getElementById('strokeDot');
@@ -1186,17 +1204,28 @@ export class CanvasEngine {
     const o = this.canvas?.getActiveObject();
     if (o) {
       this.pushHistory();
-      if ((o as FabricObject & { _isArrow?: boolean })._isArrow) {
-        const children = (o as Group).getObjects?.() ?? [];
-        const firstChild = children[0];
-        if (firstChild) firstChild.set('stroke', v);
-        this.rebuildSelectedArrow({});
-      } else {
-        o.set('stroke', v);
-      }
+      this.setStrokeColorOnObject(o, v);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
+    }
+  }
+
+  private setFillColorOnObject(obj: FabricObject, v: string): void {
+    if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setFillColorOnObject(child, v);
+      }
+      obj.set('dirty', true);
+    } else {
+      const objFill = obj.get('fill');
+      const objHasFill = objFill !== 'transparent' && objFill != null;
+      if (objHasFill || this.fillEnabled) {
+        const pattern = (obj as FabricObject & { _fillPattern?: string })._fillPattern as 'filled' | 'striped' | 'crossed' | undefined;
+        obj.set('fill', this.createFill(pattern ?? 'filled', v));
+        (obj as FabricObject & { _fillColor?: string })._fillColor = v;
+      }
     }
   }
 
@@ -1208,20 +1237,32 @@ export class CanvasEngine {
     if (fillColorInput) fillColorInput.value = v;
     const o = this.canvas?.getActiveObject();
     if (o) {
-      const objFill = o.get('fill');
-      const objHasFill = objFill !== 'transparent' && objFill != null;
-      // Only apply when the object already has a fill or fill is explicitly enabled,
-      // to avoid unintentionally adding fill to a transparent object.
-      if (!objHasFill && !this.fillEnabled) return;
       this.pushHistory();
-      // Re-apply pattern fill with the new color, or use plain fill
-      const pattern = (o as FabricObject & { _fillPattern?: string })._fillPattern as 'filled' | 'striped' | 'crossed' | undefined;
-      o.set('fill', this.createFill(pattern ?? 'filled', v));
-      (o as FabricObject & { _fillColor?: string })._fillColor = v;
+      this.setFillColorOnObject(o, v);
       this.canvas?.requestRenderAll();
       // BUG-010 – same fix: mark dirty and broadcast so peers see the change.
       this.markDirty();
       this.onBroadcastDraw(true);
+    }
+  }
+
+  private toggleFillOnObject(obj: FabricObject): void {
+    if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.toggleFillOnObject(child);
+      }
+      obj.set('dirty', true);
+    } else {
+      if (this.fillEnabled) {
+        const fill = this.createFill(this.fillPattern, this.fillColor);
+        obj.set('fill', fill);
+        const ext = obj as FabricObject & { _fillPattern?: string; _fillColor?: string };
+        ext._fillPattern = this.fillPattern;
+        ext._fillColor = this.fillColor;
+      } else {
+        obj.set('fill', 'transparent');
+      }
     }
   }
 
@@ -1235,18 +1276,31 @@ export class CanvasEngine {
     const o = this.canvas?.getActiveObject();
     if (o) {
       this.pushHistory();
-      if (this.fillEnabled) {
-        const fill = this.createFill(this.fillPattern, this.fillColor);
-        o.set('fill', fill);
-        const ext = o as FabricObject & { _fillPattern?: string; _fillColor?: string };
-        ext._fillPattern = this.fillPattern;
-        ext._fillColor = this.fillColor;
-      } else {
-        o.set('fill', 'transparent');
-      }
+      this.toggleFillOnObject(o);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
+    }
+  }
+
+  private setStrokeWidthOnObject(obj: FabricObject, w: number): void {
+    if ((obj as FabricObject & { _isArrow?: boolean })._isArrow) {
+      const children = (obj as Group).getObjects?.() ?? [];
+      const firstChild = children[0];
+      if (firstChild) firstChild.set('strokeWidth', w);
+      const ag = obj as AnchoredArrowGroup;
+      this.rebuildArrowGroupInPlace(obj, ag._x1 ?? 0, ag._y1 ?? 0, ag._x2 ?? 0, ag._y2 ?? 0);
+    } else if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setStrokeWidthOnObject(child, w);
+      }
+      obj.set('dirty', true);
+    } else {
+      obj.set('strokeWidth', w);
+      if (this.strokeDashType !== 'solid') {
+        obj.set('strokeDashArray', this.getDashArray(this.strokeDashType, w));
+      }
     }
   }
 
@@ -1269,21 +1323,31 @@ export class CanvasEngine {
     const o = this.canvas?.getActiveObject();
     if (o) {
       this.pushHistory();
-      if ((o as FabricObject & { _isArrow?: boolean })._isArrow) {
-        const children = (o as Group).getObjects?.() ?? [];
-        const firstChild = children[0];
-        if (firstChild) firstChild.set('strokeWidth', w);
-        this.rebuildSelectedArrow({});
-      } else {
-        o.set('strokeWidth', w);
-        // Re-apply dash array so the dash scale matches the new width
-        if (this.strokeDashType !== 'solid') {
-          o.set('strokeDashArray', this.getDashArray(this.strokeDashType, w));
-        }
-      }
+      this.setStrokeWidthOnObject(o, w);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
+    }
+  }
+
+  private setStrokeDashOnObject(obj: FabricObject, type: 'solid' | 'dashed' | 'dotted'): void {
+    if ((obj as FabricObject & { _isArrow?: boolean })._isArrow) {
+      const children = (obj as Group).getObjects?.() ?? [];
+      const firstChild = children[0];
+      const actualWidth = (firstChild?.get('strokeWidth') as number) ?? this.strokeWidth;
+      if (firstChild) firstChild.set('strokeDashArray', this.getDashArray(type, actualWidth));
+      const ag = obj as AnchoredArrowGroup;
+      this.rebuildArrowGroupInPlace(obj, ag._x1 ?? 0, ag._y1 ?? 0, ag._x2 ?? 0, ag._y2 ?? 0);
+    } else if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setStrokeDashOnObject(child, type);
+      }
+      obj.set('dirty', true);
+    } else {
+      const actualWidth = (obj.get('strokeWidth') as number) || this.strokeWidth;
+      const dashArray = this.getDashArray(type, actualWidth);
+      obj.set('strokeDashArray', dashArray ?? null);
     }
   }
 
@@ -1301,21 +1365,55 @@ export class CanvasEngine {
     const o = this.canvas?.getActiveObject();
     if (o) {
       this.pushHistory();
-      const actualWidth = (o as FabricObject & { _isArrow?: boolean })._isArrow
-        ? (((o as Group).getObjects?.()?.[0] as FabricObject | undefined)?.get('strokeWidth') as number ?? this.strokeWidth)
-        : ((o.get('strokeWidth') as number) || this.strokeWidth);
-      if ((o as FabricObject & { _isArrow?: boolean })._isArrow) {
-        const children = (o as Group).getObjects?.() ?? [];
-        const firstChild = children[0];
-        if (firstChild) firstChild.set('strokeDashArray', this.getDashArray(type, actualWidth));
-        this.rebuildSelectedArrow({});
-      } else {
-        const dashArray = this.getDashArray(type, actualWidth);
-        o.set('strokeDashArray', dashArray ?? null);
-      }
+      this.setStrokeDashOnObject(o, type);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
+    }
+  }
+
+  private hasRectObject(obj: FabricObject): boolean {
+    if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      return children.some((child) => this.hasRectObject(child));
+    }
+    if (obj.isType('rect')) return true;
+    const oe = obj as FabricObject & { _origGeom?: string };
+    if (oe._origGeom) {
+      try {
+        const g = JSON.parse(oe._origGeom) as { type?: string };
+        if (g.type === 'rect') return true;
+      } catch { /* ignore */ }
+    }
+    return false;
+  }
+
+  private setBorderRadiusOnObject(obj: FabricObject, type: 'sharp' | 'rounded'): void {
+    if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setBorderRadiusOnObject(child, type);
+      }
+      obj.set('dirty', true);
+    } else {
+      const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
+      if (obj.isType('rect')) {
+        (obj as Rect).set({ rx: r, ry: r });
+      } else {
+        // For sketch paths (artist/cartoonist/doodle) representing a rect: update
+        // the stored original geometry and regenerate the sketch path.
+        const oe = obj as FabricObject & { _origGeom?: string; _sloppiness?: string };
+        if (!oe._origGeom) return;
+        let geom: Record<string, unknown>;
+        try { geom = JSON.parse(oe._origGeom) as Record<string, unknown>; }
+        catch { return; }
+        if (geom.type !== 'rect') return;
+        geom.rx = r;
+        oe._origGeom = JSON.stringify(geom);
+        const sloppiness = (oe._sloppiness ?? this.sloppiness) as 'architect' | 'artist' | 'cartoonist' | 'doodle';
+        const replacement = this.tryConvertToSketch(obj, sloppiness);
+        if (replacement) this.replaceObject(obj, replacement);
+      }
     }
   }
 
@@ -1331,32 +1429,26 @@ export class CanvasEngine {
     el?.classList.add('on');
     el?.setAttribute('aria-pressed', 'true');
     const o = this.canvas?.getActiveObject();
-    if (!o) return;
-    const r = type === 'rounded' ? 12 : 3; // 3 matches the creation default for sharp rects
-    if (o.isType('rect')) {
+    if (o) {
+      if (!this.hasRectObject(o)) return;
       this.pushHistory();
-      (o as Rect).set({ rx: r, ry: r });
+      this.setBorderRadiusOnObject(o, type);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
+    }
+  }
+
+  private setOpacityOnObject(obj: FabricObject, opacity: number): void {
+    if (this.isGroupLike(obj)) {
+      obj.set('opacity', 1);
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setOpacityOnObject(child, opacity);
+      }
+      obj.set('dirty', true);
     } else {
-      // For sketch paths (artist/cartoonist/doodle) representing a rect: update
-      // the stored original geometry and regenerate the sketch path.
-      const oe = o as FabricObject & { _origGeom?: string; _sloppiness?: string };
-      if (!oe._origGeom) return;
-      let geom: Record<string, unknown>;
-      try { geom = JSON.parse(oe._origGeom) as Record<string, unknown>; }
-      catch { return; }
-      if (geom.type !== 'rect') return;
-      this.pushHistory();
-      geom.rx = r;
-      oe._origGeom = JSON.stringify(geom);
-      const sloppiness = (oe._sloppiness ?? this.sloppiness) as 'architect' | 'artist' | 'cartoonist' | 'doodle';
-      const replacement = this.tryConvertToSketch(o, sloppiness);
-      if (replacement) this.replaceActiveObject(o, replacement);
-      this.canvas?.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(true);
+      obj.set('opacity', opacity);
     }
   }
 
@@ -1369,10 +1461,27 @@ export class CanvasEngine {
     const o = this.canvas?.getActiveObject();
     if (o) {
       this.pushHistory();
-      o.set('opacity', this.opacityValue / 100);
+      this.setOpacityOnObject(o, this.opacityValue / 100);
       this.canvas?.requestRenderAll();
       this.markDirty();
       this.onBroadcastDraw(true);
+    }
+  }
+
+  private setSloppinessOnObject(obj: FabricObject, type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): void {
+    if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setSloppinessOnObject(child, type);
+      }
+      obj.set('dirty', true);
+    } else {
+      const replacement = this.tryConvertToSketch(obj, type);
+      if (replacement) {
+        this.replaceObject(obj, replacement);
+      } else {
+        obj.set(this.getSloppinessOptions(type));
+      }
     }
   }
 
@@ -1389,20 +1498,34 @@ export class CanvasEngine {
     el?.setAttribute('aria-pressed', 'true');
 
     const o = this.canvas?.getActiveObject();
-    if (!o) return;
-
-    this.pushHistory();
-    // Attempt to regenerate the shape from its stored original geometry.
-    const replacement = this.tryConvertToSketch(o, type);
-    if (replacement) {
-      this.replaceActiveObject(o, replacement);
-    } else {
-      // Fallback for objects without stored geometry (e.g. pen paths, text)
-      o.set(this.getSloppinessOptions(type));
+    if (o) {
+      this.pushHistory();
+      this.setSloppinessOnObject(o, type);
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
-    this.canvas?.requestRenderAll();
-    this.markDirty();
-    this.onBroadcastDraw(true);
+  }
+
+  private setFillPatternOnObject(obj: FabricObject, type: 'filled' | 'striped' | 'crossed'): void {
+    if (this.isGroupLike(obj)) {
+      const children = (obj as Group).getObjects() ?? [];
+      for (const child of children) {
+        this.setFillPatternOnObject(child, type);
+      }
+      obj.set('dirty', true);
+    } else {
+      const objFill = obj.get('fill');
+      const objHasFill = objFill !== 'transparent' && objFill != null;
+      if (objHasFill || this.fillEnabled) {
+        const objFillColor = (obj as FabricObject & { _fillColor?: string })._fillColor ?? this.fillColor;
+        const fill = this.createFill(type, objFillColor);
+        obj.set('fill', fill);
+        const ext = obj as FabricObject & { _fillPattern?: string; _fillColor?: string };
+        ext._fillPattern = type;
+        ext._fillColor = objFillColor;
+      }
+    }
   }
 
   setFillPattern(type: 'filled' | 'striped' | 'crossed'): void {
@@ -1418,21 +1541,11 @@ export class CanvasEngine {
     el?.setAttribute('aria-pressed', 'true');
     const o = this.canvas?.getActiveObject();
     if (o) {
-      // Apply to the selected object if it currently has a fill (non-transparent),
-      // or if the fill-enabled toggle is on for new shapes.
-      const objFill = o.get('fill');
-      const objHasFill = objFill !== 'transparent' && objFill != null;
-      if (objHasFill || this.fillEnabled) {
-        this.pushHistory();
-        const fill = this.createFill(type, this.fillColor);
-        o.set('fill', fill);
-        const ext = o as FabricObject & { _fillPattern?: string; _fillColor?: string };
-        ext._fillPattern = type;
-        ext._fillColor = this.fillColor;
-        this.canvas?.requestRenderAll();
-        this.markDirty();
-        this.onBroadcastDraw(true);
-      }
+      this.pushHistory();
+      this.setFillPatternOnObject(o, type);
+      this.canvas?.requestRenderAll();
+      this.markDirty();
+      this.onBroadcastDraw(true);
     }
   }
 
@@ -2059,15 +2172,43 @@ export class CanvasEngine {
     return newPath;
   }
 
+  private isGroupLike(obj: FabricObject): boolean {
+    if ((obj as FabricObject & { _isArrow?: boolean })._isArrow) return false;
+    const t = obj.type ?? '';
+    return t === 'group' || t === 'activeSelection' || t === 'activeselection';
+  }
+
+  private replaceObject(old: FabricObject, replacement: FabricObject): void {
+    if (!this.canvas) return;
+    const parent = old.group;
+    if (parent && parent.type !== 'activeselection' && parent.type !== 'activeSelection') {
+      const idx = parent.getObjects().indexOf(old);
+      parent.remove(old);
+      if (idx !== -1) {
+        parent.insertAt(idx, replacement);
+      } else {
+        parent.add(replacement);
+      }
+      parent.set('dirty', true);
+    } else {
+      this.canvas.remove(old);
+      this.canvas.add(replacement);
+      if (this.canvas.getActiveObject() === old) {
+        this.canvas.setActiveObject(replacement);
+      } else if (parent && (parent.type === 'activeselection' || parent.type === 'activeSelection')) {
+        const activeSel = parent as ActiveSelection;
+        activeSel.remove(old);
+        activeSel.add(replacement);
+      }
+    }
+  }
+
   /**
    * Replace the active canvas object with `replacement`, preserving selection.
    * No-op if `canvas` is null.
    */
   private replaceActiveObject(old: FabricObject, replacement: FabricObject): void {
-    if (!this.canvas) return;
-    this.canvas.remove(old);
-    this.canvas.add(replacement);
-    this.canvas.setActiveObject(replacement);
+    this.replaceObject(old, replacement);
   }
 
   /**
