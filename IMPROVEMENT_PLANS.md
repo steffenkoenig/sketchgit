@@ -114,9 +114,9 @@ Enable users to add context-specific comments and start feedback threads directl
 Currently, users collaborate in real-time but lack a built-in way to leave feedback or questions asynchronously. They have to rely on external chat tools or text objects on the canvas, which clutters the design and disconnects discussion from specific components.
 
 ### Proposed Changes
-- **Database Schema**: Add `Comment` and `Thread` models. A thread attaches to a specific canvas object ID.
+- **Database Schema**: Add `Comment` and `Thread` models. A thread attaches to a specific canvas object ID and is scoped to a specific branch or commit ID to handle and preserve version history correctly.
 - **Backend API**:
-  - `POST /api/rooms/[roomId]/threads`: Create a thread on an object.
+  - `POST /api/rooms/[roomId]/threads`: Create a thread on an object. The payload includes the target branch or commit ID.
   - `POST /api/threads/[threadId]/comments`: Add a comment to an existing thread.
   - Implement WebSocket events to broadcast thread creation and comment additions to active users.
 - **Frontend UI**:
@@ -154,7 +154,7 @@ SketchGit currently requires an active WebSocket connection to function fully. I
   - Implement robust conflict resolution for changes made offline that conflict with server-side updates from other users.
 - **Frontend UI**:
   - Add an offline status indicator in the top toolbar to clearly communicate network state.
-  - Queue mutations in a local store and replay them when the WebSocket connection is re-established.
+  - Queue mutations in a local store. Upon reconnection, the client must reconcile all offline mutations via the batch-sync HTTP endpoint before resuming the WebSocket connection to prevent race conditions.
 
 ### Definitions of Done
 - **Functionality**: Users can draw, undo, redo, and make local commits while offline. Upon reconnection, local changes are synchronized with the server seamlessly.
@@ -180,7 +180,7 @@ Introduce a robust layer management system and advanced object grouping capabili
 As users create more intricate diagrams, the canvas becomes difficult to manage. Without layers or deep grouping, selecting overlapping objects, locking specific background elements (like grids or templates), or toggling the visibility of complex object clusters is cumbersome and error-prone.
 
 ### Proposed Changes
-- **Canvas State / Backend**: Extend the internal canvas state to support Layer objects. A layer contains an ordered list of grouped and individual objects.
+- **Canvas State / Backend**: Extend the internal canvas state to support Layer objects. To avoid conflicts with nested grouping in Fabric.js, layer metadata will be stored directly as properties on individual canvas objects rather than in separate collections. A layer contains an ordered list of grouped and individual objects.
 - **Frontend UI**:
   - Introduce a comprehensive "Layers" side panel that displays the hierarchy of layers and objects.
   - Add UI controls to toggle layer visibility, lock/unlock entire layers, and reorder layers via drag-and-drop.
