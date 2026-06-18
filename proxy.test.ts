@@ -111,3 +111,45 @@ describe('proxy.ts', () => {
     });
   });
 });
+
+  describe('Unauthenticated access and Bypasses', () => {
+    it('bypasses rate limiting when DISABLE_RATE_LIMIT is set to true', async () => {
+      process.env.DISABLE_RATE_LIMIT = "true";
+      const req = {
+        nextUrl: { pathname: '/api/auth/register' },
+        headers: new Headers({
+          'x-forwarded-for': '127.0.0.1',
+        }),
+      } as unknown as NextRequest;
+
+      // Force it to use in-memory and exceed max normally
+      for (let i = 0; i < 15; i++) {
+        await proxyMiddleware(req, {} as any);
+      }
+
+      const response = await proxyMiddleware(req, {} as any) as any;
+      // It should not be blocked by rate limit, hence it returns NextResponse.next() output
+      expect(response).toBeDefined();
+      expect(vi.mocked(NextResponse.next)).toHaveBeenCalled();
+    });
+
+    it('redirects to signin for unauthenticated /dashboard access', async () => {
+      const req = {
+        auth: null, // unauthenticated
+        nextUrl: {
+          pathname: '/dashboard',
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/dashboard'
+        },
+        headers: new Headers(),
+      } as unknown as NextRequest;
+
+      await proxyMiddleware(req, {} as any);
+
+      // Verify redirect
+      expect(vi.mocked(NextResponse.redirect)).toHaveBeenCalled();
+      const mockCallArgs = vi.mocked(NextResponse.redirect).mock.calls[0][0] as URL;
+      expect(mockCallArgs.pathname).toBe('/auth/signin');
+      expect(mockCallArgs.searchParams.get('callbackUrl')).toBe('http://localhost:3000/dashboard');
+    });
+  });
