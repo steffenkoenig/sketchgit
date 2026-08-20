@@ -10,8 +10,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-space-grotesk)", "sans-serif"],
-        mono: ["var(--font-fira-code)", "monospace"],
+        sans: ["sans-serif"],
+        mono: ["monospace"],
       },
       colors: {
         border: "hsl(var(--border))",
