@@ -6,6 +6,35 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.10.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.9.1...sketchgit-next-v0.10.0) (2026-08-20)
+
+
+### Features
+
+* **canvas:** recursively apply stroke/fill/opacity/sloppiness styles to grouped objects ([772ecc2](https://github.com/steffenkoenig/sketchgit/commit/772ecc21f23d6cdcc0360886cbc47eaedec798af))
+
+
+### Bug Fixes
+
+* **canvas:** support lowercase activeselection type in Fabric 7 ([d08e25a](https://github.com/steffenkoenig/sketchgit/commit/d08e25a26694015693067301277dab3424b254b4))
+* **canvas:** support lowercase activeselection type in Fabric 7 to fix grouping and alignment ([561a1a3](https://github.com/steffenkoenig/sketchgit/commit/561a1a3f6869be0ad549b58e958efc779102f190))
+* **tsconfig:** revert ignoreDeprecations to 6.0 for TS 6.0.3 compatibility ([2cb049d](https://github.com/steffenkoenig/sketchgit/commit/2cb049d30af88b99dd355d4cadfb5919d072cb52))
+
+
+### Refactoring
+
+* [structure] Complete structural sweep enforcing clean code bounds ([e0c31ca](https://github.com/steffenkoenig/sketchgit/commit/e0c31cabc91e93e0d2055be948d0ac3e13e6b211))
+* [structure] Decompose monolithic functions to adhere to strict architecture limits ([cb9701f](https://github.com/steffenkoenig/sketchgit/commit/cb9701f17a8f76e5119ecd21ce67b8fba7eb8e83))
+* **canvas:** simplify activeSelection type checks to use toLowerCase ([9e15e25](https://github.com/steffenkoenig/sketchgit/commit/9e15e25720e8a7ad43544557e47a6fb1be427a3e))
+
+
+### Documentation
+
+* add platform improvement implementation plans ([d809310](https://github.com/steffenkoenig/sketchgit/commit/d809310b4a4ba5da2a7e280a0a93533c2d267208))
+* add platform improvement implementation plans ([67a2335](https://github.com/steffenkoenig/sketchgit/commit/67a2335d4942faf20f7d29e0b9f074e8b7ac8c08))
+* add platform improvement implementation plans ([b5f856b](https://github.com/steffenkoenig/sketchgit/commit/b5f856bddd2d380551d3288040417af11de055aa))
+* add platform improvement implementation plans ([17ef291](https://github.com/steffenkoenig/sketchgit/commit/17ef2911a477af49e4f6978b18d58d1483799da8))
+
 ## [0.9.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.9.0...sketchgit-next-v0.9.1) (2026-06-15)
 
 
