@@ -35,7 +35,7 @@ jobs:
       SKIP_ENV_VALIDATION: "true"
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # fetch-depth: 0 is required so that commitlint can reach the PR base
           # SHA when running `--from github.event.pull_request.base.sha`.
@@ -94,7 +94,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -120,7 +120,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
