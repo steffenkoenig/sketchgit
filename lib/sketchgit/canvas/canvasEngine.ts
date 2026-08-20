@@ -1712,7 +1712,7 @@ export class CanvasEngine {
     const o = this.canvas?.getActiveObject();
     if (!o || !this.canvas) return;
 
-    if (o.type !== 'activeSelection' && o.type !== 'activeselection') return;
+    if (o.type?.toLowerCase() !== 'activeselection') return;
 
     this.pushHistory();
 
@@ -1771,7 +1771,7 @@ export class CanvasEngine {
     let boundingRect: { left: number, top: number, width: number, height: number };
     let items: FabricObject[];
 
-    if (active.type === 'activeSelection' || active.type === 'activeselection') {
+    if (active.type?.toLowerCase() === 'activeselection') {
       items = (active as ActiveSelection).getObjects();
       // Active selection uses group coordinates internally
       boundingRect = {
@@ -3084,7 +3084,7 @@ export class CanvasEngine {
     if (oa._isMermaid) return 'mermaid';
     if (oa._isArrow) return 'arrow';
     const t = (oa.type as string | undefined) ?? '';
-    if (t === 'activeSelection' || t === 'activeselection') return 'activeSelection';
+    if (t.toLowerCase() === 'activeselection') return 'activeSelection';
     if (t === 'group') return 'group';
     if (t === 'rect') return 'rect';
     if (t === 'ellipse') return 'ellipse';
