@@ -56,9 +56,6 @@ const nextConfig = {
 
 	// P056 – propagate the per-request nonce generated in proxy.ts to all
 	// Next.js auto-injected inline scripts (hydration, chunk loading, etc.).
-	experimental: {
-		nonce: true,
-	},
 };
 
 export default withBundleAnalyzer(withNextIntl(nextConfig));

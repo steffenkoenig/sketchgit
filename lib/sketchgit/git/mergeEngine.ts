@@ -122,7 +122,7 @@ function resolveLineConflict(
   lineNumber: number,
   partialLines: (string | null)[],
   lineConflicts: MermaidLineConflict[]
-) {
+): void {
   if (oursLine === theirsLine) {
     if (oursLine !== undefined) partialLines.push(oursLine);
   } else if (oursLine === undefined && theirsLine === undefined) {
@@ -145,7 +145,7 @@ function processMermaidLineMerge(
   lineNumber: number,
   partialLines: (string | null)[],
   lineConflicts: MermaidLineConflict[]
-) {
+): void {
   const oursChangedLine = oursLine !== baseLine;
   const theirsChangedLine = theirsLine !== baseLine;
 
@@ -206,7 +206,10 @@ function handleDeletedChild(b: unknown, o: unknown, t: unknown, result: unknown[
 
 function processGroupChild(id: string, b: unknown, o: unknown, t: unknown, result: unknown[]): boolean {
   if (!o && !t) return true;
-  if (!o || !t) return handleDeletedChild(b, o, t, result);
+  if (!o || !t) {
+    handleDeletedChild(b, o, t, result);
+    return true;
+  }
 
   const bStr = b ? JSON.stringify(b) : null;
   const oStr = o ? JSON.stringify(o) : null;
@@ -401,22 +404,18 @@ function handleDeletedObject(
   ours: Record<string, unknown> | undefined,
   theirs: Record<string, unknown> | undefined,
   resultObjects: (Record<string, unknown> | null)[]
-): boolean {
+): void {
   if (ours && !theirs) {
     if (!base) resultObjects.push(ours);
-    return true;
-  }
-  if (!ours && theirs) {
+  } else if (!ours && theirs) {
     if (!base) resultObjects.push(theirs);
-    return true;
   }
-  return false;
 }
 
 function assembleMergedObject(
   baseProps: Record<string, unknown> | null,
   ours: Record<string, unknown>,
-  theirsProps: Record<string, unknown> | null,
+  theirsProps: Record<string, unknown>,
   allPropKeys: Set<string>,
   lineMergedProps: Map<string, unknown>
 ): Record<string, unknown> {
@@ -424,8 +423,8 @@ function assembleMergedObject(
   for (const prop of allPropKeys) {
     if (lineMergedProps.has(prop)) {
       mergedObj[prop] = lineMergedProps.get(prop);
-    } else if (JSON.stringify(baseProps ? baseProps[prop] : undefined) !== JSON.stringify(theirsProps ? theirsProps[prop] : undefined)) {
-      mergedObj[prop] = theirsProps ? theirsProps[prop] : undefined;
+    } else if (JSON.stringify(baseProps ? baseProps[prop] : undefined) !== JSON.stringify(theirsProps[prop])) {
+      mergedObj[prop] = theirsProps[prop];
     }
   }
   return mergedObj;
