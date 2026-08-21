@@ -4,52 +4,75 @@ import {
   broadcastToRoom,
   updateWsClientState,
   schedulePresenceBroadcast,
-  RoomBroadcasterHandlers
+  RoomBroadcasterHandlers,
+  WsClientStateUpdate
 } from './wsRoomBroadcaster.js';
 import type { WsMessage } from '../sketchgit/types.js';
 
 describe('wsRoomBroadcaster', () => {
+  let mockHandlers: RoomBroadcasterHandlers;
+
   beforeEach(() => {
-    // Reset the module-level registry before each test
-    initRoomBroadcaster(null as any);
+    // Reset the module state before each test
+    // @ts-expect-error Resetting module state for testing
+    initRoomBroadcaster(null);
+
+    mockHandlers = {
+      broadcast: vi.fn(),
+      updateClient: vi.fn(),
+      schedulePresence: vi.fn(),
+    };
   });
 
-  it('should be a no-op when not initialized', () => {
-    // These should not throw even though handlers are null
-    expect(() => broadcastToRoom('room1', { type: 'presence' } as unknown as WsMessage)).not.toThrow();
-    expect(() => updateWsClientState('room1', 'client1', { displayName: 'Test' })).not.toThrow();
-    expect(() => schedulePresenceBroadcast('room1')).not.toThrow();
+  describe('when uninitialized', () => {
+    it('does not throw when calling broadcastToRoom', () => {
+      expect(() => {
+        broadcastToRoom('room1', { type: 'presence' });
+      }).not.toThrow();
+    });
+
+    it('does not throw when calling updateWsClientState', () => {
+      expect(() => {
+        updateWsClientState('room1', 'client1', { displayName: 'test' });
+      }).not.toThrow();
+    });
+
+    it('does not throw when calling schedulePresenceBroadcast', () => {
+      expect(() => {
+        schedulePresenceBroadcast('room1');
+      }).not.toThrow();
+    });
   });
 
   describe('when initialized', () => {
-    let mockHandlers: RoomBroadcasterHandlers;
-
     beforeEach(() => {
-      mockHandlers = {
-        broadcast: vi.fn(),
-        updateClient: vi.fn(),
-        schedulePresence: vi.fn(),
-      };
       initRoomBroadcaster(mockHandlers);
     });
 
-    it('should delegate broadcastToRoom to handlers', () => {
-      const message = { type: 'presence' } as unknown as WsMessage;
-      broadcastToRoom('room1', message);
-      expect(mockHandlers.broadcast).toHaveBeenCalledWith('room1', message, undefined);
+    it('delegates broadcastToRoom to the broadcast handler', () => {
+      const msg: WsMessage = { type: 'presence' };
+      broadcastToRoom('room1', msg, 'client2');
 
-      broadcastToRoom('room2', message, 'client1');
-      expect(mockHandlers.broadcast).toHaveBeenCalledWith('room2', message, 'client1');
+      expect(mockHandlers.broadcast).toHaveBeenCalledWith('room1', msg, 'client2');
     });
 
-    it('should delegate updateWsClientState to handlers', () => {
-      const updates = { displayName: 'Test User' };
+    it('delegates broadcastToRoom to the broadcast handler without excludeClientId', () => {
+      const msg: WsMessage = { type: 'presence' };
+      broadcastToRoom('room1', msg);
+
+      expect(mockHandlers.broadcast).toHaveBeenCalledWith('room1', msg, undefined);
+    });
+
+    it('delegates updateWsClientState to the updateClient handler', () => {
+      const updates: WsClientStateUpdate = { displayName: 'Test User', currentBranch: 'main' };
       updateWsClientState('room1', 'client1', updates);
+
       expect(mockHandlers.updateClient).toHaveBeenCalledWith('room1', 'client1', updates);
     });
 
-    it('should delegate schedulePresenceBroadcast to handlers', () => {
+    it('delegates schedulePresenceBroadcast to the schedulePresence handler', () => {
       schedulePresenceBroadcast('room1');
+
       expect(mockHandlers.schedulePresence).toHaveBeenCalledWith('room1');
     });
   });
