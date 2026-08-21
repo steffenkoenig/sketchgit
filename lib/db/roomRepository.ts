@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-
-=======
->>>>>>> main
-
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.
  * All functions are async and interact with PostgreSQL via the Prisma client.
@@ -406,40 +401,9 @@ export async function loadRoomSnapshot(
   // database so reconstruction is always correct regardless of page boundaries.
   const canvasCache = new Map<string, string>();
 
-<<<<<<< HEAD
   // resolveCanvas extracted to resolveCanvasForSnapshot
 
   const commitsMap = await buildRoomCommitsMap(commits, pageShAs, roomId, canvasCache);
-=======
-
-
-  const commitsMap: Record<string, CommitRecord> = {};
-  for (const c of commits) {
-    let canvasStr: string;
-    if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
-      canvasStr = safeStringifyCanvas(c.canvasJson);
-    } else if (pageShAs.has(c.parentSha) && canvasCache.has(c.parentSha)) {
-      // Fast path: parent is already in the cache (within this page).
-      const parentCanvas = canvasCache.get(c.parentSha)!;
-      canvasStr = safeReplayDelta(parentCanvas, c.canvasJson);
-    } else {
-      // Parent is outside this page – resolve via DB walk.
-      const parentCanvas = await resolveAncestorCanvas(roomId, c.parentSha, canvasCache);
-      canvasStr = safeReplayDelta(parentCanvas, c.canvasJson);
-    }
-    canvasCache.set(c.sha, canvasStr);
-    commitsMap[c.sha] = {
-      sha: c.sha,
-      parent: c.parentSha,
-      parents: c.parents as string[],
-      message: c.message,
-      ts: c.createdAt.getTime(),
-      canvas: canvasStr,
-      branch: c.branch,
-      isMerge: c.isMerge,
-    };
-  }
->>>>>>> main
 
   const branchesMap: Record<string, string> = {};
   for (const b of branches) {
@@ -836,12 +800,6 @@ export async function resolveCommitCanvas(
   roomId: string,
   maxDepth = 10_000,
 ): Promise<object | null> {
-<<<<<<< HEAD
-  const chain = await buildCommitChain(sha, roomId, maxDepth);
-  if (!chain || chain.length === 0) return null;
-
-  const resolved = replayCommitChain(chain, sha);
-=======
   type CommitRow = {
     sha: string;
     parentSha: string | null;
@@ -907,7 +865,6 @@ export async function resolveCommitCanvas(
   }
 
   const resolved = canvasCache.get(sha);
->>>>>>> main
   if (!resolved) return null;
   try {
     return JSON.parse(resolved) as object;
