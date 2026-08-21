@@ -677,34 +677,45 @@ export async function resolveCommitCanvas(
     canvasJson: Prisma.JsonValue;
     storageType: CommitStorageType;
   };
-  const visited = new Set<string>();
-  const chain: CommitRow[] = [];
+  // Use a recursive CTE to fetch the commit chain in a single database query
+  // to avoid N+1 query performance issues on deep histories.
+  const chain = await prisma.$queryRaw<CommitRow[]>`
+    WITH RECURSIVE commit_chain AS (
+      SELECT sha, "parentSha", "canvasJson", "storageType", 1 as depth, ARRAY[sha] as path
+      FROM "Commit"
+      WHERE sha = ${sha} AND "roomId" = ${roomId}
 
-  let currentSha: string | null = sha;
-  let depth = 0;
+      UNION ALL
 
-  while (currentSha && depth < maxDepth) {
-    if (visited.has(currentSha)) break; // cycle guard
-
-    const row: CommitRow | null = await prisma.commit.findFirst({
-      where: { roomId, sha: currentSha },
-      select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
-    });
-
-    if (!row) return null; // missing ancestor
-
-    chain.push(row);
-    visited.add(currentSha);
-    depth++;
-
-    if (row.storageType === CommitStorageType.SNAPSHOT || !row.parentSha) break;
-    currentSha = row.parentSha;
-  }
+      SELECT c.sha, c."parentSha", c."canvasJson", c."storageType", p.depth + 1, p.path || c.sha
+      FROM "Commit" c
+      INNER JOIN commit_chain p ON c.sha = p."parentSha"
+      WHERE c."roomId" = ${roomId}
+        AND p."storageType" != 'SNAPSHOT'::"CommitStorageType"
+        AND p."parentSha" IS NOT NULL
+        AND NOT (c.sha = ANY(p.path))
+        AND p.depth < ${maxDepth}
+    )
+    SELECT sha, "parentSha", "canvasJson", "storageType"
+    FROM commit_chain
+    ORDER BY depth DESC;
+  `;
 
   if (chain.length === 0) return null;
 
-  // Built target → base; replay requires oldest-first.
-  chain.reverse();
+  // If the query stopped prematurely due to a missing parent row in the database,
+  // we must return null to match the old loop's missing ancestor behavior.
+  const oldest = chain[0];
+  if (
+    oldest.storageType === CommitStorageType.DELTA &&
+    oldest.parentSha !== null &&
+    chain.length < maxDepth
+  ) {
+    return null; // missing ancestor
+  }
+
+  // The CTE ORDER BY depth DESC returns oldest-first, matching the previous
+  // behavior of chain.reverse() for correct replay order.
 
   const canvasCache = new Map<string, string>();
   for (const c of chain) {
