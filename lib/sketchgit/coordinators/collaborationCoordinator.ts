@@ -15,9 +15,16 @@ import { openModal, closeModal } from '../ui/modals';
 import { loadPreferences, loadLastRoomId, savePreferences } from '../userPreferences';
 
 
-/** Generate a secure random float between 0 and 1. */
-function secureRandom(): number {
-  return crypto.getRandomValues(new Uint32Array(1))[0] / (0xffffffff + 1);
+/** Generate a secure random integer between 0 and max - 1 avoiding modulo bias. */
+function secureRandomInt(max: number): number {
+  if (max <= 0) return 0;
+  const maxUint32 = 0xffffffff;
+  const limit = maxUint32 - (maxUint32 % max);
+  const array = new Uint32Array(1);
+  do {
+    crypto.getRandomValues(array);
+  } while (array[0] >= limit);
+  return array[0] % max;
 }
 
 export class CollaborationCoordinator {
@@ -25,9 +32,9 @@ export class CollaborationCoordinator {
   myName = 'User';
   /**
    * Avatar colour picked randomly at startup.
-   * Using secureRandom() instead of Math.random() for security best practices.
+   * Using secureRandomInt() instead of Math.random() for security best practices.
    */
-  myColor: string = BRANCH_COLORS[Math.floor(secureRandom() * BRANCH_COLORS.length)];
+  myColor: string = BRANCH_COLORS[secureRandomInt(BRANCH_COLORS.length)];
 
   /**
    * @param ctx     – shared subsystem references
