@@ -14,14 +14,20 @@ import { BRANCH_COLORS } from '../types';
 import { openModal, closeModal } from '../ui/modals';
 import { loadPreferences, loadLastRoomId, savePreferences } from '../userPreferences';
 
+
+/** Generate a secure random float between 0 and 1. */
+function secureRandom(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] / (0xffffffff + 1);
+}
+
 export class CollaborationCoordinator {
   /** Current user's display name (mutable via setName()). */
   myName = 'User';
   /**
    * Avatar colour picked randomly at startup.
-   * Math.random() is appropriate here – avatar colour is non-sensitive.
+   * Using secureRandom() instead of Math.random() for security best practices.
    */
-  myColor: string = BRANCH_COLORS[Math.floor(Math.random() * BRANCH_COLORS.length)];
+  myColor: string = BRANCH_COLORS[Math.floor(secureRandom() * BRANCH_COLORS.length)];
 
   /**
    * @param ctx     – shared subsystem references
