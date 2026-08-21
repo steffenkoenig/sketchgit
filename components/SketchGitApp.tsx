@@ -60,7 +60,6 @@ export default function SketchGitApp() {
     return () => document.removeEventListener('sketchgit:openShareModal', handleOpenShareModal);
   }, []);
 
-  // P018: Fabric.js is now bundled via npm – no CDN Script tag needed.
   // P020: Return a cleanup function so the engine is destroyed on unmount,
   //       preventing duplicate WebSocket connections and stacked event listeners
   //       in React Strict Mode and during component re-mounts.
