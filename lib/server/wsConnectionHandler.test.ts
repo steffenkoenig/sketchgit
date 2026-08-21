@@ -55,7 +55,7 @@ describe('wsConnectionHandler', () => {
 
   describe('createWsConnectionHandler', () => {
     it('should close connection if access is denied', async () => {
-      vi.mocked(roomRepo.checkRoomAccess).mockResolvedValueOnce({ allowed: false, reason: 'No access' });
+      vi.mocked(roomRepo.checkRoomAccess).mockResolvedValueOnce({ allowed: false, reason: 'PRIVATE_ROOM' });
       const deps = createMockDeps();
       const handler = createWsConnectionHandler(deps);
 
