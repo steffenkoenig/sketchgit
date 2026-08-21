@@ -1,7 +1,7 @@
 /* eslint-disable max-lines-per-function */
 
 
-import { CanvasEngine } from './canvasEngine.js';
+import { CanvasEngine } from './canvasEngine';
 import { FabricObject, Pattern } from 'fabric';
 
 interface ArrowGroupExt extends FabricObject {
