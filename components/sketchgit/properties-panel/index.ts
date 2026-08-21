@@ -1,0 +1,13 @@
+export { ColorsSection } from "./ColorsSection";
+export { StrokeWidthSection } from "./StrokeWidthSection";
+export { StrokeDashSection } from "./StrokeDashSection";
+export { FillPatternSection } from "./FillPatternSection";
+export { BorderRadiusSection } from "./BorderRadiusSection";
+export { SloppinessSection } from "./SloppinessSection";
+export { ArrowTypeSection } from "./ArrowTypeSection";
+export { ArrowHeadSection } from "./ArrowHeadSection";
+export { OpacitySection } from "./OpacitySection";
+export { LayerControlsSection } from "./LayerControlsSection";
+export { LinkSection } from "./LinkSection";
+export { GroupingSection } from "./GroupingSection";
+export { MermaidSection } from "./MermaidSection";

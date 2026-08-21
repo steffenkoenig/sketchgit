@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 
 import { CanvasEngine } from './canvasEngine';

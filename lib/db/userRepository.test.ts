@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 import { userHasPassword, getUserForAccountDeletion, deleteUser } from "./userRepository";
 import { describe, it, expect, vi, beforeEach } from 'vitest';
