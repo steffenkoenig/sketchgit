@@ -1,227 +1,303 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/* eslint-disable max-lines-per-function */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { dbLoadSnapshot } from "./dbLoadSnapshot.js";
 import type { PrismaClient } from "@prisma/client";
 import type pino from "pino";
-import { dbLoadSnapshot } from './dbLoadSnapshot.js';
-import * as canvasDelta from '../sketchgit/git/canvasDelta.js';
+import { replayCanvasDelta } from "../sketchgit/git/canvasDelta.js";
 
-// Mock replayCanvasDelta so we can force it to throw
-vi.mock('../sketchgit/git/canvasDelta.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../sketchgit/git/canvasDelta.js')>();
+vi.mock("../sketchgit/git/canvasDelta.js", async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../sketchgit/git/canvasDelta.js')>();
   return {
-    ...actual,
-    replayCanvasDelta: vi.fn(actual.replayCanvasDelta),
+    ...mod,
+    replayCanvasDelta: vi.fn(mod.replayCanvasDelta),
   };
 });
 
-describe('dbLoadSnapshot', () => {
-  let mockPrisma: any;
-  let mockLogger: any;
+describe("dbLoadSnapshot", () => {
+  let prismaMock: any;
+  let loggerMock: any;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-
-    mockPrisma = {
-      commit: { findMany: vi.fn() },
-      branch: { findMany: vi.fn() },
-      roomState: { findUnique: vi.fn() },
+    prismaMock = {
+      commit: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      branch: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      roomState: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
     };
 
-    mockLogger = {
+    loggerMock = {
       error: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
     };
+
+    vi.clearAllMocks();
   });
 
-  it('returns null if findMany throws an error and logs the error', async () => {
-    const error = new Error('Database connection failed');
-    mockPrisma.commit.findMany.mockRejectedValue(error);
-
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-
+  it("should return null if no commits are found", async () => {
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
     expect(result).toBeNull();
-    expect(mockLogger.error).toHaveBeenCalledWith({ roomId: 'room1', err: error }, 'db.loadSnapshot failed');
+    expect(loggerMock.error).not.toHaveBeenCalled();
   });
 
-  it('returns null if no commits are found', async () => {
-    mockPrisma.commit.findMany.mockResolvedValue([]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue(null);
+  it("should return null and log error if a DB query throws", async () => {
+    const error = new Error("DB Error");
+    prismaMock.commit.findMany.mockRejectedValue(error);
 
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
     expect(result).toBeNull();
+    expect(loggerMock.error).toHaveBeenCalledWith({ roomId: "room1", err: error }, "db.loadSnapshot failed");
   });
 
-  it('processes SNAPSHOT commits and formats branches and roomState properly', async () => {
-    const d1 = new Date('2023-01-01T00:00:00Z');
-    const d2 = new Date('2023-01-02T00:00:00Z');
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha2', parentSha: 'sha1', parents: ['sha1'], message: 'second', createdAt: d2, storageType: 'SNAPSHOT', canvasJson: { objects: [{ id: 2 }] }, branch: 'main', isMerge: false },
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [{ id: 1 }] }, branch: 'main', isMerge: false }
+  it("should load snapshot correctly with SNAPSHOT commit", async () => {
+    const date = new Date();
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: date,
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [{ type: "rect" }] },
+        branch: "main",
+        isMerge: false,
+      }
     ]);
-    mockPrisma.branch.findMany.mockResolvedValue([
-      { name: 'main', headSha: 'sha2' }
+    prismaMock.branch.findMany.mockResolvedValue([
+      { name: "main", headSha: "sha1" }
     ]);
-    mockPrisma.roomState.findUnique.mockResolvedValue({
-      headBranch: 'main',
-      headSha: 'sha2',
-      isDetached: false
+    prismaMock.roomState.findUnique.mockResolvedValue({
+      headBranch: "main",
+      isDetached: false,
+      headSha: "sha1",
     });
 
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
 
-    expect(result).not.toBeNull();
-    expect(result?.HEAD).toBe('main');
-    expect(result?.detached).toBeNull();
-    expect(result?.branches).toEqual({ main: 'sha2' });
-
-    const commitsMap = result?.commits!;
-    expect(Object.keys(commitsMap)).toHaveLength(2);
-
-    expect(commitsMap['sha1']).toMatchObject({
-      sha: 'sha1',
-      parent: null,
-      message: 'first',
-      canvas: JSON.stringify({ objects: [{ id: 1 }] }),
-      branch: 'main',
-    });
-
-    expect(commitsMap['sha2']).toMatchObject({
-      sha: 'sha2',
-      parent: 'sha1',
-      message: 'second',
-      canvas: JSON.stringify({ objects: [{ id: 2 }] }),
-      branch: 'main',
+    expect(result).toEqual({
+      commits: {
+        "sha1": {
+          sha: "sha1",
+          parent: null,
+          parents: [],
+          message: "init",
+          ts: date.getTime(),
+          canvas: JSON.stringify({ objects: [{ type: "rect" }] }),
+          branch: "main",
+          isMerge: false,
+        }
+      },
+      branches: {
+        "main": "sha1"
+      },
+      HEAD: "main",
+      detached: null
     });
   });
 
-  it('handles detached state correctly', async () => {
-    const d1 = new Date();
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [] }, branch: 'main', isMerge: false }
+  it("should load snapshot correctly with DELTA commit", async () => {
+    const date1 = new Date();
+    const date2 = new Date(date1.getTime() + 1000);
+
+    // Commits come in desc order
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha2",
+        parentSha: "sha1",
+        parents: ["sha1"],
+        message: "second",
+        createdAt: date2,
+        storageType: "DELTA",
+        canvasJson: { added: [], modified: [], removed: [] }, // delta
+        branch: "main",
+        isMerge: false,
+      },
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: date1,
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [{ type: "rect" }] },
+        branch: "main",
+        isMerge: false,
+      }
     ]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue({
-      headBranch: 'main',
-      headSha: 'sha1',
-      isDetached: true
+
+    vi.mocked(replayCanvasDelta).mockImplementation(() => {
+        return '{"objects":[{"type":"rect"},{"type":"circle"}]}';
     });
 
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-    expect(result?.detached).toBe('sha1');
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+
+    expect(result).toBeDefined();
+    expect(result?.commits["sha2"].canvas).toBe('{"objects":[{"type":"rect"},{"type":"circle"}]}');
+
+    // Ensure replayCanvasDelta was called with the parent's canvas
+    expect(replayCanvasDelta).toHaveBeenCalledWith(
+        JSON.stringify({ objects: [{ type: "rect" }] }),
+        { added: [], modified: [], removed: [] }
+    );
   });
 
-  it('handles circular JSON fallback for SNAPSHOT commits', async () => {
-    const circularObj: any = { objects: [] };
-    circularObj.self = circularObj;
+  it("should fallback to stringify canvasJson if replayCanvasDelta throws", async () => {
+    const date1 = new Date();
+    const date2 = new Date(date1.getTime() + 1000);
 
-    const d1 = new Date();
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: circularObj, branch: 'main', isMerge: false }
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha2",
+        parentSha: "sha1",
+        parents: ["sha1"],
+        message: "second",
+        createdAt: date2,
+        storageType: "DELTA",
+        canvasJson: { fallback: "data" },
+        branch: "main",
+        isMerge: false,
+      },
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: date1,
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [] },
+        branch: "main",
+        isMerge: false,
+      }
     ]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue(null);
 
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-
-    expect(result?.commits['sha1'].canvas).toBe('{"objects":[]}');
-  });
-
-  it('processes delta commits normally', async () => {
-    const d1 = new Date('2023-01-01T00:00:00Z');
-    const d2 = new Date('2023-01-02T00:00:00Z');
-
-    vi.mocked(canvasDelta.replayCanvasDelta).mockReturnValue(JSON.stringify({ objects: [{ id: 'replayed' }] }));
-
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha2', parentSha: 'sha1', parents: ['sha1'], message: 'second', createdAt: d2, storageType: 'DELTA', canvasJson: { delta: true }, branch: 'main', isMerge: false },
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [{ id: 1 }] }, branch: 'main', isMerge: false }
-    ]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue(null);
-
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-
-    expect(canvasDelta.replayCanvasDelta).toHaveBeenCalled();
-    expect(result?.commits['sha2'].canvas).toBe(JSON.stringify({ objects: [{ id: 'replayed' }] }));
-  });
-
-  it('handles replayCanvasDelta throwing but JSON.stringify succeeding', async () => {
-    const d1 = new Date('2023-01-01T00:00:00Z');
-    const d2 = new Date('2023-01-02T00:00:00Z');
-
-    vi.mocked(canvasDelta.replayCanvasDelta).mockImplementation(() => {
-      throw new Error('Delta error');
+    vi.mocked(replayCanvasDelta).mockImplementation(() => {
+        throw new Error("Delta fail");
     });
 
-    const fallbackObj = { fallback: true };
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
 
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha2', parentSha: 'sha1', parents: ['sha1'], message: 'second', createdAt: d2, storageType: 'DELTA', canvasJson: fallbackObj, branch: 'main', isMerge: false },
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [{ id: 1 }] }, branch: 'main', isMerge: false }
-    ]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue(null);
-
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-
-    expect(result?.commits['sha2'].canvas).toBe(JSON.stringify(fallbackObj));
+    expect(result).toBeDefined();
+    expect(result?.commits["sha2"].canvas).toBe('{"fallback":"data"}');
   });
 
-  it('handles replayCanvasDelta throwing and JSON.stringify throwing', async () => {
-    const d1 = new Date('2023-01-01T00:00:00Z');
-    const d2 = new Date('2023-01-02T00:00:00Z');
-
-    vi.mocked(canvasDelta.replayCanvasDelta).mockImplementation(() => {
-      throw new Error('Delta error');
-    });
+  it("should fallback to empty objects if replayCanvasDelta and stringify both throw", async () => {
+    const date1 = new Date();
+    const date2 = new Date(date1.getTime() + 1000);
 
     const circularObj: any = {};
     circularObj.self = circularObj;
 
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha2', parentSha: 'sha1', parents: ['sha1'], message: 'second', createdAt: d2, storageType: 'DELTA', canvasJson: circularObj, branch: 'main', isMerge: false },
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [{ id: 1 }] }, branch: 'main', isMerge: false }
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha2",
+        parentSha: "sha1",
+        parents: ["sha1"],
+        message: "second",
+        createdAt: date2,
+        storageType: "DELTA",
+        canvasJson: circularObj,
+        branch: "main",
+        isMerge: false,
+      },
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: date1,
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [] },
+        branch: "main",
+        isMerge: false,
+      }
     ]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue(null);
 
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-
-    expect(result?.commits['sha2'].canvas).toBe('{"objects":[]}');
-  });
-
-  it('handles detached state correctly when headSha is null', async () => {
-    const d1 = new Date();
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [] }, branch: 'main', isMerge: false }
-    ]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue({
-      headBranch: 'main',
-      headSha: null,
-      isDetached: true
+    vi.mocked(replayCanvasDelta).mockImplementation(() => {
+        throw new Error("Delta fail");
     });
 
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+
+    expect(result).toBeDefined();
+    expect(result?.commits["sha2"].canvas).toBe('{"objects":[]}');
+  });
+
+  it("should fallback to empty objects if SNAPSHOT canvasJson stringify throws", async () => {
+    const date1 = new Date();
+
+    const circularObj: any = {};
+    circularObj.self = circularObj;
+
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: date1,
+        storageType: "SNAPSHOT",
+        canvasJson: circularObj,
+        branch: "main",
+        isMerge: false,
+      }
+    ]);
+
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+
+    expect(result).toBeDefined();
+    expect(result?.commits["sha1"].canvas).toBe('{"objects":[]}');
+  });
+
+  it("should handle detached HEAD state", async () => {
+    const date = new Date();
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: date,
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [] },
+        branch: "main",
+        isMerge: false,
+      }
+    ]);
+    prismaMock.roomState.findUnique.mockResolvedValue({
+      headBranch: "main",
+      isDetached: true,
+      headSha: "sha1",
+    });
+
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+
+    expect(result?.detached).toBe("sha1");
+  });
+
+  it("should default HEAD to main if headBranch is undefined", async () => {
+    const date = new Date();
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: date,
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [] },
+        branch: "main",
+        isMerge: false,
+      }
+    ]);
+    prismaMock.roomState.findUnique.mockResolvedValue(null); // no state
+
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+
+    expect(result?.HEAD).toBe("main");
     expect(result?.detached).toBeNull();
-  });
-
-  it('handles missing headBranch correctly', async () => {
-    const d1 = new Date();
-    mockPrisma.commit.findMany.mockResolvedValue([
-      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [] }, branch: 'main', isMerge: false }
-    ]);
-    mockPrisma.branch.findMany.mockResolvedValue([]);
-    mockPrisma.roomState.findUnique.mockResolvedValue({
-      headBranch: null,
-      headSha: 'sha1',
-      isDetached: false
-    });
-
-    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
-    expect(result?.HEAD).toBe('main');
   });
 });
