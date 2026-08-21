@@ -190,6 +190,72 @@ function usePortalDropdown(align: "left" | "right" = "left") {
 
 /* ── ExportDropdown ──────────────────────────────────────────────────────── */
 
+async function fetchExportResponse(base: string, format: string, theme: string, getCanvasJson: () => string | null): Promise<Response> {
+  const canvasJsonStr = getCanvasJson();
+  if (canvasJsonStr !== null) {
+    const canvasJson = JSON.parse(canvasJsonStr);
+    return await fetch(base, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canvasJson, format, theme }),
+    });
+  }
+  return await fetch(`${base}?format=${format}&theme=${theme}`);
+}
+
+async function handleExportError(res: Response) {
+  const body: unknown = await res.json().catch(() => null);
+  const msg =
+    body !== null &&
+    typeof body === "object" &&
+    "message" in body &&
+    typeof (body as Record<string, unknown>).message === "string"
+      ? (body as { message: string }).message
+      : res.statusText;
+  showToast(`⚠ ${msg}`, true);
+}
+
+async function downloadBlob(res: Response, roomId: string, format: string) {
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `canvas-${roomId}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
+async function executeExport(
+  format: string,
+  getCanvasJson: () => string | null,
+  t: (key: string) => string,
+  setBusy: React.Dispatch<React.SetStateAction<boolean>>,
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>
+) {
+  setBusy(true);
+  setOpen(false);
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get("room") || "default";
+    const theme = document.documentElement.classList.contains("theme-light") ? "light" : "dark";
+    const base = `/api/rooms/${encodeURIComponent(roomId)}/export`;
+
+    const res = await fetchExportResponse(base, format, theme, getCanvasJson);
+
+    if (!res.ok) {
+      await handleExportError(res);
+      return;
+    }
+    await downloadBlob(res, roomId, format);
+  } catch {
+    showToast(t("errors.EXPORT_FAILED"), true);
+  } finally {
+    setBusy(false);
+  }
+}
+
 function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null }) {
   const t = useTranslations();
   const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("left");
@@ -200,74 +266,6 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
     { format: "svg", label: t("toolbar.exportSvg"), icon: <IconSvg /> },
     { format: "pdf", label: t("toolbar.exportPdf"), icon: <IconPdf /> },
   ];
-
-  async function doExport(format: string) {
-    if (busy) return;
-    setBusy(true);
-    setOpen(false);
-    try {
-      // Read the live room ID from the URL bar at click time.
-      // useSearchParams() from Next.js is frozen at the server-rendered URL
-      // and does not update when the canvas engine calls history.replaceState()
-      // after the WebSocket welcome message — so we bypass it here to always
-      // use the actual current room ID.
-      const params = new URLSearchParams(window.location.search);
-      const roomId = params.get("room") || "default";
-      const theme = document.documentElement.classList.contains("theme-light") ? "light" : "dark";
-      const base = `/api/rooms/${encodeURIComponent(roomId)}/export`;
-
-      // Prefer POST with the live canvas JSON so the export succeeds even when
-      // the room has not been persisted to the database (e.g. dbEnsureRoom
-      // failed transiently on the WebSocket server).
-      const canvasJsonStr = getCanvasJson();
-
-      let res: Response;
-      if (canvasJsonStr !== null) {
-        let canvasJson: unknown;
-        try {
-          canvasJson = JSON.parse(canvasJsonStr);
-        } catch {
-          showToast(t("errors.EXPORT_FAILED"), true);
-          return;
-        }
-        res = await fetch(base, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ canvasJson, format, theme }),
-        });
-      } else {
-        // Canvas engine not yet initialised — fall back to the DB-based GET.
-        res = await fetch(`${base}?format=${format}&theme=${theme}`);
-      }
-
-      if (!res.ok) {
-        const body: unknown = await res.json().catch(() => null);
-        const msg =
-          body !== null &&
-          typeof body === "object" &&
-          "message" in body &&
-          typeof (body as Record<string, unknown>).message === "string"
-            ? (body as { message: string }).message
-            : res.statusText;
-        showToast(`⚠ ${msg}`, true);
-        return;
-      }
-
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = `canvas-${roomId}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      showToast(t("errors.EXPORT_FAILED"), true);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className="tb-dropdown">
@@ -293,7 +291,9 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
               role="menuitem"
               aria-label={label}
               disabled={busy}
-              onClick={() => { void doExport(format); }}
+              onClick={() => {
+                if (!busy) void executeExport(format, getCanvasJson, t, setBusy, setOpen);
+              }}
             >
               {icon}
               {label}
@@ -308,40 +308,86 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
 
 /* ── LocaleDropdown ──────────────────────────────────────────────────────── */
 
+function LocaleMenuList({
+  menuRef,
+  menuStyle,
+  handleMenuKeyDown,
+  locale,
+  switchLocale,
+  t
+}: {
+  menuRef: React.RefObject<HTMLDivElement | null>;
+  menuStyle: React.CSSProperties;
+  handleMenuKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  locale: string;
+  switchLocale: (code: string) => void;
+  t: (key: string) => string;
+}) {
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="tb-dropdown-menu open"
+      style={menuStyle}
+      role="menu"
+      aria-label={t("topbar.language")}
+      onKeyDown={handleMenuKeyDown}
+    >
+      {LOCALES.map(({ code, flag, label }) => (
+        <button
+          key={code}
+          role="menuitemradio"
+          aria-checked={code === locale}
+          className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
+          onClick={() => switchLocale(code)}
+        >
+          <span className="tb-locale-flag" aria-hidden="true">{flag}</span>
+          {label}
+        </button>
+      ))}
+    </div>,
+    document.body
+  );
+}
+
+function handleMenuKeyDownEvent(
+  e: React.KeyboardEvent<HTMLDivElement>,
+  menuRef: React.RefObject<HTMLDivElement | null>,
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>,
+  triggerRef: React.RefObject<HTMLButtonElement | null>
+) {
+  const items = menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']");
+  if (!items || items.length === 0) return;
+  const focused = document.activeElement as HTMLButtonElement;
+  const idx = Array.from(items).indexOf(focused);
+
+  if (e.key === "Escape") {
+    setOpen(false);
+    triggerRef.current?.focus();
+  } else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    items[idx === -1 ? 0 : (idx + 1) % items.length].focus();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    if (idx === -1) return;
+    items[(idx - 1 + items.length) % items.length].focus();
+  }
+}
+
+function switchLocaleAction(code: string, locale: string, setOpen: React.Dispatch<React.SetStateAction<boolean>>) {
+  if (code === locale) {
+    setOpen(false);
+    return;
+  }
+  document.cookie = `NEXT_LOCALE=${code}; path=/; max-age=31536000; SameSite=Lax`;
+  window.location.reload();
+}
+
 function LocaleDropdown() {
   const t = useTranslations();
   const locale = useLocale();
   const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("right");
 
   const current = LOCALES.find((l) => l.code === locale) ?? LOCALES[0];
-
-  function switchLocale(code: string) {
-    if (code === locale) {
-      setOpen(false);
-      return;
-    }
-    document.cookie = `NEXT_LOCALE=${code}; path=/; max-age=31536000; SameSite=Lax`;
-    window.location.reload();
-  }
-
-  function handleMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const items = menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']");
-    if (!items || items.length === 0) return;
-    const focused = document.activeElement as HTMLButtonElement;
-    const idx = Array.from(items).indexOf(focused);
-
-    if (e.key === "Escape") {
-      setOpen(false);
-      triggerRef.current?.focus();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      items[idx === -1 ? 0 : (idx + 1) % items.length].focus();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      if (idx === -1) return;
-      items[(idx - 1 + items.length) % items.length].focus();
-    }
-  }
 
   return (
     <div className="tb-dropdown" aria-label={t("topbar.language")}>
@@ -357,29 +403,15 @@ function LocaleDropdown() {
         <span>{current.flag} {current.code.toUpperCase()}</span>
         <IconChevronDown />
       </button>
-      {open && createPortal(
-        <div
-          ref={menuRef}
-          className="tb-dropdown-menu open"
-          style={menuStyle}
-          role="menu"
-          aria-label={t("topbar.language")}
-          onKeyDown={handleMenuKeyDown}
-        >
-          {LOCALES.map(({ code, flag, label }) => (
-            <button
-              key={code}
-              role="menuitemradio"
-              aria-checked={code === locale}
-              className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
-              onClick={() => switchLocale(code)}
-            >
-              <span className="tb-locale-flag" aria-hidden="true">{flag}</span>
-              {label}
-            </button>
-          ))}
-        </div>,
-        document.body
+      {open && (
+        <LocaleMenuList
+          menuRef={menuRef}
+          menuStyle={menuStyle}
+          handleMenuKeyDown={(e) => handleMenuKeyDownEvent(e, menuRef, setOpen, triggerRef)}
+          locale={locale}
+          switchLocale={(code) => switchLocaleAction(code, locale, setOpen)}
+          t={t as (key: string) => string}
+        />
       )}
     </div>
   );
@@ -424,17 +456,9 @@ function ThemeToggle() {
 
 /* ── AppTopbar ───────────────────────────────────────────────────────────── */
 
-export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus, getCanvasJson }: AppTopbarProps) {
-  // P050: translation helper
-  const t = useTranslations();
-
+function AppTopbarBranchInfo({ call }: { call: AppTopbarProps["call"] }) {
   return (
-    <header id="topbar" role="banner" aria-label="Application toolbar">
-      <div className="logo" aria-label="SketchGit application logo">
-        <div className="logo-badge" aria-hidden="true">⌥</div>
-        SketchGit
-      </div>
-
+    <>
       <button
         className="branch-selector"
         id="currentBranchBtn"
@@ -457,107 +481,106 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
       <div className="sep" role="separator" aria-orientation="vertical"></div>
       <div className="avatar-row" id="avatarRow" aria-label="Connected peers" role="list"></div>
       <div className="live-ind" id="liveInd" style={{ display: "none" }} aria-label="Live collaboration active" aria-live="polite"></div>
+    </>
+  );
+}
 
-      <button
-        className="topbtn"
-        onClick={() => call("toggleCollabPanel")}
-        aria-label="Toggle collaboration panel"
-        aria-haspopup="dialog"
-      >
+function AppTopbarPrimaryActions({ call, t }: { call: AppTopbarProps["call"], t: (key: string) => string }) {
+  return (
+    <>
+      <button className="topbtn" onClick={() => call("toggleCollabPanel")} aria-label="Toggle collaboration panel" aria-haspopup="dialog">
         <IconCollab />
         {t("topbar.collab")}
       </button>
 
-      <button
-        className="topbtn danger"
-        onClick={() => call("openMergeModal")}
-        id="mergeBtn"
-        aria-label="Open merge branch dialog"
-        aria-haspopup="dialog"
-      >
+      <button className="topbtn danger" onClick={() => call("openMergeModal")} id="mergeBtn" aria-label="Open merge branch dialog" aria-haspopup="dialog">
         <IconMerge />
         {t("topbar.merge")}
       </button>
 
-      <button
-        className="topbtn"
-        onClick={() => call("openBranchCreate")}
-        aria-label="Create a new branch"
-        aria-haspopup="dialog"
-      >
+      <button className="topbtn" onClick={() => call("openBranchCreate")} aria-label="Create a new branch" aria-haspopup="dialog">
         <IconBranch />
         {t("topbar.branch")}
       </button>
 
-      <button
-        className="topbtn primary"
-        onClick={() => call("openCommitModal")}
-        id="commitBtn"
-        aria-label="Commit current drawing changes"
-        aria-haspopup="dialog"
-      >
+      <button className="topbtn primary" onClick={() => call("openCommitModal")} id="commitBtn" aria-label="Commit current drawing changes" aria-haspopup="dialog">
         <IconCommit />
         {t("topbar.commit")}
       </button>
+    </>
+  );
+}
 
-      {/* P091: Share button – only meaningful for authenticated users (API enforces OWNER) */}
-      {session?.user && (
+function AppTopbarSecondaryActions({ call, session, t }: { call: AppTopbarProps["call"], session: AppTopbarProps["session"], t: (key: string) => string }) {
+  if (!session?.user) return null;
+  return (
+    <button className="topbtn" onClick={() => call("openShareModal")} aria-label="Open share links dialog" aria-haspopup="dialog">
+      <IconShare />
+      {t("topbar.share")}
+    </button>
+  );
+}
+
+function AppTopbarAuth({ session, sessionStatus, t }: { session: AppTopbarProps["session"], sessionStatus: string, t: (key: string) => string }) {
+  if (sessionStatus === "loading") return null;
+
+  if (session?.user) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <Link
+          href="/dashboard"
+          style={{
+            display: "flex", alignItems: "center", gap: "6px",
+            background: "var(--s2)", border: "1px solid var(--bdr)",
+            borderRadius: "6px", padding: "3px 10px",
+            fontSize: "12px", color: "var(--tx)", textDecoration: "none",
+            cursor: "pointer",
+          }}
+          aria-label={`Go to My Drawings (signed in as ${session.user.name ?? session.user.email})`}
+        >
+          <span aria-hidden="true">👤</span>
+          <span style={{ maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {session.user.name ?? session.user.email}
+          </span>
+        </Link>
         <button
           className="topbtn"
-          onClick={() => call("openShareModal")}
-          aria-label="Open share links dialog"
-          aria-haspopup="dialog"
-        >
-          <IconShare />
-          {t("topbar.share")}
-        </button>
-      )}
+          onClick={() => signOut({ callbackUrl: "/" })}
+          aria-label="Sign out of SketchGit"
+        >{t("topbar.signOut")}</button>
+      </div>
+    );
+  }
 
-      {/* P039: Export dropdown – PNG / SVG / PDF */}
+  return (
+    <button
+      className="topbtn"
+      onClick={() => signIn()}
+      aria-label="Sign in or create a SketchGit account"
+    >{t("topbar.signIn")}</button>
+  );
+}
+
+export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus, getCanvasJson }: AppTopbarProps) {
+  const t = useTranslations();
+
+  return (
+    <header id="topbar" role="banner" aria-label="Application toolbar">
+      <div className="logo" aria-label="SketchGit application logo">
+        <div className="logo-badge" aria-hidden="true">⌥</div>
+        SketchGit
+      </div>
+
+      <AppTopbarBranchInfo call={call} />
+      <AppTopbarPrimaryActions call={call} t={t} />
+      <AppTopbarSecondaryActions call={call} session={session} t={t} />
       <ExportDropdown getCanvasJson={getCanvasJson} />
 
-      {/* Auth section */}
       <div className="sep" role="separator" aria-orientation="vertical"></div>
-
-      {/* P050 – Locale dropdown */}
       <LocaleDropdown />
-
-      {/* P078 – Theme toggle (dark/light) */}
       <ThemeToggle />
-
       <div className="sep" role="separator" aria-orientation="vertical"></div>
-
-      {sessionStatus === "loading" ? null : session?.user ? (
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <Link
-            href="/dashboard"
-            style={{
-              display: "flex", alignItems: "center", gap: "6px",
-              background: "var(--s2)", border: "1px solid var(--bdr)",
-              borderRadius: "6px", padding: "3px 10px",
-              fontSize: "12px", color: "var(--tx)", textDecoration: "none",
-              cursor: "pointer",
-            }}
-            aria-label={`Go to My Drawings (signed in as ${session.user.name ?? session.user.email})`}
-          >
-            <span aria-hidden="true">👤</span>
-            <span style={{ maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {session.user.name ?? session.user.email}
-            </span>
-          </Link>
-          <button
-            className="topbtn"
-            onClick={() => signOut({ callbackUrl: "/" })}
-            aria-label="Sign out of SketchGit"
-          >{t("topbar.signOut")}</button>
-        </div>
-      ) : (
-        <button
-          className="topbtn"
-          onClick={() => signIn()}
-          aria-label="Sign in or create a SketchGit account"
-        >{t("topbar.signIn")}</button>
-      )}
+      <AppTopbarAuth session={session} sessionStatus={sessionStatus} t={t} />
     </header>
   );
 });
