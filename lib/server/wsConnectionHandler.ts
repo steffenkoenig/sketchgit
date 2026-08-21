@@ -145,11 +145,11 @@ async function finalizeConnection(client: ClientState, roomId: string, clientId:
         if (rawStr.length > deps.env.MAX_WS_PAYLOAD_BYTES) { deps.logger.warn({ clientId, roomId, size: rawStr.length }, "ws: message exceeds size limit"); deps.sendTo(client, { type: "error", code: "PAYLOAD_TOO_LARGE" } as unknown as WsMessage); client.close(1009, "Message too large"); return; }
         const parsed = JSON.parse(rawStr);
         const messages: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
-        for (const msg of messages) {
+        await Promise.all(messages.map(async (msg) => {
           const validated = InboundWsMessageSchema.safeParse(msg);
-          if (!validated.success) { deps.logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema"); deps.sendTo(client, { type: "error", code: "INVALID_PAYLOAD" } as unknown as WsMessage); continue; }
+          if (!validated.success) { deps.logger.warn({ clientId, roomId, errors: validated.error.issues }, "ws: invalid message schema"); deps.sendTo(client, { type: "error", code: "INVALID_PAYLOAD" } as unknown as WsMessage); return; }
           await handleWsMessage(client, validated.data as unknown as WsMessage, roomId, clientId, deps.logger, deps.sendTo, deps.broadcastRoom);
-        }
+        }));
       } catch (err: unknown) { deps.logger.error({ err }, `ws:message: unhandled error`); }
     })();
   });
