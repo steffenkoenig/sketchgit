@@ -445,7 +445,7 @@ initRoomBroadcaster({
 
 // ─── Session parsing ──────────────────────────────────────────────────────────
 
-async function resolveUserId(req: IncomingMessage): Promise<string | null> {
+export async function resolveUserId(req: IncomingMessage): Promise<string | null> {
   try {
     const { decode } = await import("@auth/core/jwt");
     const cookies = parseCookies(req.headers["cookie"]);
@@ -492,6 +492,18 @@ void initRedis().catch((err) =>
 );
 
 // P032 – periodic room pruning job
+async function executePruningRun(retentionDays: number, eventRetentionDays: number) {
+  const activeRoomIds = [...rooms.keys()];
+  try {
+    const count = await pruneInactiveRooms(retentionDays, activeRoomIds, eventRetentionDays);
+    if (count > 0) {
+      logger.info({ count, retentionDays }, "pruning: removed inactive rooms");
+    }
+  } catch (err: unknown) {
+    logger.error({ err }, "pruning: failed to prune inactive rooms");
+  }
+}
+
 function startPruningJob(intervalMs: number, retentionDays: number, eventRetentionDays: number): ReturnType<typeof setInterval> {
   let running = false;
   const timer = setInterval(() => {
@@ -500,19 +512,9 @@ function startPruningJob(intervalMs: number, retentionDays: number, eventRetenti
       return;
     }
     running = true;
-    const activeRoomIds = [...rooms.keys()];
-    pruneInactiveRooms(retentionDays, activeRoomIds, eventRetentionDays)
-      .then((count) => {
-        if (count > 0) {
-          logger.info({ count, retentionDays }, "pruning: removed inactive rooms");
-        }
-      })
-      .catch((err: unknown) => {
-        logger.error({ err }, "pruning: failed to prune inactive rooms");
-      })
-      .finally(() => {
-        running = false;
-      });
+    void executePruningRun(retentionDays, eventRetentionDays).finally(() => {
+      running = false;
+    });
   }, intervalMs);
   timer.unref();
   return timer;
