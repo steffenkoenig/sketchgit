@@ -18,8 +18,7 @@ import { loadPreferences, loadLastRoomId, savePreferences } from '../userPrefere
 /** Generate a secure random integer between 0 and max - 1 avoiding modulo bias. */
 function secureRandomInt(max: number): number {
   if (max <= 0) return 0;
-  const maxUint32 = 0xffffffff;
-  const limit = maxUint32 - (maxUint32 % max);
+  const limit = 0x100000000 - (0x100000000 % max);
   const array = new Uint32Array(1);
   do {
     crypto.getRandomValues(array);
