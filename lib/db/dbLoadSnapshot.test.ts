@@ -77,9 +77,6 @@ describe('dbLoadSnapshot', () => {
     expect(result?.detached).toBeNull();
     expect(result?.branches).toEqual({ main: 'sha2' });
 
-    // Check commitsMap
-    // findMany returned newest first, function does commits.reverse()
-    // So the map is processed from oldest (sha1) to newest (sha2)
     const commitsMap = result?.commits!;
     expect(Object.keys(commitsMap)).toHaveLength(2);
 
@@ -116,8 +113,39 @@ describe('dbLoadSnapshot', () => {
     expect(result?.detached).toBe('sha1');
   });
 
+  it('handles detached state correctly when headSha is null', async () => {
+    const d1 = new Date();
+    mockPrisma.commit.findMany.mockResolvedValue([
+      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [] }, branch: 'main', isMerge: false }
+    ]);
+    mockPrisma.branch.findMany.mockResolvedValue([]);
+    mockPrisma.roomState.findUnique.mockResolvedValue({
+      headBranch: 'main',
+      headSha: null,
+      isDetached: true
+    });
+
+    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
+    expect(result?.detached).toBeNull();
+  });
+
+  it('handles missing headBranch correctly', async () => {
+    const d1 = new Date();
+    mockPrisma.commit.findMany.mockResolvedValue([
+      { sha: 'sha1', parentSha: null, parents: [], message: 'first', createdAt: d1, storageType: 'SNAPSHOT', canvasJson: { objects: [] }, branch: 'main', isMerge: false }
+    ]);
+    mockPrisma.branch.findMany.mockResolvedValue([]);
+    mockPrisma.roomState.findUnique.mockResolvedValue({
+      headBranch: null,
+      headSha: 'sha1',
+      isDetached: false
+    });
+
+    const result = await dbLoadSnapshot('room1', mockPrisma as PrismaClient, mockLogger as pino.Logger);
+    expect(result?.HEAD).toBe('main');
+  });
+
   it('handles circular JSON fallback for SNAPSHOT commits', async () => {
-    // Create a circular object that throws on JSON.stringify
     const circularObj: any = { objects: [] };
     circularObj.self = circularObj;
 
