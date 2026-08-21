@@ -63,37 +63,7 @@ function errorResponse(description: string) {
 
 // ─── OpenAPI document ─────────────────────────────────────────────────────────
 
-export function buildOpenApiSpec(): object {
-  return {
-    openapi: "3.1.0",
-    info: {
-      title: "SketchGit API",
-      version: "1.0.0",
-      description:
-        "REST API for the SketchGit collaborative canvas application.\n\n" +
-        "All error responses use the `ApiError` schema: " +
-        "`{ code, message, details? }` (P068).",
-    },
-    servers: [{ url: process.env.NEXTAUTH_URL ?? "http://localhost:3000" }],
-    components: {
-      schemas: {
-        ApiError: ApiErrorSchema,
-        RegisterRequest: schema(RegisterSchema),
-        ResetPasswordRequest: schema(ResetPasswordSchema),
-        PatchRoomRequest: schema(PatchRoomSchema),
-        CommitsQuery: schema(CommitsQuerySchema),
-        ExportQuery: schema(ExportQuerySchema),
-      },
-      securitySchemes: {
-        cookieAuth: {
-          type: "apiKey",
-          in: "cookie",
-          name: "authjs.session-token",
-          description: "NextAuth v5 session cookie.",
-        },
-      },
-    },
-    paths: {
+const apiPaths = {
       "/api/auth/register": {
         post: {
           operationId: "registerUser",
@@ -327,6 +297,38 @@ export function buildOpenApiSpec(): object {
           },
         },
       },
+    };
+
+export function buildOpenApiSpec(): object {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "SketchGit API",
+      version: "1.0.0",
+      description:
+        "REST API for the SketchGit collaborative canvas application.\n\n" +
+        "All error responses use the `ApiError` schema: " +
+        "`{ code, message, details? }` (P068).",
     },
+    servers: [{ url: process.env.NEXTAUTH_URL ?? "http://localhost:3000" }],
+    components: {
+      schemas: {
+        ApiError: ApiErrorSchema,
+        RegisterRequest: schema(RegisterSchema),
+        ResetPasswordRequest: schema(ResetPasswordSchema),
+        PatchRoomRequest: schema(PatchRoomSchema),
+        CommitsQuery: schema(CommitsQuerySchema),
+        ExportQuery: schema(ExportQuerySchema),
+      },
+      securitySchemes: {
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "authjs.session-token",
+          description: "NextAuth v5 session cookie.",
+        },
+      },
+    },
+    paths: apiPaths,
   };
 }
