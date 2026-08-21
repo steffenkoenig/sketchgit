@@ -6,6 +6,54 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.10.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.0...sketchgit-next-v0.10.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* [BUG-005] verify fullsync-request schema definition ([21f33d0](https://github.com/steffenkoenig/sketchgit/commit/21f33d0e87a5492f365076ecfe68030eb91ddd41))
+* [BUG-005] verify WsFullsyncRequestSchema is defined ([992685f](https://github.com/steffenkoenig/sketchgit/commit/992685fd545a9ec108f98c98a050f1f217a6f5ff))
+* [build] Resolve Turbopack module resolution error ([bc55cb6](https://github.com/steffenkoenig/sketchgit/commit/bc55cb6d7a36b05588285e66d27d1002a3da7d34))
+* [CI Check] adjust vitest branches threshold to 60 ([0f40e7a](https://github.com/steffenkoenig/sketchgit/commit/0f40e7ac01b3caa5e79aeed93a1aea62822968ba))
+* [CI Check] adjust vitest branches threshold to 60 and fix module imports ([b4b364e](https://github.com/steffenkoenig/sketchgit/commit/b4b364e9067f886dc14338ec7bc7398b6748522c))
+* [collaboration] Cancel lock-expire timers on destroy ([21cc469](https://github.com/steffenkoenig/sketchgit/commit/21cc4691f5957c71dbeed7105944e29954687b8a))
+* [collaboration] Cancel lock-expire timers on destroy ([e703125](https://github.com/steffenkoenig/sketchgit/commit/e703125352d28fa4ed83a1b27f8e9f92c0f17495))
+* [milestone 1.0] fix import path for uiSyncManager.js and lower branch coverage threshold ([a8bde10](https://github.com/steffenkoenig/sketchgit/commit/a8bde103efea7184907d68f6fa340d35130dc162))
+* [milestone 1.0] verify position-shift bug fix ([c2c6967](https://github.com/steffenkoenig/sketchgit/commit/c2c6967b85a4c6972af5a17a27516037b4844d93))
+* [milestone 1.0] verify stop presenter mode in CollaborationManager ([1915440](https://github.com/steffenkoenig/sketchgit/commit/19154400c52cfbae2f07ebe775c885a07383614b))
+* [milestone 1.0] verify stop presenter mode in CollaborationManager ([c2fba43](https://github.com/steffenkoenig/sketchgit/commit/c2fba431aad3261c6b02e6e9b13bc3794019da52))
+* [milestone 1.1] fix failing tests ([081de2f](https://github.com/steffenkoenig/sketchgit/commit/081de2fc8e276146cc6c5325cb67d800e8e94791))
+* [milestone 1.1] task already completed ([f1e834d](https://github.com/steffenkoenig/sketchgit/commit/f1e834dcb8f8cc4d4978f5002b8f3011b8389431))
+* [milestone X.Y] task already completed ([0ef3e71](https://github.com/steffenkoenig/sketchgit/commit/0ef3e71c62efd21c95c093d60fcf5c4ec6c8bc01))
+* [milestone X.Y] task already completed ([dd3326f](https://github.com/steffenkoenig/sketchgit/commit/dd3326f76ee7127f5d2d3c968152169efadfba45))
+* change uiSyncManager import extension to .js in canvasEngine ([c875d46](https://github.com/steffenkoenig/sketchgit/commit/c875d46a98876dd072d4e603a17b7a88c5b50c9b))
+* confirm BUG-021 is resolved in canvasEngine ([f39d95f](https://github.com/steffenkoenig/sketchgit/commit/f39d95f6fa17f6b6aaf7a0480867d1223b77c50a))
+* correct uiSyncManager import in canvasEngine and update vitest coverage package ([5ec6783](https://github.com/steffenkoenig/sketchgit/commit/5ec67834b2af78f3de4ad8fb17733a00d04e56e9))
+* fix Next.js build error and adjust test coverage threshold ([13d9494](https://github.com/steffenkoenig/sketchgit/commit/13d949472ddd28e41a917b9ef6efa40d40479e9f))
+* remove .js extension from canvasEngine.ts uiSyncManager import to fix turbopack build ([090733c](https://github.com/steffenkoenig/sketchgit/commit/090733c07eec59c425ef6b6f03ff669debf23f86))
+* Replace Math.random with secureRandom for avatar colors ([a25b5e2](https://github.com/steffenkoenig/sketchgit/commit/a25b5e2ebcebf3002f03be78afd250b0084a6586))
+* **security:** update secureRandomInt rejection sampling limit to 0x100000000 ([c4ddf4c](https://github.com/steffenkoenig/sketchgit/commit/c4ddf4c2a22e2f90f348a05b7898c91435385ecb))
+* **test:** resolve conflict in vitest.config.ts ([d56afb6](https://github.com/steffenkoenig/sketchgit/commit/d56afb64b794a52235242dd0ddca561bf0fda636))
+* use cryptographically secure random values for ws jitter ([6d4ae96](https://github.com/steffenkoenig/sketchgit/commit/6d4ae96f8a128681e465ae009733b5459a5c03b0))
+* Use secure random generation for avatar colors ([5aade1f](https://github.com/steffenkoenig/sketchgit/commit/5aade1f5c49a1bc650d078d183f11c8285064693))
+* verify bug 007 is already fixed ([f38dedb](https://github.com/steffenkoenig/sketchgit/commit/f38dedbf10b0215c3ae09469b5cf5d31c94c7579))
+* verify bug 007 is already fixed ([4e7e3ca](https://github.com/steffenkoenig/sketchgit/commit/4e7e3ca748b21aadae351d202fc3c229917b3634))
+* verify BUG-021 pending rAF cancellation fix is already implemented ([9852f81](https://github.com/steffenkoenig/sketchgit/commit/9852f8131138402410a250728708f77a7df3684e))
+* verify rAF cancellation in object:moving ([de9ffec](https://github.com/steffenkoenig/sketchgit/commit/de9ffecb36e6a68309b8e14820442e3aecb25804))
+* verify rAF cancellation in object:moving ([318d221](https://github.com/steffenkoenig/sketchgit/commit/318d221d4c86ce1c0f636dc4730fd6f70a480279))
+
+
+### Performance Improvements
+
+* eliminate N+1 query in resolveCommitCanvas with CTE ([9e8a4c9](https://github.com/steffenkoenig/sketchgit/commit/9e8a4c92c7d76552c76275add0f952502673d193))
+* optimize canvas object search after rebuildSketchPathForMove ([ad05368](https://github.com/steffenkoenig/sketchgit/commit/ad053683dc5a7ae4cc8da3ad52755d9f2b60ab8f))
+
+
+### Refactoring
+
+* [code health] extract pruning logic to executePruningRun ([3f7f814](https://github.com/steffenkoenig/sketchgit/commit/3f7f8140f81ee765a8f9421fb57eaf3e416e89c1))
+* [code health] extract pruning logic to executePruningRun ([2247442](https://github.com/steffenkoenig/sketchgit/commit/22474422b71ede10d1189ceedbcaea7619b6caf8))
+
 ## [0.10.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.9.1...sketchgit-next-v0.10.0) (2026-08-20)
 
 
