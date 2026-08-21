@@ -146,7 +146,10 @@ function applyRateLimit(req: NextRequest): NextResponse | null | Promise<NextRes
   // NOTE: NextRequest's 'ip' property resolves the client IP securely when behind
   // trusted proxies like Vercel. For self-hosted deployments behind custom reverse
   // proxies, configure TRUST_PROXY=true to allow fallback to proxy-set headers.
-  let ip = req.ip;
+  // In Next.js 15+, req.ip is removed from NextRequest.
+  // When hosting on Vercel, the IP is provided via the x-forwarded-for header.
+  // Because req.ip is not available, we must fallback to headers.
+  let ip: string | undefined = (req as any).ip;
 
   if (!ip) {
     if (process.env.TRUST_PROXY === "true") {
