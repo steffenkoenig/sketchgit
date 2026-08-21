@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/db/prisma', () => ({
   prisma: {
+    $queryRaw: vi.fn(),
     room: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('@/lib/db/prisma', () => ({
     roomMembership: {
       findUnique: vi.fn(),
     },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -48,6 +50,7 @@ const mock = {
   roomFindFirst: prisma.room.findFirst as ReturnType<typeof vi.fn>,
   commitFindUnique: prisma.commit.findUnique as ReturnType<typeof vi.fn>,
   commitFindFirst: prisma.commit.findFirst as ReturnType<typeof vi.fn>,
+  queryRaw: prisma.$queryRaw as ReturnType<typeof vi.fn>,
   roomStateFindUnique: prisma.roomState.findUnique as ReturnType<typeof vi.fn>,
 };
 
@@ -83,6 +86,12 @@ describe('GET /api/rooms/[roomId]/export', () => {
     // Default: resolveRoomId returns the canonical id; public room
     mock.roomFindFirst.mockResolvedValue({ id: ROOM_ID });
     mock.roomFindUnique.mockResolvedValue({ isPublic: true });
+    // Default mock for $queryRaw used by resolveCommitCanvas
+    (prisma.$queryRaw as any).mockResolvedValue([{
+      sha: COMMIT_SHA,
+      canvasJson: { objects: [{ type: 'rect' }] },
+      storageType: 'SNAPSHOT'
+    }]);
   });
 
   const params = Promise.resolve({ roomId: ROOM_ID });
@@ -109,7 +118,7 @@ describe('GET /api/rooms/[roomId]/export', () => {
 
   it('returns PNG response with correct Content-Type for default format', async () => {
     mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
-    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
     const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
@@ -119,7 +128,7 @@ describe('GET /api/rooms/[roomId]/export', () => {
 
   it('returns SVG response with correct Content-Type when format=svg', async () => {
     mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
-    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
     const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA, format: 'svg' });
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
@@ -129,7 +138,7 @@ describe('GET /api/rooms/[roomId]/export', () => {
 
   it('returns PDF response with correct Content-Type when format=pdf', async () => {
     mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
-    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
     const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA, format: 'pdf' });
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
@@ -142,7 +151,7 @@ describe('GET /api/rooms/[roomId]/export', () => {
 
   it('resolves HEAD commit when no sha is provided', async () => {
     mock.roomStateFindUnique.mockResolvedValue({ headSha: COMMIT_SHA });
-    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
     const req = makeRequest(ROOM_ID);
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
@@ -175,7 +184,7 @@ describe('GET /api/rooms/[roomId]/export', () => {
 
   it('returns immutable Cache-Control header when sha is provided', async () => {
     mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
-    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
     const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
@@ -185,7 +194,7 @@ describe('GET /api/rooms/[roomId]/export', () => {
 
   it('returns no-store Cache-Control header when sha is omitted (HEAD)', async () => {
     mock.roomStateFindUnique.mockResolvedValue({ headSha: COMMIT_SHA });
-    mock.commitFindFirst.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
     const req = makeRequest(ROOM_ID);
     const res = await GET(req, { params });
     expect(res.status).toBe(200);
