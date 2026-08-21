@@ -6,6 +6,13 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.10.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.1...sketchgit-next-v0.10.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* **test:** set fallback test env vars in setup.ts for server module imports ([f63ce5f](https://github.com/steffenkoenig/sketchgit/commit/f63ce5f0469827ad89c840d964896ef4ed02795e))
+
 ## [0.10.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.0...sketchgit-next-v0.10.1) (2026-08-21)
 
 
