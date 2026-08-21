@@ -679,28 +679,29 @@ export async function resolveCommitCanvas(
     canvasJson: Prisma.JsonValue;
     storageType: CommitStorageType;
   };
-  const visited = new Set<string>();
+
   const chain: CommitRow[] = [];
 
-  let currentSha: string | null = sha;
-  let depth = 0;
+  const rows = await prisma.$queryRaw<CommitRow[]>`
+    WITH RECURSIVE commit_chain AS (
+      SELECT sha, "parentSha", "canvasJson", "storageType", 1 as depth
+      FROM "Commit"
+      WHERE "roomId" = ${roomId} AND sha = ${sha}
 
-  while (currentSha && depth < maxDepth) {
-    if (visited.has(currentSha)) break; // cycle guard
+      UNION ALL
 
-    const row: CommitRow | null = await prisma.commit.findFirst({
-      where: { roomId, sha: currentSha },
-      select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
-    });
+      SELECT c.sha, c."parentSha", c."canvasJson", c."storageType", cc.depth + 1
+      FROM "Commit" c
+      INNER JOIN commit_chain cc ON c.sha = cc."parentSha"
+      WHERE c."roomId" = ${roomId} AND cc."storageType" != 'SNAPSHOT' AND cc.depth < ${maxDepth}
+    )
+    SELECT sha, "parentSha", "canvasJson", "storageType" FROM commit_chain ORDER BY depth ASC;
+  `;
 
-    if (!row) return null; // missing ancestor
+  if (!rows || rows.length === 0) return null;
 
+  for (const row of rows) {
     chain.push(row);
-    visited.add(currentSha);
-    depth++;
-
-    if (row.storageType === CommitStorageType.SNAPSHOT || !row.parentSha) break;
-    currentSha = row.parentSha;
   }
 
   if (chain.length === 0) return null;
