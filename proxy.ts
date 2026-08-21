@@ -143,14 +143,20 @@ function applyRateLimitInMemory(
 function applyRateLimit(req: NextRequest): NextResponse | null | Promise<NextResponse | null> {
   if (process.env.DISABLE_RATE_LIMIT === "true") return null;
 
-  // NOTE: IP resolution relies on proxy-set headers (x-forwarded-for / x-real-ip),
-  // which can be spoofed in setups where the proxy does not strip and re-set them.
-  // In production, ensure your reverse proxy (nginx, Caddy, ALB, etc.) is configured
-  // to overwrite these headers from the trusted upstream network address only.
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "127.0.0.1";
+  // NOTE: NextRequest's 'ip' property resolves the client IP securely when behind
+  // trusted proxies like Vercel. For self-hosted deployments behind custom reverse
+  // proxies, configure TRUST_PROXY=true to allow fallback to proxy-set headers.
+  let ip = req.ip;
+
+  if (!ip) {
+    if (process.env.TRUST_PROXY === "true") {
+      ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+           req.headers.get("x-real-ip") ??
+           "127.0.0.1";
+    } else {
+      ip = "127.0.0.1";
+    }
+  }
 
   const key = `rate:${ip}:${req.nextUrl.pathname}`;
   const { max, windowMs } = getRateLimit();
