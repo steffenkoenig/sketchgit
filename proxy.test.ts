@@ -44,6 +44,7 @@ describe('proxy.ts', () => {
   // Basic mock request
   const createMockReq = (pathname = '/api/auth/signin', ip = '127.0.0.1') => {
     return {
+      ip,
       nextUrl: {
         pathname,
         origin: 'http://localhost:3000',
@@ -59,6 +60,7 @@ describe('proxy.ts', () => {
     it('returns RATE_LIMITED apiError payload on 429', async () => {
       // Create a mock request to a rate-limited path
       const req = {
+        ip: '127.0.0.1',
         nextUrl: { pathname: '/api/auth/register' },
         headers: new Headers({
           'x-forwarded-for': '127.0.0.1',
@@ -116,6 +118,7 @@ describe('proxy.ts', () => {
     it('bypasses rate limiting when DISABLE_RATE_LIMIT is set to true', async () => {
       process.env.DISABLE_RATE_LIMIT = "true";
       const req = {
+        ip: '127.0.0.1',
         nextUrl: { pathname: '/api/auth/register' },
         headers: new Headers({
           'x-forwarded-for': '127.0.0.1',

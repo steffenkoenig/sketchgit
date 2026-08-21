@@ -4,10 +4,8 @@ import type { SketchGitCall } from "@/components/sketchgit/types";
 
 type ContextMenuProps = { call: SketchGitCall };
 
-export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenuProps) {
-  const t = useTranslations("toolbar");
+function useContextMenuState() {
   const [menuState, setMenuState] = useState<{ x: number; y: number; show: boolean } | null>(null);
-
   const [canGroup, setCanGroup] = useState(false);
   const [canUngroup, setCanUngroup] = useState(false);
   const [hasSelection, setHasSelection] = useState(false);
@@ -51,6 +49,58 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
     };
   }, []);
 
+  return { menuState, canGroup, canUngroup, hasSelection };
+}
+
+type ContextMenuItemsProps = {
+  canGroup: boolean;
+  canUngroup: boolean;
+  call: SketchGitCall;
+};
+
+const ContextMenuItems = React.memo(function ContextMenuItems({ canGroup, canUngroup, call }: ContextMenuItemsProps) {
+  const t = useTranslations("toolbar");
+
+  return (
+    <>
+      {canGroup && (
+        <button className="tb-dropdown-item" onClick={() => call("groupSelection")}>
+          {t("groupObjects") || "Group"}
+        </button>
+      )}
+      {canUngroup && (
+        <button className="tb-dropdown-item" onClick={() => call("ungroupSelection")}>
+          {t("ungroupObjects") || "Ungroup"}
+        </button>
+      )}
+      {(canGroup || canUngroup) && <div className="tb-dropdown-sep" />}
+
+      <button className="tb-dropdown-item" onClick={() => call("bringForward")}>
+        {t("bringForward") || "Bring Forward"}
+      </button>
+      <button className="tb-dropdown-item" onClick={() => call("sendBackward")}>
+        {t("sendBackward") || "Send Backward"}
+      </button>
+      <button className="tb-dropdown-item" onClick={() => call("bringToFront")}>
+        {t("bringToFront") || "Bring to Front"}
+      </button>
+      <button className="tb-dropdown-item" onClick={() => call("sendToBack")}>
+        {t("sendToBack") || "Send to Back"}
+      </button>
+
+      <div className="tb-dropdown-sep" />
+
+      <button className="tb-dropdown-item" style={{ color: "var(--a2)" }} onClick={() => call("deleteSelection")}>
+        {t("delete") || "Delete"}
+      </button>
+    </>
+  );
+});
+
+export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenuProps) {
+  const t = useTranslations("toolbar");
+  const { menuState, canGroup, canUngroup, hasSelection } = useContextMenuState();
+
   if (!menuState?.show) return null;
 
   // We reuse tb-dropdown styles since they look good
@@ -73,38 +123,7 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
       }}
     >
       {hasSelection ? (
-        <>
-          {canGroup && (
-            <button className="tb-dropdown-item" onClick={() => call("groupSelection")}>
-              {t("groupObjects") || "Group"}
-            </button>
-          )}
-          {canUngroup && (
-            <button className="tb-dropdown-item" onClick={() => call("ungroupSelection")}>
-              {t("ungroupObjects") || "Ungroup"}
-            </button>
-          )}
-          {(canGroup || canUngroup) && <div className="tb-dropdown-sep" />}
-
-          <button className="tb-dropdown-item" onClick={() => call("bringForward")}>
-            {t("bringForward") || "Bring Forward"}
-          </button>
-          <button className="tb-dropdown-item" onClick={() => call("sendBackward")}>
-            {t("sendBackward") || "Send Backward"}
-          </button>
-          <button className="tb-dropdown-item" onClick={() => call("bringToFront")}>
-            {t("bringToFront") || "Bring to Front"}
-          </button>
-          <button className="tb-dropdown-item" onClick={() => call("sendToBack")}>
-            {t("sendToBack") || "Send to Back"}
-          </button>
-
-          <div className="tb-dropdown-sep" />
-
-          <button className="tb-dropdown-item" style={{ color: "var(--a2)" }} onClick={() => call("deleteSelection")}>
-            {t("delete") || "Delete"}
-          </button>
-        </>
+        <ContextMenuItems canGroup={canGroup} canUngroup={canUngroup} call={call} />
       ) : (
         <div style={{ padding: "8px 12px", color: "var(--tx2)", fontSize: "12px", textAlign: "center" }}>
           {t("noSelection") || "No selection"}
