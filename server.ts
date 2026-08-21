@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 import { createWsConnectionHandler } from "./lib/server/wsConnectionHandler.js";
 import { dbLoadSnapshot } from "./lib/db/dbLoadSnapshot.js";

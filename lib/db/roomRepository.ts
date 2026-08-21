@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.

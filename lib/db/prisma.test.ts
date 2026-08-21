@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 /**
  * Tests for P071 – Prisma slow-query logging.

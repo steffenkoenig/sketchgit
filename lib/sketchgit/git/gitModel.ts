@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 /**
  * GitModel – encapsulates the in-memory commit graph, branch map, and HEAD pointer.

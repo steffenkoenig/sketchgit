@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 /**
  * Unit tests for the P044 presence-broadcast debouncing pattern.
