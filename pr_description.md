@@ -1,0 +1,3 @@
+🎯 **What:** The testing gap for the `nearestPointOnBounds` function in `lib/sketchgit/canvas/snapEngine.ts` has been addressed. The canvas snapping math lacked dedicated unit tests.
+📊 **Coverage:** Test coverage has been added for all expected mathematical edge cases, including points inside the bounding box (snapping to all 4 edges), exactly on the bounds, and entirely outside the bounding box (testing all 8 surrounding regions).
+✨ **Result:** A missing test file has been resolved, bringing 14 new deterministic test cases that solidify the reliability of the core snapping math utilities and allow confident refactoring.
