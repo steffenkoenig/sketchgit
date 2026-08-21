@@ -305,7 +305,10 @@ export class WsClient {
 
     // Exponential backoff with ±20 % jitter
     const base = Math.min(BASE_DELAY_MS * BACKOFF_FACTOR ** (this.retryCount - 1), MAX_DELAY_MS);
-    const jitter = base * 0.2 * (Math.random() * 2 - 1);
+    const secureRandomArray = new Uint32Array(1);
+    crypto.getRandomValues(secureRandomArray);
+    const secureRandomFloat = secureRandomArray[0] / (0xffffffff + 1);
+    const jitter = base * 0.2 * (secureRandomFloat * 2 - 1);
     const delay = Math.round(base + jitter);
 
     const peerStatus = document.getElementById('peerStatus');
