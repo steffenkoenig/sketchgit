@@ -30,12 +30,50 @@ services:
       retries: 5
       start_period: 5s
 
+  # P060: PgBouncer transaction-mode pooling. Caps real PostgreSQL connections
+  # to DEFAULT_POOL_SIZE regardless of how many app replicas or per-replica
+  # Prisma pool connections sit in front of it. The app connects here
+  # (DATABASE_URL); `prisma migrate deploy` connects directly to `db`
+  # (DATABASE_DIRECT_URL) since transaction-mode pooling doesn't support the
+  # session-scoped multi-statement transactions migrations issue.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://sketchgit:dev_password@db:5432/sketchgit
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      # Grants `sketchgit` access to PgBouncer's admin console (SHOW POOLS,
+      # SHOW STATS) via the virtual `pgbouncer` database — used by the
+      # healthcheck below and useful for connection-pool observability.
+      ADMIN_USERS: sketchgit
+      # Ratio: 200 client connections share 20 real PostgreSQL connections
+      # (10:1). Tune based on observed p99 transaction duration.
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "20"
+    ports:
+      - "5433:5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=dev_password psql -h localhost -p 5432 -U sketchgit -d pgbouncer -c 'SHOW POOLS;' > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   app:
     build: .
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgres://sketchgit:dev_password@db:5432/sketchgit
+      # Routed through PgBouncer (transaction-mode pooling).
+      DATABASE_URL: postgres://sketchgit:dev_password@pgbouncer:5432/sketchgit?pgbouncer=true
+      # Direct connection for `prisma migrate deploy`, bypassing PgBouncer.
+      DATABASE_DIRECT_URL: postgres://sketchgit:dev_password@db:5432/sketchgit
+      # PgBouncer already multiplexes connections; keep Prisma's own pool small.
+      DATABASE_POOL_SIZE: "2"
       NEXTAUTH_URL: http://localhost:3000
       # IMPORTANT: Replace with a real secret generated via: openssl rand -base64 32
       AUTH_SECRET: dev-secret-change-in-production
@@ -49,6 +87,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

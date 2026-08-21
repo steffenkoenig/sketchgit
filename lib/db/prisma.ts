@@ -12,7 +12,12 @@ function createPrismaClient(): PrismaClient {
   // env-missing error, which allows the Next.js build to complete successfully.
   const connectionString =
     process.env.DATABASE_URL ?? "postgresql://placeholder@placeholder/placeholder";
-  const adapter = new PrismaPg({ connectionString });
+  // P060 – client-side pool size is independent of any PgBouncer pool sitting
+  // in front of PostgreSQL. Default 10 matches pre-P060 behaviour; deployments
+  // that put PgBouncer in the path should set this to a small number (1-5)
+  // since PgBouncer already multiplexes connections across replicas.
+  const max = parseInt(process.env.DATABASE_POOL_SIZE ?? "10", 10);
+  const adapter = new PrismaPg({ connectionString, max });
 
   // P071 – Always include `query` event emission so we can attach a runtime
   // slow-query listener.  The `query` stdout level is NOT enabled (too verbose).

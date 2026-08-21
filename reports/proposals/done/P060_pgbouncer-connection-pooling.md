@@ -161,3 +161,27 @@ PgBouncer exposes an admin database on `port 6432` (or the same port with `SHOW 
 - Builds on: P003 ✅ (PostgreSQL + Prisma), P012 ✅ (horizontal scaling motivation)
 - Complements: P023 ✅ (health check — PgBouncer stats can be surfaced there)
 - Independent of: Redis, auth, Next.js build, WebSocket
+
+## Implementation Notes (2026-08-22)
+
+Implemented with two deviations from the plan above, both verified against a live
+`docker compose up` run (migrations applied, raw queries and `PrismaClient` queries
+both succeeded through the pooler, `SHOW POOLS` confirmed `pool_mode: transaction`):
+
+1. **Image**: `bitnami/pgbouncer:1.23.1` no longer resolves on Docker Hub — Bitnami
+   moved free-tier images off that registry in 2025. Used `edoburu/pgbouncer:v1.25.2-p0`
+   instead (actively maintained, widely used for this exact purpose). Its env var
+   names differ from Bitnami's (`DATABASE_URL`, `POOL_MODE`, `MAX_CLIENT_CONN`,
+   `DEFAULT_POOL_SIZE`, `ADMIN_USERS` instead of the `POSTGRESQL_*`/`PGBOUNCER_*`
+   prefixed vars) — `docker-compose.yml` reflects the actual image's interface.
+2. **`directUrl`**: Prisma 7 removed the `directUrl` datasource property from
+   `schema.prisma`; connection config for `migrate`/introspection now lives in
+   `prisma.config.ts`. Implemented as `url: process.env.DATABASE_DIRECT_URL ??
+   process.env.DATABASE_URL` there, which achieves the same bypass.
+
+**Not implemented** (scoped out as lower-value / higher-risk for this pass):
+- CI `pgbouncer` service — CI's existing direct-Postgres connection is sufficient
+  for correctness testing; adding a pooler there would only test the pooler itself
+  and couldn't be verified against GitHub's actual runner networking from here.
+- Surfacing PgBouncer `SHOW POOLS` stats in `/api/health` — noted in "Additional
+  Considerations" above as a nice-to-have, not a core requirement.

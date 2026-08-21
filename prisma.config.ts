@@ -9,9 +9,16 @@ import { defineConfig } from '@prisma/config';
  * through its own adapter/environment resolution path.
  *
  * @see https://pris.ly/d/config-datasource
+ *
+ * P060 – When PgBouncer sits in front of PostgreSQL (transaction-mode
+ * pooling), `migrate`/introspection commands need a direct, session-scoped
+ * connection instead — transaction-mode pooling doesn't support the
+ * multi-statement sessions those commands issue. DATABASE_DIRECT_URL should
+ * point straight at PostgreSQL, bypassing PgBouncer. When unset (no
+ * PgBouncer in the deployment), it falls back to DATABASE_URL as before.
  */
 export default defineConfig({
   datasource: {
-    url: process.env.DATABASE_URL,
+    url: process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL,
   },
 });

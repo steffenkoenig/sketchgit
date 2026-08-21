@@ -20,6 +20,18 @@ const EnvSchema = z.object({
     .min(32, "AUTH_SECRET must be at least 32 characters"),
   NEXTAUTH_URL: z.string().url("NEXTAUTH_URL must be a valid URL"),
 
+  // ── Optional – PgBouncer connection pooling (P060) ────────────────────────
+  // When DATABASE_URL points at PgBouncer (transaction-mode pooling),
+  // DATABASE_DIRECT_URL should point directly at PostgreSQL, bypassing the
+  // pooler. `prisma.config.ts` uses it for migrate/introspection commands,
+  // which need a session-scoped connection PgBouncer transaction mode can't
+  // provide. Falls back to DATABASE_URL when unset (no PgBouncer in path).
+  DATABASE_DIRECT_URL: z.string().url().optional(),
+  // Prisma's own client-side pool size (the `pg` Pool `max` option). With
+  // PgBouncer already multiplexing server connections, this can be small
+  // (1-5) per replica; without PgBouncer, size it to the expected concurrency.
+  DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+
   // ── Optional – LOG_LEVEL (used by Pino logger) ────────────────────────────
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
 
