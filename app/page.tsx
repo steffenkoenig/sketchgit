@@ -1,10 +1,10 @@
 import SketchGitApp from "../components/SketchGitApp";
-import { ErrorBoundary } from "../components/ErrorBoundary";
+import { AppErrorBoundary } from "../components/errors/AppErrorBoundary";
 
 export default function HomePage() {
   return (
-    <ErrorBoundary>
+    <AppErrorBoundary>
       <SketchGitApp />
-    </ErrorBoundary>
+    </AppErrorBoundary>
   );
 }

@@ -1,3 +1,14 @@
+/* GAP-016 – Self-hosted fonts via @fontsource (npm package, no CDN request at
+   runtime or build time). Replaces the earlier fonts.googleapis.com @import,
+   which transmitted visitor IP addresses to Google without consent. */
+@import "@fontsource/space-grotesk/400.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/fira-code/300.css";
+@import "@fontsource/fira-code/400.css";
+@import "@fontsource/fira-code/500.css";
+@import "@fontsource/fira-code/600.css";
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 /* P078 – Dark theme (default) */
 :root{

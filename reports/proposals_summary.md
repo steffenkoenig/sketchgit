@@ -29,16 +29,16 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P008 | Replace `innerHTML` with Safe DOM Manipulation | Security, Maintainability | [P008](proposals/done/P008_replace-innerhtml-safe-dom.md) |
 | P009 | Internationalization (i18n) Support | Maintainability | [P009](proposals/done/P009_internationalization-i18n.md) |
 | P010 | Improve Error Handling & Observability | Reliability, Maintainability | [P010](proposals/done/P010_error-handling-and-observability.md) |
-| P013 | Migrate the Custom WebSocket Server from JavaScript to TypeScript | Maintainability, Reliability | [P013](proposals/P013_migrate-server-to-typescript.md) |
-| P014 | Add Structured Input Validation to All API Endpoints with Zod | Reliability, Security | [P014](proposals/P014_input-validation-zod.md) |
-| P015 | Add Rate Limiting and Brute-Force Protection to API Endpoints | Security, Reliability | [P015](proposals/P015_rate-limiting-brute-force-protection.md) |
-| P016 | Add a Continuous Integration and Continuous Deployment Pipeline Using GitHub Actions | Maintainability, Reliability | [P016](proposals/P016_cicd-pipeline-github-actions.md) |
-| P018 | Replace CDN-Loaded Fabric.js with a Bundled npm Dependency | Reliability, Maintainability, Security | [P018](proposals/P018_replace-cdn-fabric-npm.md) |
-| P011 | Database Performance Optimization: JSONB Storage, Missing Indices, and Query Improvements | Performance | [P011](proposals/P011_database-performance-optimization.md) |
-| P019 | Add HTTP Security Headers and CSRF Protection | Security | [P019](proposals/P019_security-headers-csrf.md) |
-| P023 | Add a Health Check Endpoint and Implement Graceful Shutdown | Reliability | [P023](proposals/P023_health-check-graceful-shutdown.md) |
-| P020 | Prevent Memory Leaks by Implementing Proper Resource Cleanup | Reliability, Performance | [P020](proposals/P020_memory-leak-resource-cleanup.md) |
-| P027 | Fail Fast on Misconfiguration: Validate Required Environment Variables at Application Startup | Reliability | [P027](proposals/P027_env-validation-startup.md) |
+| P013 | Migrate the Custom WebSocket Server from JavaScript to TypeScript | Maintainability, Reliability | [P013](proposals/done/P013_migrate-server-to-typescript.md) |
+| P014 | Add Structured Input Validation to All API Endpoints with Zod | Reliability, Security | [P014](proposals/done/P014_input-validation-zod.md) |
+| P015 | Add Rate Limiting and Brute-Force Protection to API Endpoints | Security, Reliability | [P015](proposals/done/P015_rate-limiting-brute-force-protection.md) |
+| P016 | Add a Continuous Integration and Continuous Deployment Pipeline Using GitHub Actions | Maintainability, Reliability | [P016](proposals/done/P016_cicd-pipeline-github-actions.md) |
+| P018 | Replace CDN-Loaded Fabric.js with a Bundled npm Dependency | Reliability, Maintainability, Security | [P018](proposals/done/P018_replace-cdn-fabric-npm.md) |
+| P011 | Database Performance Optimization: JSONB Storage, Missing Indices, and Query Improvements | Performance | [P011](proposals/done/P011_database-performance-optimization.md) |
+| P019 | Add HTTP Security Headers and CSRF Protection | Security | [P019](proposals/done/P019_security-headers-csrf.md) |
+| P023 | Add a Health Check Endpoint and Implement Graceful Shutdown | Reliability | [P023](proposals/done/P023_health-check-graceful-shutdown.md) |
+| P020 | Prevent Memory Leaks by Implementing Proper Resource Cleanup | Reliability, Performance | [P020](proposals/done/P020_memory-leak-resource-cleanup.md) |
+| P027 | Fail Fast on Misconfiguration: Validate Required Environment Variables at Application Startup | Reliability | [P027](proposals/done/P027_env-validation-startup.md) |
 | P017 | Further Decompose the app.ts Orchestrator into Feature-Focused Coordinators | Maintainability | [P017](proposals/done/P017_decompose-app-orchestrator.md) |
 | P026 | Add a Dockerfile and Multi-Stage Build for Reproducible Container Deployments | Reliability, Maintainability | [P026](proposals/done/P026_dockerfile-containerization.md) |
 | P028 | Expand Automated Test Coverage to Canvas, Collaboration, and API Layers | Reliability, Maintainability | [P028](proposals/done/P028_expanded-test-coverage.md) |
@@ -83,6 +83,8 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P068 | Introduce Machine-Readable Error Codes in All API Error Responses | Maintainability, UX | [P068](proposals/done/P068_structured-error-codes.md) |
 | P070 | Add `Cache-Control` Headers to SHA-Addressed API Responses | Performance | [P070](proposals/done/P070_http-cache-control-headers.md) |
 | P071 | Enable Prisma Slow-Query Logging and Duration Alerting | Reliability, Maintainability | [P071](proposals/done/P071_prisma-slow-query-logging.md) |
+| P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/done/P081_react-error-boundaries.md) |
+| P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/done/P089_dependency-license-compliance.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |

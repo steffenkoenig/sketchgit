@@ -11,11 +11,11 @@
 
 | Risk Level | Count | Gaps |
 |---|---|---|
-| 🔴 Critical | 6 | GAP-001, GAP-002, GAP-004, GAP-005, GAP-016, GAP-018 |
+| 🔴 Critical | 5 | GAP-001, GAP-002, GAP-004, GAP-005, GAP-018 |
 | 🟠 High | 11 | GAP-003, GAP-006, GAP-007, GAP-008, GAP-009, GAP-010, GAP-011, GAP-012, GAP-013, GAP-017, GAP-021 |
 | 🟡 Medium | 4 | GAP-014, GAP-015, GAP-020, GAP-022 |
 | 🟢 Low | 1 | GAP-019 |
-| ✅ Resolved | 0 | — |
+| ✅ Resolved | 1 | GAP-016 |
 
 ---
 
@@ -38,7 +38,7 @@
 | [GAP-013](GAP-013-it-sicherheit.md) | IT-Sicherheit (IT Security / NIS2) | DSGVO Art. 32 | 🟠 High | ⚠️ Partial | 8–16 h |
 | [GAP-014](GAP-014-oauth-token-speicherung.md) | OAuth-Token-Speicherung | DSGVO Art. 32 | 🟡 Medium | ❌ Open | 8–16 h |
 | [GAP-015](GAP-015-dsa-digital-services-act.md) | DSA – Digital Services Act | DSA (EU) 2022/2065 | 🟡 Medium | ⚠️ Partial | 2–4 h |
-| [GAP-016](GAP-016-google-fonts-cdn.md) | Google Fonts CDN (IP Transfer to Google) | DSGVO Art. 6 / TTDSG § 25 | 🔴 Critical | ❌ Open | 1–2 h |
+| [GAP-016](done/GAP-016-google-fonts-cdn.md) | Google Fonts CDN (IP Transfer to Google) | DSGVO Art. 6 / TTDSG § 25 | 🔴 Critical | ✅ Resolved | 1–2 h |
 | [GAP-017](GAP-017-ip-adressen-protokollierung.md) | IP-Adressen-Protokollierung | DDG § 19 / DSGVO Art. 5 lit. e | 🟠 High | ⚠️ Partial | 2–4 h |
 | [GAP-018](GAP-018-minderjaerigenschutz.md) | Minderjährigenschutz (Age Verification) | DSGVO Art. 8 / BDSG § 7 | 🔴 Critical | ❌ Open | 4–8 h |
 | [GAP-019](GAP-019-fernmeldegeheimnis.md) | Fernmeldegeheimnis (TTDSG § 3) | TTDSG § 3 / TKG | 🟢 Low | ✅ Classification confirmed | 1–2 h |
@@ -64,7 +64,7 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-005** – Conclude AVV with Resend (if `RESEND_API_KEY` is set)
 - [ ] **GAP-010** – Create `/terms` page with basic ToS
 - [ ] **GAP-011** – Replace all `example.com` placeholders in `security.txt`
-- [ ] **GAP-016** – Self-host Google Fonts (remove `@import url('https://fonts.googleapis.com/...')` from `app/globals.css`; use `next/font/google` or local WOFF2 files)
+- [x] **GAP-016** – Self-host Google Fonts (remove `@import url('https://fonts.googleapis.com/...')` from `app/globals.css`; use `next/font/google` or local WOFF2 files) — ✅ Done (`app/layout.tsx` uses `next/font/google`)
 - [ ] **GAP-018** – Add age confirmation checkbox (16+) to registration form and `ageConfirmed` field to User model
 
 ### Phase 2 – High (Complete within 30 days of launch)
@@ -185,3 +185,4 @@ The following areas are already correctly implemented and require no remediation
 |---|---|---|
 | 2026-03-13 | Initial gap analysis created (GAP-001 through GAP-015) | Copilot Agent |
 | 2026-03-13 | Revision 2: Added GAP-016 (Google Fonts CDN), GAP-017 (IP logging), GAP-018 (Minors), GAP-019 (Fernmeldegeheimnis – classification confirmed: not a telecom service), GAP-020 (DPO), GAP-021 (Copyright takedown), GAP-022 (Special categories). Updated risk counts and implementation checklists. | Copilot Agent |
+| 2026-08-22 | GAP-016 verified resolved in code (`app/layout.tsx` now uses `next/font/google`, no CDN import remains) and archived to `done/`. GAP-017's code-level fix (`connectionsPerIp` decrement on WS close) also verified present, though the gap remains open pending the non-code log-retention/privacy-policy items. | Claude |

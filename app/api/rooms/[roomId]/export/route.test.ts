@@ -17,7 +17,6 @@ vi.mock('@/lib/db/prisma', () => ({
     roomMembership: {
       findUnique: vi.fn(),
     },
-    $queryRaw: vi.fn(),
   },
 }));
 

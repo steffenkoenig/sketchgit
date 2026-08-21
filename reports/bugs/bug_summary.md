@@ -1,7 +1,7 @@
 # Bug Summary
 
 This registry records all confirmed bugs found by systematic scanning of the SketchGit codebase.
-Last updated: 2026-03-14 (sixth scan pass – targeted investigation of arrow-snap crash).
+Last updated: 2026-08-22 (verification pass – confirmed BUG-012 through BUG-021 fixes are present in code and the full test suite passes; archived remaining open reports to `done/`).
 
 ---
 
@@ -23,23 +23,23 @@ Resolved reports are archived in [`done/`](./done/).
 | [BUG-010](./done/BUG-010_color-change-not-dirty-not-broadcast.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes to selected objects not marked dirty or broadcast to peers |
 | [BUG-011](./done/BUG-011_create-branch-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/branchCoordinator.ts` | `doCreateBranch()` doesn't send peer presence notifications |
 | [BUG-019](./done/BUG-019_three-way-merge-uses-base-canvas-discards-ours.md) | Medium | `lib/sketchgit/git/mergeEngine.ts` | Clean merge rebuilt from ancestor canvas; discarded ours canvas-level changes |
+| BUG-012 | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Undo saves post-transform state; move/resize cannot be undone |
+| BUG-013 | High | `lib/sketchgit/realtime/wsClient.ts` | `connect()` doesn't close old socket; stale close handler triggers spurious reconnects |
+| BUG-014 | Low | `lib/sketchgit/coordinators/timelineCoordinator.ts` | Clicking branch label in timeline SVG doesn't send peer branch-update/profile |
+| BUG-015 | Low | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes skip `pushHistory()`; cannot be undone |
+| BUG-016 | Medium | `proxy.ts` | `forgot-password` and `reset-password` routes absent from rate-limiter matcher |
+| [BUG-017](./done/BUG-017_rate-limit-429-uses-wrong-error-format.md) | Low | `proxy.ts` | 429 rate-limit response uses `{ error }` not `{ code, message }` |
+| [BUG-018](./done/BUG-018_openapi-export-format-missing-pdf.md) | Low | `lib/api/openapi.ts` | OpenAPI export `format` enum missing `"pdf"` value |
+| [BUG-020](./done/BUG-020_resnap-on-modified-missing-reentrancy-guard-infinite-arrow-rebuild.md) | Critical | `lib/sketchgit/canvas/canvasEngine.ts` | Missing re-entrancy guard in `reSnapOnModified`; drops arrow near shape → hundreds of arrows + tab crash |
+| [BUG-021](./done/BUG-021_stale-attachment-raf-not-cancelled-after-resnap-rebuild.md) | Low | `lib/sketchgit/canvas/canvasEngine.ts` | Stale `scheduleAttachmentUpdate` rAF not cancelled after snap rebuild |
+
+Note: BUG-012 through BUG-016 never had standalone report files — they were tracked only in this summary. Verified fixed in code on 2026-08-22.
 
 ---
 
 ## 🔴 Open bugs
 
-| ID | Severity | File(s) | Summary |
-|---|---|---|---|
-| [BUG-012](./BUG-012_undo-saves-post-transform-state.md) | Medium | `lib/sketchgit/canvas/canvasEngine.ts` | Undo saves post-transform state; move/resize cannot be undone |
-| [BUG-013](./BUG-013_wsclient-connect-orphaned-socket-spurious-reconnect.md) | High | `lib/sketchgit/realtime/wsClient.ts` | `connect()` doesn't close old socket; stale close handler triggers spurious reconnects |
-| [BUG-014](./BUG-014_timeline-branch-label-click-missing-peer-notification.md) | Low | `lib/sketchgit/coordinators/timelineCoordinator.ts` | Clicking branch label in timeline SVG doesn't send peer branch-update/profile |
-| [BUG-015](./BUG-015_color-fill-change-not-undoable.md) | Low | `lib/sketchgit/canvas/canvasEngine.ts` | Color/fill changes skip `pushHistory()`; cannot be undone |
-| [BUG-016](./BUG-016_reset-password-routes-not-rate-limited.md) | Medium | `proxy.ts` | `forgot-password` and `reset-password` routes absent from rate-limiter matcher |
-| [BUG-017](./BUG-017_rate-limit-429-uses-wrong-error-format.md) | Low | `proxy.ts` | 429 rate-limit response uses `{ error }` not `{ code, message }` |
-| [BUG-018](./BUG-018_openapi-export-format-missing-pdf.md) | Low | `lib/api/openapi.ts` | OpenAPI export `format` enum missing `"pdf"` value |
-| [BUG-020](./BUG-020_resnap-on-modified-missing-reentrancy-guard-infinite-arrow-rebuild.md) | Critical | `lib/sketchgit/canvas/canvasEngine.ts` | Missing re-entrancy guard in `reSnapOnModified`; drops arrow near shape → hundreds of arrows + tab crash |
-| [BUG-021](./BUG-021_stale-attachment-raf-not-cancelled-after-resnap-rebuild.md) | Low | `lib/sketchgit/canvas/canvasEngine.ts` | Stale `scheduleAttachmentUpdate` rAF not cancelled after snap rebuild |
-
+*No open bugs.*
 
 ---
 
@@ -70,7 +70,7 @@ Files scanned (excluding test files, migrations, generated code):
 
 ---
 
-## Open Bug Detail Index
+## Additional Fixed Bug Detail (BUG-012–BUG-021)
 
 ### BUG-012 - Undo saves post-transform state; move/resize cannot be undone ✅
 

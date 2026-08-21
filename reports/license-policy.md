@@ -20,6 +20,7 @@ The following licenses are considered compatible with the SketchGit project and 
 - MPL-2.0
 - Python-2.0
 - CC-BY-4.0
+- OFL-1.1 (SIL Open Font License — used by self-hosted `@fontsource/*` font packages)
 
 ## Blocked Licenses
 
