@@ -445,7 +445,7 @@ initRoomBroadcaster({
 
 // ─── Session parsing ──────────────────────────────────────────────────────────
 
-async function resolveUserId(req: IncomingMessage): Promise<string | null> {
+export async function resolveUserId(req: IncomingMessage): Promise<string | null> {
   try {
     const { decode } = await import("@auth/core/jwt");
     const cookies = parseCookies(req.headers["cookie"]);
