@@ -14,14 +14,26 @@ import { BRANCH_COLORS } from '../types';
 import { openModal, closeModal } from '../ui/modals';
 import { loadPreferences, loadLastRoomId, savePreferences } from '../userPreferences';
 
+
+/** Generate a secure random integer between 0 and max - 1 avoiding modulo bias. */
+function secureRandomInt(max: number): number {
+  if (max <= 0) return 0;
+  const limit = 0x100000000 - (0x100000000 % max);
+  const array = new Uint32Array(1);
+  do {
+    crypto.getRandomValues(array);
+  } while (array[0] >= limit);
+  return array[0] % max;
+}
+
 export class CollaborationCoordinator {
   /** Current user's display name (mutable via setName()). */
   myName = 'User';
   /**
    * Avatar colour picked randomly at startup.
-   * Math.random() is appropriate here – avatar colour is non-sensitive.
+   * Using secureRandomInt() instead of Math.random() for security best practices.
    */
-  myColor: string = BRANCH_COLORS[Math.floor(Math.random() * BRANCH_COLORS.length)];
+  myColor: string = BRANCH_COLORS[secureRandomInt(BRANCH_COLORS.length)];
 
   /**
    * @param ctx     – shared subsystem references
