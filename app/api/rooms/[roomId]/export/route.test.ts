@@ -16,6 +16,7 @@ vi.mock('@/lib/db/prisma', () => ({
     roomMembership: {
       findUnique: vi.fn(),
     },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -83,6 +84,12 @@ describe('GET /api/rooms/[roomId]/export', () => {
     // Default: resolveRoomId returns the canonical id; public room
     mock.roomFindFirst.mockResolvedValue({ id: ROOM_ID });
     mock.roomFindUnique.mockResolvedValue({ isPublic: true });
+    // Default mock for $queryRaw used by resolveCommitCanvas
+    (prisma.$queryRaw as any).mockResolvedValue([{
+      sha: COMMIT_SHA,
+      canvasJson: { objects: [{ type: 'rect' }] },
+      storageType: 'SNAPSHOT'
+    }]);
   });
 
   const params = Promise.resolve({ roomId: ROOM_ID });
