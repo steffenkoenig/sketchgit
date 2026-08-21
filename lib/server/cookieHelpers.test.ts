@@ -32,4 +32,29 @@ describe('parseCookies', () => {
     const cookies = parseCookies('name=%FF; foo=bar');
     expect(cookies).toEqual({ name: '%FF', foo: 'bar' });
   });
+
+  it('should handle values with multiple equal signs', () => {
+    const cookies = parseCookies('name=value=123');
+    expect(cookies).toEqual({ name: 'value=123' });
+  });
+
+  it('should handle empty keys', () => {
+    const cookies = parseCookies('=value; foo=bar');
+    expect(cookies).toEqual({ '': 'value', foo: 'bar' });
+  });
+
+  it('should handle empty values', () => {
+    const cookies = parseCookies('name=; foo=bar');
+    expect(cookies).toEqual({ name: '', foo: 'bar' });
+  });
+
+  it('should handle consecutive semicolons and only semicolons', () => {
+    const cookies = parseCookies('name=1;;foo=2;;;');
+    expect(cookies).toEqual({ name: '1', foo: '2' });
+  });
+
+  it('should handle whitespace around keys and values', () => {
+    const cookies = parseCookies('  name  =  value  ;  foo  =  bar  ');
+    expect(cookies).toEqual({ name: 'value', foo: 'bar' });
+  });
 });

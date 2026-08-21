@@ -102,16 +102,21 @@ function applyRateLimitInMemory(
   // in insertion order (oldest first – Map preserves insertion order) until we
   // are back under the limit.  This is O(n) and avoids a sort.
   if (store.size > MAX_STORE_ENTRIES) {
+    let overflow = store.size - MAX_STORE_ENTRIES;
+    const oldKeys = new Array(overflow);
+    let oldKeysCount = 0;
+
     for (const [k, v] of store) {
-      if (now >= v.resetAt) store.delete(k);
-    }
-    if (store.size > MAX_STORE_ENTRIES) {
-      const overflow = store.size - MAX_STORE_ENTRIES;
-      let removed = 0;
-      for (const k of store.keys()) {
+      if (now >= v.resetAt) {
         store.delete(k);
-        if (++removed >= overflow) break;
+        overflow--;
+      } else if (oldKeysCount < overflow) {
+        oldKeys[oldKeysCount++] = k;
       }
+    }
+
+    for (let i = 0; i < overflow; i++) {
+      store.delete(oldKeys[i]);
     }
   }
 

@@ -6,7 +6,7 @@
  */
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getUserRooms } from "@/lib/db/roomRepository";
+import { getUserRooms, type RoomSummary } from "@/lib/db/roomRepository";
 import { userHasPassword } from "@/lib/db/userRepository";
 import { getAuthSession } from "@/lib/authTypes";
 import Link from "next/link";
@@ -32,95 +32,98 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
-      {/* Header */}
-      <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-slate-400 hover:text-white text-sm flex items-center gap-1">
-            ← Canvas
-          </Link>
-          <span className="text-slate-700">|</span>
-          <div className="flex items-center gap-2">
-            <span className="text-lg">⌥</span>
-            <span className="font-semibold">My Drawings</span>
-          </div>
-        </div>
+      <DashboardHeader
+        userName={authSession.user.name ?? authSession.user.email}
+        hasPassword={hasPassword}
+      />
 
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-400">{authSession.user.name ?? authSession.user.email}</span>
-          <SignOutButton />
-          <DeleteAccountButton hasPassword={hasPassword} />
-        </div>
-      </header>
-
-      {/* Body */}
       <main className="max-w-4xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold">Your Drawings</h1>
-            <p className="text-slate-400 text-sm mt-1">
-              {rooms.length === 0
-                ? "No rooms yet. Open the canvas and start drawing!"
-                : `${rooms.length} room${rooms.length === 1 ? "" : "s"}`}
-            </p>
-          </div>
-
-          <Link
-            href="/"
-            className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
-          >
-            + New Drawing
-          </Link>
-        </div>
+        <DashboardTitle rooms={rooms} />
 
         {rooms.length === 0 ? (
-          <div className="text-center py-24 border border-dashed border-slate-800 rounded-xl">
-            <div className="text-4xl mb-4">🎨</div>
-            <p className="text-slate-400">
-              Head to the{" "}
-              <Link href="/" className="text-violet-400 hover:underline">
-                canvas
-              </Link>{" "}
-              to create your first drawing.
-            </p>
-          </div>
+          <EmptyRoomsState />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {rooms.map((room) => (
-              <div key={room.id} className="group block bg-[#12121a] border border-slate-800 hover:border-violet-700 rounded-xl p-5 transition-colors">
-                <Link
-                  href={`/?room=${encodeURIComponent(room.slug ?? room.id)}`}
-                  className="block"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">🖼</span>
-                      <span className="font-medium text-sm truncate max-w-[140px]">
-                        {room.slug ?? room.id}
-                      </span>
-                    </div>
-                    <RoleBadge role={room.role} />
-                  </div>
-
-                  <div className="text-xs text-slate-500 space-y-1">
-                    <div className="flex justify-between">
-                      <span>{room.commitCount} commit{room.commitCount === 1 ? "" : "s"}</span>
-                      <span>{room.isPublic ? "Public" : "Private"}</span>
-                    </div>
-                    <div>Updated {formatRelative(room.updatedAt)}</div>
-                  </div>
-                </Link>
-
-                {/* P049 – inline rename for owners */}
-                <RenameRoomButton
-                  roomId={room.id}
-                  currentSlug={room.slug}
-                  isOwner={room.role === "OWNER"}
-                />
-              </div>
+              <RoomCard key={room.id} room={room} />
             ))}
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function DashboardHeader({ userName, hasPassword }: { userName: string | null | undefined, hasPassword: boolean }) {
+  return (
+    <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <Link href="/" className="text-slate-400 hover:text-white text-sm flex items-center gap-1">
+          ← Canvas
+        </Link>
+        <span className="text-slate-700">|</span>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">⌥</span>
+          <span className="font-semibold">My Drawings</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-slate-400">{userName}</span>
+        <SignOutButton />
+        <DeleteAccountButton hasPassword={hasPassword} />
+      </div>
+    </header>
+  );
+}
+
+function EmptyRoomsState() {
+  return (
+    <div className="text-center py-24 border border-dashed border-slate-800 rounded-xl">
+      <div className="text-4xl mb-4">🎨</div>
+      <p className="text-slate-400">
+        Head to the{" "}
+        <Link href="/" className="text-violet-400 hover:underline">
+          canvas
+        </Link>{" "}
+        to create your first drawing.
+      </p>
+    </div>
+  );
+}
+
+function RoomCard({ room }: { room: RoomSummary }) {
+  return (
+    <div className="group block bg-[#12121a] border border-slate-800 hover:border-violet-700 rounded-xl p-5 transition-colors">
+      <Link
+        href={`/?room=${encodeURIComponent(room.slug ?? room.id)}`}
+        className="block"
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🖼</span>
+            <span className="font-medium text-sm truncate max-w-[140px]">
+              {room.slug ?? room.id}
+            </span>
+          </div>
+          <RoleBadge role={room.role} />
+        </div>
+
+        <div className="text-xs text-slate-500 space-y-1">
+          <div className="flex justify-between">
+            <span>{room.commitCount} commit{room.commitCount === 1 ? "" : "s"}</span>
+            <span>{room.isPublic ? "Public" : "Private"}</span>
+          </div>
+          <div>Updated {formatRelative(room.updatedAt)}</div>
+        </div>
+      </Link>
+
+      {/* P049 – inline rename for owners */}
+      <RenameRoomButton
+        roomId={room.id}
+        currentSlug={room.slug}
+        isOwner={room.role === "OWNER"}
+      />
     </div>
   );
 }
@@ -149,4 +152,26 @@ function formatRelative(date: Date): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
   return date.toLocaleDateString();
+}
+
+function DashboardTitle({ rooms }: { rooms: RoomSummary[] }) {
+  return (
+    <div className="flex items-center justify-between mb-8">
+      <div>
+        <h1 className="text-2xl font-bold">Your Drawings</h1>
+        <p className="text-slate-400 text-sm mt-1">
+          {rooms.length === 0
+            ? "No rooms yet. Open the canvas and start drawing!"
+            : `${rooms.length} room${rooms.length === 1 ? "" : "s"}`}
+        </p>
+      </div>
+
+      <Link
+        href="/"
+        className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
+      >
+        + New Drawing
+      </Link>
+    </div>
+  );
 }
