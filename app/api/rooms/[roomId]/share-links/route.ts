@@ -33,8 +33,7 @@ const MAX_BRANCHES_PER_LINK = 50;
 // 255-char branch-name limit matches Git's own refname length restriction.
 const MAX_BRANCH_NAME_LEN = 255;
 
-// 100 000 is high enough for broadcast links (e.g. class of 500 × 200 sessions)
-// without being unbounded. Unlimited links omit this field entirely.
+// Maximum allowed uses for a share link. Unlimited links omit this field entirely.
 const MAX_USES_LIMIT = 100_000;
 
 export const CreateShareLinkSchema = z.object({
