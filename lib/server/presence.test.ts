@@ -1,6 +1,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { getGlobalPresence, REDIS_PRESENCE_PREFIX } from './presence';
+import type { RedisLike } from '../redis.js';
+import type { Logger } from 'pino';
+
 
 describe('presence module', () => {
   it('getGlobalPresence handles redis errors gracefully', async () => {
@@ -8,12 +11,12 @@ describe('presence module', () => {
       warn: vi.fn(),
       info: vi.fn(),
       error: vi.fn(),
-    } as any;
+    } as unknown as Logger;
 
     const mockHgetall = vi.fn().mockRejectedValue(new Error('Redis connection lost'));
     const mockRedisPub = {
       hgetall: mockHgetall,
-    } as any;
+    } as unknown as RedisLike;
 
     const localClients = [{ clientId: 'c1', name: 'user1', color: 'red', userId: null, branch: 'main', headSha: null }];
 
@@ -28,8 +31,8 @@ describe('presence module', () => {
   });
 
   it('returns localClients if redis is not ready', async () => {
-    const mockLogger = { warn: vi.fn() } as any;
-    const mockRedisPub = { hgetall: vi.fn() } as any;
+    const mockLogger = { warn: vi.fn() } as unknown as Logger;
+    const mockRedisPub = { hgetall: vi.fn() } as unknown as RedisLike;
     const localClients = [{ clientId: 'c1', name: 'user1', color: 'red', userId: null, branch: 'main', headSha: null }];
 
     const result = await getGlobalPresence('room1', localClients, mockRedisPub, false, mockLogger);
@@ -39,7 +42,7 @@ describe('presence module', () => {
   });
 
   it('returns localClients if redisPub is null', async () => {
-    const mockLogger = { warn: vi.fn() } as any;
+    const mockLogger = { warn: vi.fn() } as unknown as Logger;
     const localClients = [{ clientId: 'c1', name: 'user1', color: 'red', userId: null, branch: 'main', headSha: null }];
 
     const result = await getGlobalPresence('room1', localClients, null, true, mockLogger);
@@ -48,7 +51,7 @@ describe('presence module', () => {
   });
 
   it('merges clients from redis successfully', async () => {
-    const mockLogger = { warn: vi.fn() } as any;
+    const mockLogger = { warn: vi.fn() } as unknown as Logger;
 
     // Create duplicate clients and distinct clients across fields
     const server1Clients = [
@@ -69,7 +72,7 @@ describe('presence module', () => {
 
     const mockRedisPub = {
       hgetall: mockHgetall,
-    } as any;
+    } as unknown as RedisLike;
 
     const localClients = [{ clientId: 'c1', name: 'user1', color: 'red', userId: null, branch: 'main', headSha: null }];
 
@@ -85,9 +88,9 @@ describe('presence module', () => {
   });
 
   it('returns local clients if redis returns null', async () => {
-    const mockLogger = { warn: vi.fn() } as any;
+    const mockLogger = { warn: vi.fn() } as unknown as Logger;
     const mockHgetall = vi.fn().mockResolvedValue(null);
-    const mockRedisPub = { hgetall: mockHgetall } as any;
+    const mockRedisPub = { hgetall: mockHgetall } as unknown as RedisLike;
     const localClients = [{ clientId: 'c1', name: 'user1', color: 'red', userId: null, branch: 'main', headSha: null }];
 
     const result = await getGlobalPresence('room1', localClients, mockRedisPub, true, mockLogger);
@@ -96,11 +99,11 @@ describe('presence module', () => {
   });
 
   it('handles errors when parsing JSON values', async () => {
-    const mockLogger = { warn: vi.fn() } as any;
+    const mockLogger = { warn: vi.fn() } as unknown as Logger;
     const mockHgetall = vi.fn().mockResolvedValue({
       'server1': 'invalid-json'
     });
-    const mockRedisPub = { hgetall: mockHgetall } as any;
+    const mockRedisPub = { hgetall: mockHgetall } as unknown as RedisLike;
     const localClients = [{ clientId: 'c1', name: 'user1', color: 'red', userId: null, branch: 'main', headSha: null }];
 
     const result = await getGlobalPresence('room1', localClients, mockRedisPub, true, mockLogger);

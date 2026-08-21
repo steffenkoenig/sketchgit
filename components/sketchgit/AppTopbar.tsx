@@ -190,16 +190,55 @@ function usePortalDropdown(align: "left" | "right" = "left") {
 
 /* ── ExportDropdown ──────────────────────────────────────────────────────── */
 
-function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null }) {
-  const t = useTranslations();
-  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("left");
-  const [busy, setBusy] = React.useState(false);
+async function performExportFetch(
+  format: string,
+  roomId: string,
+  theme: string,
+  canvasJsonStr: string | null,
+  t: (key: string) => string
+): Promise<Response | null> {
+  const base = `/api/rooms/${encodeURIComponent(roomId)}/export`;
+  if (canvasJsonStr !== null) {
+    let canvasJson: unknown;
+    try {
+      canvasJson = JSON.parse(canvasJsonStr);
+    } catch {
+      showToast(t("errors.EXPORT_FAILED"), true);
+      return null;
+    }
+    return await fetch(base, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canvasJson, format, theme }),
+    });
+  }
+  return await fetch(`${base}?format=${format}&theme=${theme}`);
+}
 
-  const items = [
-    { format: "png", label: t("toolbar.exportPng"), icon: <IconPng /> },
-    { format: "svg", label: t("toolbar.exportSvg"), icon: <IconSvg /> },
-    { format: "pdf", label: t("toolbar.exportPdf"), icon: <IconPdf /> },
-  ];
+async function handleExportResponse(res: Response, format: string, roomId: string): Promise<void> {
+  if (!res.ok) {
+    const body: unknown = await res.json().catch(() => null);
+    const msg =
+      body !== null && typeof body === "object" && "message" in body && typeof (body as Record<string, unknown>).message === "string"
+        ? (body as { message: string }).message
+        : res.statusText;
+    showToast(`⚠ ${msg}`, true);
+    return;
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `canvas-${roomId}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
+function useExportLogic(getCanvasJson: () => string | null, setOpen: (open: boolean) => void) {
+  const [busy, setBusy] = React.useState(false);
+  const t = useTranslations();
 
   async function doExport(format: string) {
     if (busy) return;
@@ -214,60 +253,35 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
       const params = new URLSearchParams(window.location.search);
       const roomId = params.get("room") || "default";
       const theme = document.documentElement.classList.contains("theme-light") ? "light" : "dark";
-      const base = `/api/rooms/${encodeURIComponent(roomId)}/export`;
 
       // Prefer POST with the live canvas JSON so the export succeeds even when
       // the room has not been persisted to the database (e.g. dbEnsureRoom
       // failed transiently on the WebSocket server).
       const canvasJsonStr = getCanvasJson();
 
-      let res: Response;
-      if (canvasJsonStr !== null) {
-        let canvasJson: unknown;
-        try {
-          canvasJson = JSON.parse(canvasJsonStr);
-        } catch {
-          showToast(t("errors.EXPORT_FAILED"), true);
-          return;
-        }
-        res = await fetch(base, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ canvasJson, format, theme }),
-        });
-      } else {
-        // Canvas engine not yet initialised — fall back to the DB-based GET.
-        res = await fetch(`${base}?format=${format}&theme=${theme}`);
+      const res = await performExportFetch(format, roomId, theme, canvasJsonStr, t);
+      if (res) {
+        await handleExportResponse(res, format, roomId);
       }
-
-      if (!res.ok) {
-        const body: unknown = await res.json().catch(() => null);
-        const msg =
-          body !== null &&
-          typeof body === "object" &&
-          "message" in body &&
-          typeof (body as Record<string, unknown>).message === "string"
-            ? (body as { message: string }).message
-            : res.statusText;
-        showToast(`⚠ ${msg}`, true);
-        return;
-      }
-
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = `canvas-${roomId}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
     } catch {
       showToast(t("errors.EXPORT_FAILED"), true);
     } finally {
       setBusy(false);
     }
   }
+
+  return { busy, doExport, t };
+}
+
+function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null }) {
+  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("left");
+  const { busy, doExport, t } = useExportLogic(getCanvasJson, setOpen);
+
+  const items = [
+    { format: "png", label: t("toolbar.exportPng"), icon: <IconPng /> },
+    { format: "svg", label: t("toolbar.exportSvg"), icon: <IconSvg /> },
+    { format: "pdf", label: t("toolbar.exportPdf"), icon: <IconPdf /> },
+  ];
 
   return (
     <div className="tb-dropdown">
@@ -308,12 +322,12 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
 
 /* ── LocaleDropdown ──────────────────────────────────────────────────────── */
 
-function LocaleDropdown() {
-  const t = useTranslations();
+function useLocaleDropdownLogic(
+  menuRef: React.RefObject<HTMLDivElement | null>,
+  triggerRef: React.RefObject<HTMLButtonElement | null>,
+  setOpen: (open: boolean) => void
+) {
   const locale = useLocale();
-  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("right");
-
-  const current = LOCALES.find((l) => l.code === locale) ?? LOCALES[0];
 
   function switchLocale(code: string) {
     if (code === locale) {
@@ -342,6 +356,16 @@ function LocaleDropdown() {
       items[(idx - 1 + items.length) % items.length].focus();
     }
   }
+
+  return { locale, switchLocale, handleMenuKeyDown };
+}
+
+function LocaleDropdown() {
+  const t = useTranslations();
+  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("right");
+  const { locale, switchLocale, handleMenuKeyDown } = useLocaleDropdownLogic(menuRef, triggerRef, setOpen);
+
+  const current = LOCALES.find((l) => l.code === locale) ?? LOCALES[0];
 
   return (
     <div className="tb-dropdown" aria-label={t("topbar.language")}>
@@ -424,17 +448,18 @@ function ThemeToggle() {
 
 /* ── AppTopbar ───────────────────────────────────────────────────────────── */
 
-export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus, getCanvasJson }: AppTopbarProps) {
-  // P050: translation helper
-  const t = useTranslations();
-
+function AppLogo() {
   return (
-    <header id="topbar" role="banner" aria-label="Application toolbar">
-      <div className="logo" aria-label="SketchGit application logo">
-        <div className="logo-badge" aria-hidden="true">⌥</div>
-        SketchGit
-      </div>
+    <div className="logo" aria-label="SketchGit application logo">
+      <div className="logo-badge" aria-hidden="true">⌥</div>
+      SketchGit
+    </div>
+  );
+}
 
+function BranchSelector({ call }: { call: SketchGitCall }) {
+  return (
+    <>
       <button
         className="branch-selector"
         id="currentBranchBtn"
@@ -446,18 +471,21 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         <span id="currentBranchName" aria-live="polite">main</span>
         <span style={{ color: "var(--tx3)", marginLeft: "2px" }} aria-hidden="true">▾</span>
       </button>
-
       <span
         style={{ fontSize: "10px", color: "var(--tx3)" }}
         id="headSHA"
         aria-label="Current HEAD commit SHA"
         aria-live="polite"
       ></span>
+    </>
+  );
+}
 
-      <div className="sep" role="separator" aria-orientation="vertical"></div>
+function CollabActions({ call, t }: { call: SketchGitCall; t: (key: string) => string }) {
+  return (
+    <>
       <div className="avatar-row" id="avatarRow" aria-label="Connected peers" role="list"></div>
       <div className="live-ind" id="liveInd" style={{ display: "none" }} aria-label="Live collaboration active" aria-live="polite"></div>
-
       <button
         className="topbtn"
         onClick={() => call("toggleCollabPanel")}
@@ -467,7 +495,13 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         <IconCollab />
         {t("topbar.collab")}
       </button>
+    </>
+  );
+}
 
+function BranchActions({ call, t, session }: { call: SketchGitCall; t: (key: string) => string; session: Session | null }) {
+  return (
+    <>
       <button
         className="topbtn danger"
         onClick={() => call("openMergeModal")}
@@ -478,7 +512,6 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         <IconMerge />
         {t("topbar.merge")}
       </button>
-
       <button
         className="topbtn"
         onClick={() => call("openBranchCreate")}
@@ -488,7 +521,6 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         <IconBranch />
         {t("topbar.branch")}
       </button>
-
       <button
         className="topbtn primary"
         onClick={() => call("openCommitModal")}
@@ -499,8 +531,6 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         <IconCommit />
         {t("topbar.commit")}
       </button>
-
-      {/* P091: Share button – only meaningful for authenticated users (API enforces OWNER) */}
       {session?.user && (
         <button
           className="topbtn"
@@ -512,52 +542,70 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
           {t("topbar.share")}
         </button>
       )}
+    </>
+  );
+}
 
-      {/* P039: Export dropdown – PNG / SVG / PDF */}
-      <ExportDropdown getCanvasJson={getCanvasJson} />
+function AuthSection({ session, sessionStatus, t }: { session: Session | null; sessionStatus: "loading" | "authenticated" | "unauthenticated"; t: (key: string) => string }) {
+  if (sessionStatus === "loading") return null;
+  if (session?.user) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <Link
+          href="/dashboard"
+          style={{
+            display: "flex", alignItems: "center", gap: "6px",
+            background: "var(--s2)", border: "1px solid var(--bdr)",
+            borderRadius: "6px", padding: "3px 10px",
+            fontSize: "12px", color: "var(--tx)", textDecoration: "none",
+            cursor: "pointer",
+          }}
+          aria-label={`Go to My Drawings (signed in as ${session.user.name ?? session.user.email})`}
+        >
+          <span aria-hidden="true">👤</span>
+          <span style={{ maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {session.user.name ?? session.user.email}
+          </span>
+        </Link>
+        <button
+          className="topbtn"
+          onClick={() => signOut({ callbackUrl: "/" })}
+          aria-label="Sign out of SketchGit"
+        >{t("topbar.signOut")}</button>
+      </div>
+    );
+  }
+  return (
+    <button
+      className="topbtn"
+      onClick={() => signIn()}
+      aria-label="Sign in or create a SketchGit account"
+    >{t("topbar.signIn")}</button>
+  );
+}
 
-      {/* Auth section */}
+export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus, getCanvasJson }: AppTopbarProps) {
+  const t = useTranslations();
+
+  return (
+    <header id="topbar" role="banner" aria-label="Application toolbar">
+      <AppLogo />
+      <BranchSelector call={call} />
+
       <div className="sep" role="separator" aria-orientation="vertical"></div>
 
-      {/* P050 – Locale dropdown */}
-      <LocaleDropdown />
+      <CollabActions call={call} t={t} />
+      <BranchActions call={call} t={t} session={session} />
+      <ExportDropdown getCanvasJson={getCanvasJson} />
 
-      {/* P078 – Theme toggle (dark/light) */}
+      <div className="sep" role="separator" aria-orientation="vertical"></div>
+
+      <LocaleDropdown />
       <ThemeToggle />
 
       <div className="sep" role="separator" aria-orientation="vertical"></div>
 
-      {sessionStatus === "loading" ? null : session?.user ? (
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <Link
-            href="/dashboard"
-            style={{
-              display: "flex", alignItems: "center", gap: "6px",
-              background: "var(--s2)", border: "1px solid var(--bdr)",
-              borderRadius: "6px", padding: "3px 10px",
-              fontSize: "12px", color: "var(--tx)", textDecoration: "none",
-              cursor: "pointer",
-            }}
-            aria-label={`Go to My Drawings (signed in as ${session.user.name ?? session.user.email})`}
-          >
-            <span aria-hidden="true">👤</span>
-            <span style={{ maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {session.user.name ?? session.user.email}
-            </span>
-          </Link>
-          <button
-            className="topbtn"
-            onClick={() => signOut({ callbackUrl: "/" })}
-            aria-label="Sign out of SketchGit"
-          >{t("topbar.signOut")}</button>
-        </div>
-      ) : (
-        <button
-          className="topbtn"
-          onClick={() => signIn()}
-          aria-label="Sign in or create a SketchGit account"
-        >{t("topbar.signIn")}</button>
-      )}
+      <AuthSection session={session} sessionStatus={sessionStatus} t={t} />
     </header>
   );
 });

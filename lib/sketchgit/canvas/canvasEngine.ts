@@ -2894,12 +2894,9 @@ export class CanvasEngine {
       }
       const wasActive = this.canvas!.getActiveObject() === sp;
       const spId = (sp as FabricObject & { _id?: string })._id;
-      this.rebuildSketchPathForMove(sp, snapX1sp, snapY1sp, snapX2sp, snapY2sp);
-      if (wasActive && spId) {
-        const newPath = this.canvas!.getObjects().find(
-          (o) => (o as FabricObject & { _id?: string })._id === spId,
-        );
-        if (newPath) this.canvas!.setActiveObject(newPath);
+      const rebuilt = this.rebuildSketchPathForMove(sp, snapX1sp, snapY1sp, snapX2sp, snapY2sp);
+      if (wasActive && spId && rebuilt) {
+        this.canvas!.setActiveObject(rebuilt);
       }
     }
   }
@@ -3050,13 +3047,13 @@ export class CanvasEngine {
   public rebuildSketchPathForMove(
     pathObj: FabricObject,
     x1: number, y1: number, x2: number, y2: number,
-  ): void {
+  ): FabricObject | null {
     const sp = pathObj as AnchoredLine & { _origGeom?: string; _sloppiness?: string };
     sp._origGeom = JSON.stringify({ type: 'line', x1, y1, x2, y2 });
 
     const sloppiness = (sp._sloppiness as 'architect' | 'artist' | 'cartoonist') ?? 'artist';
     const rebuilt = this.tryConvertToSketch(pathObj, sloppiness);
-    if (!rebuilt) return;
+    if (!rebuilt) return null;
 
     rebuilt.set({
       left: (x1 + x2) / 2,
@@ -3071,6 +3068,7 @@ export class CanvasEngine {
     if (prevActive && prevActive !== pathObj) {
       this.canvas?.setActiveObject(prevActive);
     }
+    return rebuilt;
   }
 
   /** Sync the toolbar and properties panel UI to the currently selected object. */
