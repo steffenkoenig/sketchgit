@@ -74,6 +74,12 @@ describe('verifyShareLinkSignature', () => {
   it('returns false for an empty signature', () => {
     expect(verifyShareLinkSignature(token, roomId, scope, expiresAt, '')).toBe(false);
   });
+
+  it('returns false for an invalid hex signature of the same length causing buffer mismatch', () => {
+    // 64 characters of non-hex valid character 'z'
+    const invalidHexSig = 'z'.repeat(64);
+    expect(verifyShareLinkSignature(token, roomId, scope, expiresAt, invalidHexSig)).toBe(false);
+  });
 });
 
 // ─── signScopeCookie / verifyScopeCookie ──────────────────────────────────────
