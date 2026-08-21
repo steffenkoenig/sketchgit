@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.
@@ -186,6 +185,39 @@ export const COMMIT_PAGE_SIZE = 100;
  * Accepts optional cursor-based pagination: pass `cursor` (a commit SHA) to
  * start after that commit, and `take` to limit the page size (default 100).
  */
+
+function safeStringifyCanvas(canvasJson: unknown): string {
+  try { return JSON.stringify(canvasJson); }
+  catch { return '{"objects":[]}'; }
+}
+
+function safeReplayDelta(parentCanvas: string, canvasJson: unknown): string {
+  try {
+    return replayCanvasDelta(parentCanvas, canvasJson as unknown as CanvasDelta);
+  } catch {
+    return safeStringifyCanvas(canvasJson);
+  }
+}
+
+async function resolveAncestorCanvas(roomId: string, sha: string, canvasCache: Map<string, string>): Promise<string> {
+  if (canvasCache.has(sha)) return canvasCache.get(sha)!;
+  const ancestor = await prisma.commit.findFirst({
+    where: { roomId, sha },
+    select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
+  });
+  if (!ancestor) return '{"objects":[]}';
+
+  let canvasStr: string;
+  if (ancestor.storageType === CommitStorageType.SNAPSHOT || !ancestor.parentSha) {
+    canvasStr = safeStringifyCanvas(ancestor.canvasJson);
+  } else {
+    const parentCanvas = await resolveAncestorCanvas(roomId, ancestor.parentSha, canvasCache);
+    canvasStr = safeReplayDelta(parentCanvas, ancestor.canvasJson);
+  }
+  canvasCache.set(sha, canvasStr);
+  return canvasStr;
+}
+
 export async function loadRoomSnapshot(
   roomId: string,
   options?: { cursor?: string; take?: number }
@@ -215,55 +247,21 @@ export async function loadRoomSnapshot(
   // database so reconstruction is always correct regardless of page boundaries.
   const canvasCache = new Map<string, string>();
 
-  async function resolveCanvas(sha: string): Promise<string> {
-    if (canvasCache.has(sha)) return canvasCache.get(sha)!;
-    // Ancestor not in the current page – fetch it directly.
-    const ancestor = await prisma.commit.findFirst({
-      where: { roomId, sha },
-      select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
-    });
-    if (!ancestor) return '{"objects":[]}';
-    let canvasStr: string;
-    if (ancestor.storageType === CommitStorageType.SNAPSHOT || !ancestor.parentSha) {
-      try { canvasStr = JSON.stringify(ancestor.canvasJson); }
-      catch { canvasStr = '{"objects":[]}'; }
-    } else {
-      const parentCanvas = await resolveCanvas(ancestor.parentSha);
-      try {
-        canvasStr = replayCanvasDelta(parentCanvas, ancestor.canvasJson as unknown as CanvasDelta);
-      } catch {
-        try { canvasStr = JSON.stringify(ancestor.canvasJson); }
-        catch { canvasStr = '{"objects":[]}'; }
-      }
-    }
-    canvasCache.set(sha, canvasStr);
-    return canvasStr;
-  }
+
 
   const commitsMap: Record<string, CommitRecord> = {};
   for (const c of commits) {
     let canvasStr: string;
     if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
-      try { canvasStr = JSON.stringify(c.canvasJson); }
-      catch { canvasStr = '{"objects":[]}'; }
+      canvasStr = safeStringifyCanvas(c.canvasJson);
     } else if (pageShAs.has(c.parentSha) && canvasCache.has(c.parentSha)) {
       // Fast path: parent is already in the cache (within this page).
       const parentCanvas = canvasCache.get(c.parentSha)!;
-      try {
-        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
-      } catch {
-        try { canvasStr = JSON.stringify(c.canvasJson); }
-        catch { canvasStr = '{"objects":[]}'; }
-      }
+      canvasStr = safeReplayDelta(parentCanvas, c.canvasJson);
     } else {
       // Parent is outside this page – resolve via DB walk.
-      const parentCanvas = await resolveCanvas(c.parentSha);
-      try {
-        canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
-      } catch {
-        try { canvasStr = JSON.stringify(c.canvasJson); }
-        catch { canvasStr = '{"objects":[]}'; }
-      }
+      const parentCanvas = await resolveAncestorCanvas(roomId, c.parentSha, canvasCache);
+      canvasStr = safeReplayDelta(parentCanvas, c.canvasJson);
     }
     canvasCache.set(c.sha, canvasStr);
     commitsMap[c.sha] = {
