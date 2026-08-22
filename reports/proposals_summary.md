@@ -94,6 +94,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/done/P090_feature-flag-system.md) |
 | P091 † | Room Roles and Permissions (member role visibility + management API — distinct proposal, shares the P091 number with Granular Share Links above; see that report's Implementation Notes) | Security, Collaboration, Accessibility | [P091](proposals/done/P091_room-roles-permissions.md) |
 | P083 | Load and Stress Testing with k6 | Performance, Reliability | [P083](proposals/done/P083_load-and-stress-testing.md) |
+| P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/done/P088_database-read-replica.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |
@@ -121,7 +122,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
 | P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/P081_react-error-boundaries.md) |
-| P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
 | P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/done/P091_granular-share-links.md) |
 | P092 | Offline Mode and Background Synchronization | Reliability, UX | [P092](proposals/P092_offline-mode-sync.md) |
@@ -346,7 +346,7 @@ tooling, and collaboration features.
 7. ~~**P087** – Visual regression testing (extends P038; catches unintended UI changes)~~ ✅ **Done**
 8. ~~**P090** – Feature flag system (safe incremental rollout; unblocks phased feature releases)~~ ✅ **Done**
 9. **P091** – Granular share links (collaboration; supersedes P066; requires P003/P007/P066)
-10. **P088** – Database read replica (scalability; requires P090 flag for progressive rollout)
+10. ~~**P088** – Database read replica (scalability; requires P090 flag for progressive rollout)~~ ✅ **Done**
 11. ~~**P083** – Load and stress testing (validates the system after P088 and P090 are deployed)~~ ✅ **Done**
 
 ---

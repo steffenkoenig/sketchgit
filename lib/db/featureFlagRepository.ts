@@ -1,7 +1,9 @@
 /**
  * featureFlagRepository – server-side data access for feature flags (P090).
  */
-import { prisma } from "@/lib/db/prisma";
+// P088 – prismaRead routes to the read replica when configured; prismaWrite
+// always targets the primary.
+import { prismaRead, prismaWrite } from "@/lib/db/prisma";
 import type { FeatureFlag } from "@prisma/client";
 
 export interface TargetScope {
@@ -10,11 +12,11 @@ export interface TargetScope {
 }
 
 export async function getFeatureFlag(name: string): Promise<FeatureFlag | null> {
-  return prisma.featureFlag.findUnique({ where: { name } });
+  return prismaRead.featureFlag.findUnique({ where: { name } });
 }
 
 export async function listFeatureFlags(): Promise<FeatureFlag[]> {
-  return prisma.featureFlag.findMany({ orderBy: { name: "asc" } });
+  return prismaRead.featureFlag.findMany({ orderBy: { name: "asc" } });
 }
 
 export async function createFeatureFlag(
@@ -23,7 +25,7 @@ export async function createFeatureFlag(
   enabled: boolean,
   targetScope: TargetScope = {},
 ): Promise<FeatureFlag> {
-  return prisma.featureFlag.create({
+  return prismaWrite.featureFlag.create({
     data: { name, description, enabled, targetScope: targetScope as object },
   });
 }
@@ -33,7 +35,7 @@ export async function updateFeatureFlag(
   updates: { description?: string; enabled?: boolean; targetScope?: TargetScope },
 ): Promise<FeatureFlag | null> {
   try {
-    return await prisma.featureFlag.update({
+    return await prismaWrite.featureFlag.update({
       where: { name },
       data: {
         ...(updates.description !== undefined ? { description: updates.description } : {}),

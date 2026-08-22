@@ -28,6 +28,7 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { pruneInactiveRooms, type ClientRole } from "./lib/db/roomRepository.js";
+import { wrapWithReadFallback } from "./lib/db/prisma.js";
 import { checkDbHealth } from "./lib/db/health.js";
 import { parseAllowedOrigins } from "./lib/server/allowedOrigins.js";
 import { parseCookies } from "./lib/server/cookieHelpers.js";
@@ -58,6 +59,26 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: env.DATABASE_URL }),
   log: ["warn", "error"],
 });
+
+// P088 – read replica for the WS layer's own DB calls (room-snapshot loads on
+// reconnect). Reuses the same `prisma` instance when no replica is configured
+// so no extra connection pool is opened.
+// `prismaReplica` is the raw client — used ONLY for the health check below,
+// which must observe the replica's real connectivity, not a masked fallback.
+// `prismaReplicaRead` is the fallback-wrapped version (see lib/db/prisma.ts's
+// wrapWithReadFallback, reused here so both DB access paths in this app get
+// identical replica→primary resilience) — passed to the WS connection
+// handler for actual application reads.
+const prismaReplica: PrismaClient = env.DATABASE_URL_REPLICA
+  ? new PrismaClient({
+      adapter: new PrismaPg({
+        connectionString: env.DATABASE_URL_REPLICA,
+        max: env.DB_REPLICA_POOL_SIZE,
+      }),
+      log: ["warn", "error"],
+    })
+  : prisma;
+const prismaReplicaRead: PrismaClient = wrapWithReadFallback(prismaReplica, prisma);
 
 // ─── P012: Redis Pub/Sub (optional) ──────────────────────────────────────────
 // Two separate ioredis connections are required: one for publishing and one for
@@ -558,7 +579,12 @@ void app.prepare()
         // Orchestrators use this to decide whether to restart the container; a DB
         // outage should NOT trigger a restart (the process itself is healthy).
         if (req.url === "/api/health") {
+          // P088 – check the replica independently of the primary so a
+          // degraded replica is visible without affecting the primary's
+          // reported status. When no replica is configured, prismaReplica
+          // is literally `prisma`, so its health is already known from dbOk.
           const dbOk = await checkDbHealth(prisma);
+          const dbReplicaOk = prismaReplica === prisma ? dbOk : await checkDbHealth(prismaReplica);
           const payload = JSON.stringify({
             status: "ok",
             uptime: process.uptime(),
@@ -567,6 +593,10 @@ void app.prepare()
             maxRoomSize: rooms.size > 0 ? Math.max(...[...rooms.values()].map((r) => r.size)) : 0,
             capacityLimit: env.MAX_CLIENTS_PER_ROOM,
             database: dbOk ? "ok" : "unreachable",
+            // P088: replica connectivity — reads fall back to the primary
+            // automatically (see lib/db/prisma.ts's prismaRead), so a
+            // degraded replica does not make the instance unhealthy overall.
+            dbReplica: dbReplicaOk ? "ok" : "degraded",
             // P012: include Redis status for ops visibility
             redis: env.REDIS_URL ? (redisReady ? "ok" : "connecting") : "disabled",
             // P030: snapshot cache stats
@@ -721,7 +751,7 @@ void app.prepare()
      */
 
     wss.on("connection", createWsConnectionHandler({
-      logger, prisma, env, rooms, roomCache, roomCleanupTimers, connectionsPerIp, safeRoomId, safeName, safeColor,
+      logger, prisma, prismaRead: prismaReplicaRead, env, rooms, roomCache, roomCleanupTimers, connectionsPerIp, safeRoomId, safeName, safeColor,
       getRoom, dbEnsureRoom, sendTo, schedulePushPresence, dbLoadSnapshot, ROOM_CLEANUP_DELAY_MS, broadcastRoom,
     }));
 
@@ -818,6 +848,10 @@ void app.prepare()
 
     // 5. Disconnect from the database
     await prisma.$disconnect();
+    // P088 – only disconnect the replica client separately when it's a
+    // distinct instance (no replica configured means prismaReplica === prisma,
+    // already disconnected above).
+    if (prismaReplica !== prisma) await prismaReplica.$disconnect();
 
     // 6. P061 – flush any pending OpenTelemetry spans/metrics before exit.
     await shutdownTelemetry();

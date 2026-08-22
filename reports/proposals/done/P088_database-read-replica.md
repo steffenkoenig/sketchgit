@@ -1,7 +1,7 @@
 # P088 – Database Read Replica and Connection Routing
 
 ## Status
-Not Started
+Done
 
 ## Dimensions
 Performance · Reliability · Scalability
@@ -207,3 +207,128 @@ auditing every repository function and ensuring tests mock both clients correctl
 - P060 (PgBouncer — pooling should be configured for both primary and replica)
 - P023 ✅ (health check — extended with replica status)
 - P030 ✅ (LRU cache — replica replication lag is acceptable due to the cache TTL)
+
+## Implementation Notes
+
+Implemented largely as designed — dual Prisma clients with fallback routing,
+env vars, health check integration, per-function routing across all three
+repository files, and a resilience mechanism the proposal didn't originally
+specify but that live testing showed was necessary. All verified against
+real infrastructure (two independent Dockerized Postgres instances, seeded
+with distinguishable sentinel data, hit through a real production build),
+not just unit tests.
+
+### Core implementation
+- `lib/db/prisma.ts` — exports `prismaWrite` (primary), `prismaRead`
+  (routes to `DATABASE_URL_REPLICA` when set, else literally `=== prismaWrite`
+  — no second connection pool opened in the common single-node case), and
+  `prisma` (unchanged alias for `prismaWrite`, so no existing call site or
+  test needed to change just to keep working).
+- `lib/env.ts` — added `DATABASE_URL_REPLICA` (optional URL) and
+  `DB_REPLICA_POOL_SIZE` (default 5), plus tests in `lib/env.test.ts`.
+- `lib/db/roomRepository.ts`, `lib/db/userRepository.ts`,
+  `lib/db/featureFlagRepository.ts` — every exported function routed to
+  `prismaRead` or `prismaWrite` per a read/write classification (not just the
+  proposal's original routing table, which only covered `roomRepository.ts`).
+  Rule applied: a function that only reads → `prismaRead`; a function that
+  writes, or reads immediately before/after a write in the same call, →
+  `prismaWrite` for its *entire* body (not just the write call) — e.g.
+  `setRoomMemberRole` reads the existing role and owner count before writing,
+  and both stay on `prismaWrite` to avoid a stale read racing the write it
+  gates. `verifyCredentials` is the one deliberately mixed function: its
+  login-critical lookup uses `prismaRead` (timing-safe per P054, replication
+  lag is harmless — a stale-miss just runs the constant-time dummy-hash path,
+  same as a genuinely unregistered email), while its non-blocking background
+  bcrypt→Argon2id re-hash write uses `prismaWrite` (matches the proposal's
+  own routing table exactly).
+- `lib/auth.ts` — no changes needed; `PrismaAdapter(prisma)` keeps using the
+  unchanged `prisma` alias, correct since the NextAuth adapter both reads and
+  writes (OAuth account linking, session/user creation).
+- `server.ts` / `lib/server/wsConnectionHandler.ts` — server.ts maintains its
+  *own* independent `PrismaClient` instance (a pre-existing architectural
+  fact, not something this proposal changed) rather than importing
+  `lib/db/prisma.ts`'s singleton, so it needed its own parallel replica
+  client (`prismaReplica`, falling back to `prisma` when unset, same rule).
+  `ConnectionHandlerDeps` gained a `prismaRead` field; the WS reconnect
+  snapshot-load path (`dbLoadSnapshot`, explicitly named in the proposal's
+  Problem table as a read-heavy path) now uses it. `authorizeClient`
+  (invitation-token consumption + membership upsert) stays on the write
+  client — it reads then writes in the same call.
+
+### Health check (P023 extension)
+`/api/health` now reports `dbReplica: "ok" | "degraded"` alongside the
+existing `database` field, checked independently via `checkDbHealth`. A
+degraded replica does not flip the endpoint's overall `status` — matches the
+proposal's "continues serving, not unhealthy" requirement. Verified live:
+stopping the replica container flips `dbReplica` to `"degraded"` within one
+health-check cycle; restarting it flips back to `"ok"`.
+
+### Bug found via live verification: replica-outage fallback didn't fall back
+The proposal's health-check section says a degraded replica should mean
+"reads fall back to primary" — I initially read this as just describing what
+"unset `DATABASE_URL_REPLICA`" already does, but a replica that goes *down
+after being configured* needed the same behavior at the connection level,
+which the proposal didn't specify a mechanism for. Implemented
+`wrapWithReadFallback()` in `lib/db/prisma.ts`: a `Proxy` around the read
+client that catches replica-connectivity errors on any query and
+transparently retries against the primary, while leaving genuine query/logic
+errors (bad input, constraint violations) to propagate normally — retrying
+those against the primary would just fail the same way. Reused in
+`server.ts` for `prismaReplicaRead` so both DB-access paths in the app get
+identical resilience (the raw, unwrapped `prismaReplica` is kept separately
+for the health check itself, since wrapping *that* would mask real replica
+outages by silently succeeding against the primary).
+
+Building and verifying this caught two real bugs before they could reach
+production, found only by actually killing the replica container mid-test
+rather than trusting the design on paper:
+1. **Wrong error-shape assumption.** This app uses `@prisma/adapter-pg` (the
+   driver-adapter pattern), not Prisma's traditional binary query engine, so
+   connectivity failures do *not* surface as Prisma's classic P1001/P1002
+   engine codes — they come through as a `PrismaClientKnownRequestError`
+   wrapping the underlying `node-postgres` driver's own error code (verified
+   empirically: killing the replica produced `code: "ECONNREFUSED"` at the
+   top level of the thrown error). `isReplicaConnectionError()` checks both:
+   the driver-level codes (`ECONNREFUSED`, `ECONNRESET`, `ETIMEDOUT`,
+   `ENOTFOUND`, `EHOSTUNREACH`) that this adapter actually produces, and
+   Prisma's own P1xxx codes / `PrismaClientInitializationError` for
+   robustness against a future Prisma version or different adapter.
+2. **Prisma's query methods don't return real `Promise` instances.** The
+   fallback wrapper's first version checked `result instanceof Promise`
+   before attaching a `.catch()` — which is always `false` for Prisma's
+   return value (verified empirically: `client.room.findUnique(...)
+   instanceof Promise` is `false`, `constructor.name` is `"Object"`, but
+   `.then`/`.catch` both exist — it's a lazy thenable, not a native Promise).
+   The `instanceof Promise` check silently skipped attaching the fallback
+   handler entirely, so the original design would have thrown a 500 on every
+   read the instant the replica became unreachable — the opposite of the
+   resilience it was meant to provide. Fixed by duck-typing on `.catch`
+   instead. Live-verified after the fix: killing the replica mid-session,
+   the commits endpoint kept serving (from the primary) with no error.
+
+### Docker Compose replica service — explicitly NOT real replication
+Added an optional `db-replica` service (`postgres:16-alpine`, port 5434) for
+locally exercising the `DATABASE_URL_REPLICA` connection-routing code path.
+This is **not** streaming replication — it's a second, independent, empty
+Postgres instance, not a hot standby fed from the primary's WAL. Genuine
+physical replication needs `pg_basebackup`/`pg_hba.conf`/replication-slot
+configuration well beyond a docker-compose service block; that's out of
+scope here. For real replica behavior, point `DATABASE_URL_REPLICA` at a
+managed read replica (RDS, Cloud SQL, etc.) — the application-side routing
+and fallback logic works identically either way, which is exactly what this
+proposal's own local verification proved: seeded distinguishable sentinel
+commits into the primary and the compose `db-replica`, confirmed the app
+genuinely read from whichever one `DATABASE_URL_REPLICA` pointed at (not
+just "the code compiles and unit tests mock it"), then killed the replica
+container and confirmed reads kept working via the primary.
+
+### Test changes
+9 test files that mock `@/lib/db/prisma` (`lib/db/{room,user,featureFlag}Repository.test.ts`
+plus 6 API route tests) were updated so the mock module exports
+`prismaRead`/`prismaWrite` as the *same object reference* as `prisma` — this
+matches the real no-replica-configured default (`prismaRead === prismaWrite`)
+and meant zero test assertions needed to change, since `prisma.x` and
+`prismaRead.x`/`prismaWrite.x` are literally the same mock function either
+way. Added `lib/db/prisma.test.ts` coverage for `resolveReadConnectionString`
+and `isReplicaConnectionError` (pure functions, tested without a real
+PrismaClient — consistent with this file's existing P071 testing approach).

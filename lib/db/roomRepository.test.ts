@@ -5,42 +5,43 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db/prisma', () => {
   const $transaction = vi.fn();
   const $queryRaw = vi.fn();
-  return {
-    prisma: {
-      $transaction,
-      $queryRaw,
-      room: {
-        upsert: vi.fn(),
-        findMany: vi.fn(),
-        findUnique: vi.fn(),
-        deleteMany: vi.fn(),
-      },
-      commit: {
-        upsert: vi.fn(),
-        findMany: vi.fn(),
-        findUnique: vi.fn(),
-      },
-      branch: {
-        upsert: vi.fn(),
-        findMany: vi.fn(),
-      },
-      roomState: {
-        upsert: vi.fn(),
-        findUnique: vi.fn(),
-      },
-      roomMembership: {
-        findMany: vi.fn(),
-        findUnique: vi.fn(),
-        count: vi.fn(),
-        update: vi.fn(),
-      },
-      roomEvent: {
-        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
-        create: vi.fn(),
-        findMany: vi.fn().mockResolvedValue([]),
-      },
+  const client = {
+    $transaction,
+    $queryRaw,
+    room: {
+      upsert: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    commit: {
+      upsert: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    branch: {
+      upsert: vi.fn(),
+      findMany: vi.fn(),
+    },
+    roomState: {
+      upsert: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    roomMembership: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
+    },
+    roomEvent: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      create: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
   };
+  // P088 – prismaRead/prismaWrite alias the same mock client (matches the
+  // no-replica-configured default this repo runs under in tests).
+  return { prisma: client, prismaRead: client, prismaWrite: client };
 });
 
 import {

@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/db/prisma', () => {
-  return {
-    prisma: {
-      room: { findUnique: vi.fn(), upsert: vi.fn() },
-      commit: { findMany: vi.fn(), upsert: vi.fn() },
-      branch: { findMany: vi.fn(), upsert: vi.fn() },
-      roomState: { findUnique: vi.fn(), upsert: vi.fn() },
-      roomMembership: { findUnique: vi.fn() },
-      $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
-    },
+  const client = {
+    room: { findUnique: vi.fn(), upsert: vi.fn() },
+    commit: { findMany: vi.fn(), upsert: vi.fn() },
+    branch: { findMany: vi.fn(), upsert: vi.fn() },
+    roomState: { findUnique: vi.fn(), upsert: vi.fn() },
+    roomMembership: { findUnique: vi.fn() },
+    $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
   };
+  // P088 – prismaRead/prismaWrite alias the same mock client.
+  return { prisma: client, prismaRead: client, prismaWrite: client };
 });
 
 vi.mock('@/lib/auth', () => ({

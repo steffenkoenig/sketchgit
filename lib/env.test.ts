@@ -220,4 +220,50 @@ describe('validateEnv', () => {
     const env = validateEnv();
     expect(env.INVITATION_SECRET).toBeUndefined();
   });
+
+  it('DATABASE_URL_REPLICA is optional and defaults to undefined (P088)', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    delete process.env.DATABASE_URL_REPLICA;
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.DATABASE_URL_REPLICA).toBeUndefined();
+  });
+
+  it('accepts a custom DATABASE_URL_REPLICA value (P088)', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.DATABASE_URL_REPLICA = 'postgresql://user:pass@replica:5432/db';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.DATABASE_URL_REPLICA).toBe('postgresql://user:pass@replica:5432/db');
+    delete process.env.DATABASE_URL_REPLICA;
+  });
+
+  it('applies default of 5 for DB_REPLICA_POOL_SIZE (P088)', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    delete process.env.DB_REPLICA_POOL_SIZE;
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.DB_REPLICA_POOL_SIZE).toBe(5);
+  });
+
+  it('accepts a custom DB_REPLICA_POOL_SIZE value (P088)', () => {
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+    process.env.AUTH_SECRET = 'a-secret-that-is-at-least-32-chars-long';
+    process.env.NEXTAUTH_URL = 'http://localhost:3000';
+    process.env.DB_REPLICA_POOL_SIZE = '3';
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const env = validateEnv();
+    expect(env.DB_REPLICA_POOL_SIZE).toBe(3);
+    delete process.env.DB_REPLICA_POOL_SIZE;
+  });
 });

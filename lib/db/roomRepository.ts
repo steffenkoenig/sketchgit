@@ -3,7 +3,10 @@
  * roomRepository – server-side data access for rooms, commits, and branches.
  * All functions are async and interact with PostgreSQL via the Prisma client.
  */
-import { prisma } from "@/lib/db/prisma";
+// P088 – prismaRead routes to the read replica when DATABASE_URL_REPLICA is
+// set (falls back to the primary otherwise); prismaWrite always targets the
+// primary. See the per-function routing decisions below.
+import { prismaRead, prismaWrite } from "@/lib/db/prisma";
 import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission } from "@prisma/client";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 import { migrateCanvasJson } from "../sketchgit/git/canvasSchemaMigrations";
@@ -42,7 +45,7 @@ export async function ensureRoom(
   roomId: string,
   ownerId?: string | null
 ): Promise<void> {
-  await prisma.room.upsert({
+  await prismaWrite.room.upsert({
     where: { id: roomId },
     create: { id: roomId, ownerId: ownerId ?? null },
     update: {},
@@ -73,8 +76,8 @@ async function saveCommitTransaction(
   commit: CommitRecord,
   userId?: string | null
 ): Promise<void> {
-  await prisma.$transaction([
-    prisma.commit.upsert({
+  await prismaWrite.$transaction([
+    prismaWrite.commit.upsert({
       where: { sha: commit.sha },
       create: {
         sha: commit.sha,
@@ -99,12 +102,12 @@ async function saveCommitTransaction(
       },
       update: {},
     }),
-    prisma.branch.upsert({
+    prismaWrite.branch.upsert({
       where: { roomId_name: { roomId, name: commit.branch } },
       create: { roomId, name: commit.branch, headSha: commit.sha },
       update: { headSha: commit.sha },
     }),
-    prisma.roomState.upsert({
+    prismaWrite.roomState.upsert({
       where: { roomId },
       create: {
         roomId,
@@ -165,7 +168,7 @@ async function saveCommitWithDeltaTransaction(
 
   if (commit.parent) {
     try {
-      const parentCommit = await prisma.commit.findUnique({ where: { sha: commit.parent } });
+      const parentCommit = await prismaWrite.commit.findUnique({ where: { sha: commit.parent } });
       if (parentCommit && parentCommit.storageType === CommitStorageType.SNAPSHOT) {
         const parentCanvas = JSON.stringify(parentCommit.canvasJson);
         const delta = computeCanvasDelta(parentCanvas, migratedCanvasStr);
@@ -180,8 +183,8 @@ async function saveCommitWithDeltaTransaction(
     }
   }
 
-  await prisma.$transaction([
-    prisma.commit.upsert({
+  await prismaWrite.$transaction([
+    prismaWrite.commit.upsert({
       where: { sha: commit.sha },
       create: {
         sha: commit.sha,
@@ -197,12 +200,12 @@ async function saveCommitWithDeltaTransaction(
       },
       update: {},
     }),
-    prisma.branch.upsert({
+    prismaWrite.branch.upsert({
       where: { roomId_name: { roomId, name: commit.branch } },
       create: { roomId, name: commit.branch, headSha: commit.sha },
       update: { headSha: commit.sha },
     }),
-    prisma.roomState.upsert({
+    prismaWrite.roomState.upsert({
       where: { roomId },
       create: {
         roomId,
@@ -234,14 +237,14 @@ export async function loadRoomSnapshot(
 ): Promise<RoomSnapshot | null> {
   const take = options?.take ?? COMMIT_PAGE_SIZE;
   const [commits, branches, state] = await Promise.all([
-    prisma.commit.findMany({
+    prismaRead.commit.findMany({
       where: { roomId },
       orderBy: { createdAt: "desc" },
       take,
       ...(options?.cursor ? { cursor: { sha: options.cursor }, skip: 1 } : {}),
     }),
-    prisma.branch.findMany({ where: { roomId } }),
-    prisma.roomState.findUnique({ where: { roomId } }),
+    prismaRead.branch.findMany({ where: { roomId } }),
+    prismaRead.roomState.findUnique({ where: { roomId } }),
   ]);
 
   if (commits.length === 0) return null;
@@ -260,7 +263,7 @@ export async function loadRoomSnapshot(
   async function resolveCanvas(sha: string): Promise<string> {
     if (canvasCache.has(sha)) return canvasCache.get(sha)!;
     // Ancestor not in the current page – fetch it directly.
-    const ancestor = await prisma.commit.findFirst({
+    const ancestor = await prismaRead.commit.findFirst({
       where: { roomId, sha },
       select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
     });
@@ -349,7 +352,7 @@ export interface RoomSummary {
  * Return all rooms accessible to a given user (owned + membership).
  */
 export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
-  const memberships = await prisma.roomMembership.findMany({
+  const memberships = await prismaRead.roomMembership.findMany({
     where: { userId },
     include: {
       room: {
@@ -359,7 +362,7 @@ export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
     orderBy: { room: { updatedAt: "desc" } },
   });
 
-  const ownedRooms = await prisma.room.findMany({
+  const ownedRooms = await prismaRead.room.findMany({
     where: { ownerId: userId, memberships: { none: { userId } } },
     include: { _count: { select: { commits: true } } },
     orderBy: { updatedAt: "desc" },
@@ -412,9 +415,9 @@ export async function pruneInactiveRooms(
   const eventCutoff = new Date(Date.now() - eventRetentionDays * 24 * 60 * 60 * 1000);
 
   // P074 – delete stale activity-log rows first (no cascade needed; just old events)
-  await prisma.roomEvent.deleteMany({ where: { createdAt: { lt: eventCutoff } } });
+  await prismaWrite.roomEvent.deleteMany({ where: { createdAt: { lt: eventCutoff } } });
 
-  const result = await prisma.room.deleteMany({
+  const result = await prismaWrite.room.deleteMany({
     where: {
       updatedAt: { lt: cutoff },
       ...(excludeRoomIds.length > 0 ? { id: { notIn: excludeRoomIds } } : {}),
@@ -436,7 +439,7 @@ export async function appendRoomEvent(
   payload: Record<string, unknown>,
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await prisma.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as any } });
+  await prismaWrite.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as any } });
 }
 
 /**
@@ -454,7 +457,7 @@ export async function getRoomEvents(
   payload: unknown;
   createdAt: Date;
 }>> {
-  return prisma.roomEvent.findMany({
+  return prismaRead.roomEvent.findMany({
     where: {
       roomId,
       ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
@@ -488,7 +491,7 @@ export async function checkRoomAccess(
   roomId: string,
   userId: string | null,
 ): Promise<RoomAccessResult> {
-  const room = await prisma.room.findUnique({
+  const room = await prismaRead.room.findUnique({
     where: { id: roomId },
     select: { isPublic: true },
   });
@@ -503,7 +506,7 @@ export async function checkRoomAccess(
       return { allowed: true, role: "EDITOR" };
     }
     // Resolve the authenticated user's role (if they have a membership)
-    const membership = await prisma.roomMembership.findUnique({
+    const membership = await prismaRead.roomMembership.findUnique({
       where: { roomId_userId: { roomId, userId } },
       select: { role: true },
     });
@@ -514,7 +517,7 @@ export async function checkRoomAccess(
   // Private room
   if (!userId) return { allowed: false, reason: "PRIVATE_ROOM" };
 
-  const membership = await prisma.roomMembership.findUnique({
+  const membership = await prismaRead.roomMembership.findUnique({
     where: { roomId_userId: { roomId, userId } },
     select: { role: true },
   });
@@ -531,7 +534,7 @@ export async function checkRoomAccess(
  */
 export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
   if (!idOrSlug) return null;
-  const room = await prisma.room.findFirst({
+  const room = await prismaRead.room.findFirst({
     where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
     select: { id: true },
   });
@@ -547,7 +550,7 @@ export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
 export async function getRoomPublicFlag(
   roomId: string,
 ): Promise<{ isPublic: boolean } | null> {
-  return prisma.room.findUnique({ where: { id: roomId }, select: { isPublic: true } });
+  return prismaRead.room.findUnique({ where: { id: roomId }, select: { isPublic: true } });
 }
 
 /**
@@ -557,7 +560,7 @@ export async function getRoomMembership(
   roomId: string,
   userId: string,
 ): Promise<{ role: MemberRole } | null> {
-  return prisma.roomMembership.findUnique({
+  return prismaRead.roomMembership.findUnique({
     where: { roomId_userId: { roomId, userId } },
     select: { role: true },
   });
@@ -571,7 +574,7 @@ export async function getRoomOwnership(
   roomId: string,
   userId: string,
 ): Promise<{ ownerId: string | null; isOwner: boolean } | null> {
-  const room = await prisma.room.findUnique({
+  const room = await prismaRead.room.findUnique({
     where: { id: roomId },
     select: {
       ownerId: true,
@@ -596,7 +599,7 @@ export async function updateRoomSlug(
   roomId: string,
   slug: string | null,
 ): Promise<{ id: string; slug: string | null }> {
-  return prisma.room.update({
+  return prismaWrite.room.update({
     where: { id: roomId },
     data: { slug },
     select: { id: true, slug: true },
@@ -622,7 +625,7 @@ export async function getCommitPage(
   }>;
   nextCursor: string | null;
 }> {
-  const rows = await prisma.commit.findMany({
+  const rows = await prismaRead.commit.findMany({
     where: { roomId },
     orderBy: { createdAt: "desc" },
     take: take + 1,
@@ -654,14 +657,14 @@ export async function createRoomInvitation(data: {
   expiresAt: Date;
   maxUses: number;
 }): Promise<void> {
-  await prisma.roomInvitation.create({ data });
+  await prismaWrite.roomInvitation.create({ data });
 }
 
 /**
  * Delete all invitations for a room. Returns the number of deleted records.
  */
 export async function revokeRoomInvitations(roomId: string): Promise<number> {
-  const result = await prisma.roomInvitation.deleteMany({ where: { roomId } });
+  const result = await prismaWrite.roomInvitation.deleteMany({ where: { roomId } });
   return result.count;
 }
 
@@ -676,7 +679,7 @@ export async function getInvitationByToken(token: string): Promise<{
   useCount: number;
   room: { isPublic: boolean };
 } | null> {
-  return prisma.roomInvitation.findUnique({
+  return prismaRead.roomInvitation.findUnique({
     where: { token },
     select: {
       roomId: true,
@@ -697,7 +700,7 @@ export async function consumeInvitationToken(
   token: string,
   maxUses: number,
 ): Promise<boolean> {
-  const result = await prisma.roomInvitation.updateMany({
+  const result = await prismaWrite.roomInvitation.updateMany({
     where: { token, useCount: { lt: maxUses } },
     data: { useCount: { increment: 1 } },
   });
@@ -724,7 +727,7 @@ export async function resolveCommitCanvas(
 
   const chain: CommitRow[] = [];
 
-  const rows = await prisma.$queryRaw<CommitRow[]>`
+  const rows = await prismaRead.$queryRaw<CommitRow[]>`
     WITH RECURSIVE commit_chain AS (
       SELECT sha, "parentSha", "canvasJson", "storageType", 1 as depth
       FROM "Commit"
@@ -791,7 +794,7 @@ export async function addRoomMember(
   userId: string,
   role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER",
 ): Promise<void> {
-  await prisma.roomMembership.upsert({
+  await prismaWrite.roomMembership.upsert({
     where: { roomId_userId: { roomId, userId } },
     update: {},
     create: { roomId, userId, role },
@@ -810,7 +813,7 @@ export interface RoomMemberSummary {
 
 /** Lists all explicit memberships for a room, most-recently-joined first. */
 export async function listRoomMembers(roomId: string): Promise<RoomMemberSummary[]> {
-  const memberships = await prisma.roomMembership.findMany({
+  const memberships = await prismaRead.roomMembership.findMany({
     where: { roomId },
     orderBy: { joinedAt: "desc" },
     include: { user: { select: { name: true, email: true } } },
@@ -838,18 +841,18 @@ export async function setRoomMemberRole(
   userId: string,
   role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER",
 ): Promise<SetMemberRoleResult> {
-  const existing = await prisma.roomMembership.findUnique({
+  const existing = await prismaWrite.roomMembership.findUnique({
     where: { roomId_userId: { roomId, userId } },
     select: { role: true },
   });
   if (!existing) return { ok: false, reason: "NOT_A_MEMBER" };
 
   if (existing.role === "OWNER" && role !== "OWNER") {
-    const ownerCount = await prisma.roomMembership.count({ where: { roomId, role: "OWNER" } });
+    const ownerCount = await prismaWrite.roomMembership.count({ where: { roomId, role: "OWNER" } });
     if (ownerCount <= 1) return { ok: false, reason: "LAST_OWNER" };
   }
 
-  await prisma.roomMembership.update({
+  await prismaWrite.roomMembership.update({
     where: { roomId_userId: { roomId, userId } },
     data: { role },
   });
@@ -864,7 +867,7 @@ export async function getCommitShaInRoom(
   sha: string,
   roomId: string,
 ): Promise<string | null> {
-  const row = await prisma.commit.findUnique({
+  const row = await prismaRead.commit.findUnique({
     where: { sha },
     select: { sha: true, roomId: true },
   });
@@ -876,7 +879,7 @@ export async function getCommitShaInRoom(
  * Returns null when the room has no commits yet.
  */
 export async function getRoomHeadSha(roomId: string): Promise<string | null> {
-  const state = await prisma.roomState.findUnique({
+  const state = await prismaRead.roomState.findUnique({
     where: { roomId },
     select: { headSha: true },
   });
@@ -915,7 +918,7 @@ export async function createShareLink(data: {
   expiresAt: Date | null;
   maxUses: number | null;
 }): Promise<{ id: string }> {
-  return prisma.shareLink.create({
+  return prismaWrite.shareLink.create({
     data: {
       token: data.token,
       roomId: data.roomId,
@@ -948,7 +951,7 @@ export async function getShareLinkByToken(token: string): Promise<{
   useCount: number;
   room: { isPublic: boolean };
 } | null> {
-  return prisma.shareLink.findUnique({
+  return prismaRead.shareLink.findUnique({
     where: { token },
     select: {
       id: true,
@@ -984,14 +987,14 @@ export async function consumeShareLink(
     // Unlimited — verify the token exists without writing a hot-row increment.
     // useCount is not tracked for unlimited links since it serves no enforcement
     // purpose when there is no cap.
-    const exists = await prisma.shareLink.findFirst({
+    const exists = await prismaWrite.shareLink.findFirst({
       where: { token },
       select: { id: true },
     });
     return exists !== null;
   }
   // Conditional update prevents TOCTOU race when maxUses is finite.
-  const result = await prisma.shareLink.updateMany({
+  const result = await prismaWrite.shareLink.updateMany({
     where: { token, useCount: { lt: maxUses } },
     data: { useCount: { increment: 1 } },
   });
@@ -1003,7 +1006,7 @@ export async function consumeShareLink(
  * The `token` field is intentionally excluded to avoid leaking tokens in list responses.
  */
 export async function listShareLinks(roomId: string): Promise<ShareLinkSummary[]> {
-  return prisma.shareLink.findMany({
+  return prismaRead.shareLink.findMany({
     where: { roomId },
     select: {
       id: true,
@@ -1030,7 +1033,7 @@ export async function revokeShareLink(
   id: string,
   roomId: string,
 ): Promise<boolean> {
-  const result = await prisma.shareLink.deleteMany({
+  const result = await prismaWrite.shareLink.deleteMany({
     where: { id, roomId },
   });
   return result.count > 0;
@@ -1040,6 +1043,6 @@ export async function revokeShareLink(
  * Delete all share links for a room. Returns the number of deleted records.
  */
 export async function revokeAllShareLinks(roomId: string): Promise<number> {
-  const result = await prisma.shareLink.deleteMany({ where: { roomId } });
+  const result = await prismaWrite.shareLink.deleteMany({ where: { roomId } });
   return result.count;
 }

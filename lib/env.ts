@@ -32,6 +32,18 @@ const EnvSchema = z.object({
   // (1-5) per replica; without PgBouncer, size it to the expected concurrency.
   DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
 
+  // ── Optional – read replica connection routing (P088) ────────────────────
+  // Points at a read-only PostgreSQL replica. Read-heavy repository functions
+  // (paginated commit history, room-access checks, activity feed, snapshot
+  // loads) route through it via `prismaRead` in lib/db/prisma.ts, leaving
+  // write-critical paths on the primary. Falls back to DATABASE_URL when
+  // unset (single-node mode — no behavioural change from pre-P088).
+  DATABASE_URL_REPLICA: z.string().url().optional(),
+  // Replica connection pool size — smaller than the primary's by default
+  // since replica connections are cheaper to restart and reads are more
+  // numerous but individually shorter-lived.
+  DB_REPLICA_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(5),
+
   // ── Optional – LOG_LEVEL (used by Pino logger) ────────────────────────────
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
 

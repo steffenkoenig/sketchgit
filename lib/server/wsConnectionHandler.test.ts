@@ -30,6 +30,7 @@ function createMockDeps(): ConnectionHandlerDeps {
       trace: vi.fn(),
     } as any,
     prisma: {} as any,
+    prismaRead: {} as any,
     env: { MAX_CLIENTS_PER_ROOM: 5, MAX_WS_PAYLOAD_BYTES: 1000 } as any,
     rooms: new Map(),
     roomCache: { get: vi.fn(), set: vi.fn() },

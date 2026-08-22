@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
-vi.mock('@/lib/db/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/db/prisma', () => {
+  const client = {
     room: {
       findUnique: vi.fn(),
       update: vi.fn(),
     },
-  },
-}));
+  };
+  // P088 – prismaRead/prismaWrite alias the same mock client (matches the
+  // no-replica-configured default: reads and writes both hit the primary).
+  return { prisma: client, prismaRead: client, prismaWrite: client };
+});
 
 import { PATCH } from './route';
 import { auth } from '@/lib/auth';

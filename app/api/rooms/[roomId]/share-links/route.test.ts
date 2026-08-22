@@ -4,15 +4,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
-vi.mock('@/lib/db/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/db/prisma', () => {
+  const client = {
     shareLink: {
       create: vi.fn(),
       findMany: vi.fn(),
       deleteMany: vi.fn(),
     },
-  },
-}));
+  };
+  // P088 – prismaRead/prismaWrite alias the same mock client.
+  return { prisma: client, prismaRead: client, prismaWrite: client };
+});
 vi.mock('@/lib/db/roomRepository', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/lib/db/roomRepository')>();
   return {

@@ -6,6 +6,7 @@
  * slow-query logic in isolation by extracting it to a helper.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolveReadConnectionString, isReplicaConnectionError } from "./prisma";
 
 /** Mirrors the relevant part of Prisma's QueryEvent type */
 interface QueryEvent {
@@ -90,5 +91,53 @@ describe("Prisma slow-query handler (P071)", () => {
     const handler = makeQueryHandler(0, false);
     handler({ query: "SELECT 1", duration: 1 });
     expect(warnSpy).toHaveBeenCalledOnce();
+  });
+});
+
+describe("resolveReadConnectionString (P088 – read replica routing)", () => {
+  const PRIMARY = "postgresql://user:pass@primary:5432/sketchgit";
+  const REPLICA = "postgresql://user:pass@replica:5432/sketchgit";
+
+  it("falls back to the primary URL when no replica URL is configured", () => {
+    expect(resolveReadConnectionString(PRIMARY, undefined)).toBe(PRIMARY);
+  });
+
+  it("falls back to the primary URL when the replica URL is an empty string", () => {
+    expect(resolveReadConnectionString(PRIMARY, "")).toBe(PRIMARY);
+  });
+
+  it("uses the replica URL when configured", () => {
+    expect(resolveReadConnectionString(PRIMARY, REPLICA)).toBe(REPLICA);
+  });
+});
+
+describe("isReplicaConnectionError (P088 – read-fallback trigger)", () => {
+  it("returns true for PrismaClientInitializationError", () => {
+    expect(isReplicaConnectionError({ name: "PrismaClientInitializationError" })).toBe(true);
+  });
+
+  it.each(["P1001", "P1002", "P1017"])("returns true for Prisma error code %s", (code) => {
+    expect(isReplicaConnectionError({ code })).toBe(true);
+  });
+
+  it.each(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EHOSTUNREACH"])(
+    "returns true for node-postgres/adapter-pg driver code %s",
+    (code) => {
+      expect(isReplicaConnectionError({ code })).toBe(true);
+    },
+  );
+
+  it("returns false for an unrelated Prisma error code", () => {
+    expect(isReplicaConnectionError({ code: "P2002" })).toBe(false);
+  });
+
+  it("returns false for a plain query/logic error", () => {
+    expect(isReplicaConnectionError(new Error("constraint violation"))).toBe(false);
+  });
+
+  it("returns false for non-object values", () => {
+    expect(isReplicaConnectionError(null)).toBe(false);
+    expect(isReplicaConnectionError(undefined)).toBe(false);
+    expect(isReplicaConnectionError("some string")).toBe(false);
   });
 });

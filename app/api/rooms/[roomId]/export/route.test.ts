@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/db/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/db/prisma', () => {
+  const client = {
     $queryRaw: vi.fn(),
     room: {
       findUnique: vi.fn(),
@@ -17,8 +17,10 @@ vi.mock('@/lib/db/prisma', () => ({
     roomMembership: {
       findUnique: vi.fn(),
     },
-  },
-}));
+  };
+  // P088 – prismaRead/prismaWrite alias the same mock client.
+  return { prisma: client, prismaRead: client, prismaWrite: client };
+});
 
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn().mockResolvedValue(null),

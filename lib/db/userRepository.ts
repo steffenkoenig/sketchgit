@@ -15,7 +15,9 @@
 import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/db/prisma";
+// P088 – prismaRead routes to the read replica when configured; prismaWrite
+// always targets the primary. See the per-function routing decisions below.
+import { prismaRead, prismaWrite } from "@/lib/db/prisma";
 
 export interface CreateUserInput {
   email: string;
@@ -68,7 +70,7 @@ const DUMMY_HASH =
  * Throws if the email is already registered.
  */
 export async function createUser(input: CreateUserInput): Promise<PublicUser> {
-  const existing = await prisma.user.findUnique({
+  const existing = await prismaWrite.user.findUnique({
     where: { email: input.email },
   });
   if (existing) {
@@ -77,7 +79,7 @@ export async function createUser(input: CreateUserInput): Promise<PublicUser> {
 
   const passwordHash = await argon2.hash(input.password, ARGON2_OPTIONS);
 
-  const user = await prisma.user.create({
+  const user = await prismaWrite.user.create({
     data: {
       email: input.email,
       name: input.name,
@@ -103,7 +105,10 @@ export async function verifyCredentials(
   email: string,
   password: string
 ): Promise<PublicUser | null> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  // P088 – read-only lookup; timing-safe (P054), replication lag doesn't
+  // matter here since a stale-miss just runs the constant-time dummy-hash
+  // comparison and returns null, same as a genuinely unregistered email.
+  const user = await prismaRead.user.findUnique({ where: { email } });
 
   // Constant-time guard: always run a verify, even for unknown emails.
   const hashToCompare = user?.passwordHash ?? DUMMY_HASH;
@@ -129,7 +134,7 @@ export async function verifyCredentials(
   if (isBcryptHash(user.passwordHash)) {
     void argon2.hash(password, ARGON2_OPTIONS)
       .then((newHash) =>
-        prisma.user.update({ where: { id: user.id }, data: { passwordHash: newHash } }),
+        prismaWrite.user.update({ where: { id: user.id }, data: { passwordHash: newHash } }),
       )
       .catch(() => {
         // Re-hash failure is non-fatal: the user can still log in with bcrypt
@@ -160,9 +165,9 @@ export async function createTwoFactorToken(email: string): Promise<string> {
   const token = randomInt(100000, 1000000).toString(); // 6-digit CSPRNG token
   const expires = new Date(Date.now() + TWO_FACTOR_TOKEN_TTL_MS);
 
-  await prisma.$transaction([
-    prisma.twoFactorToken.deleteMany({ where: { identifier: email } }),
-    prisma.twoFactorToken.create({
+  await prismaWrite.$transaction([
+    prismaWrite.twoFactorToken.deleteMany({ where: { identifier: email } }),
+    prismaWrite.twoFactorToken.create({
       data: { identifier: email, token, expires },
     }),
   ]);
@@ -175,13 +180,13 @@ export async function createTwoFactorToken(email: string): Promise<string> {
  * Returns `true` if valid, `false` otherwise.
  */
 export async function verifyTwoFactorToken(email: string, token: string): Promise<boolean> {
-  const record = await prisma.twoFactorToken.findFirst({
+  const record = await prismaWrite.twoFactorToken.findFirst({
     where: { identifier: email, token, expires: { gt: new Date() } },
   });
 
   if (!record) return false;
 
-  await prisma.twoFactorToken.delete({ where: { identifier: email, token } });
+  await prismaWrite.twoFactorToken.delete({ where: { identifier: email, token } });
   return true;
 }
 
@@ -189,7 +194,7 @@ export async function verifyTwoFactorToken(email: string, token: string): Promis
  * Enable or disable 2FA for a user.
  */
 export async function setTwoFactorEnabled(userId: string, enabled: boolean): Promise<void> {
-  await prisma.user.update({
+  await prismaWrite.user.update({
     where: { id: userId },
     data: { twoFactorEnabled: enabled },
   });
@@ -199,7 +204,7 @@ export async function setTwoFactorEnabled(userId: string, enabled: boolean): Pro
  * Retrieve the current 2FA status for a user.
  */
 export async function getTwoFactorStatus(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
+  const user = await prismaRead.user.findUnique({
     where: { id: userId },
     select: { twoFactorEnabled: true },
   });
@@ -219,7 +224,7 @@ const RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
  * A second call for the same email replaces the previous token.
  */
 export async function createPasswordResetToken(email: string): Promise<string | null> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prismaWrite.user.findUnique({ where: { email } });
   if (!user) return null; // silently fail – do not reveal whether email is registered
 
   const token = randomBytes(32).toString("hex"); // 64-char hex, 256 bits of entropy
@@ -228,9 +233,9 @@ export async function createPasswordResetToken(email: string): Promise<string | 
   // BUG-007 – wrap delete+create in a single batch transaction so a crash
   // between the two operations cannot leave the user with no valid reset token.
   // This mirrors the pattern already used by resetPassword() in this file.
-  await prisma.$transaction([
-    prisma.verificationToken.deleteMany({ where: { identifier: email } }),
-    prisma.verificationToken.create({
+  await prismaWrite.$transaction([
+    prismaWrite.verificationToken.deleteMany({ where: { identifier: email } }),
+    prismaWrite.verificationToken.create({
       data: { identifier: email, token, expires },
     }),
   ]);
@@ -246,19 +251,19 @@ export async function resetPassword(
   token: string,
   newPassword: string,
 ): Promise<boolean> {
-  const record = await prisma.verificationToken.findFirst({
+  const record = await prismaWrite.verificationToken.findFirst({
     where: { token, expires: { gt: new Date() } },
   });
   if (!record) return false;
 
   const passwordHash = await argon2.hash(newPassword, ARGON2_OPTIONS);
 
-  await prisma.$transaction([
-    prisma.user.update({
+  await prismaWrite.$transaction([
+    prismaWrite.user.update({
       where: { email: record.identifier },
       data: { passwordHash },
     }),
-    prisma.verificationToken.deleteMany({
+    prismaWrite.verificationToken.deleteMany({
       where: { identifier: record.identifier },
     }),
   ]);
@@ -272,7 +277,7 @@ export async function resetPassword(
  * Returns false when the user is not found (fail-safe).
  */
 export async function userHasPassword(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
+  const user = await prismaRead.user.findUnique({
     where: { id: userId },
     select: { passwordHash: true },
   });
@@ -286,7 +291,7 @@ export async function userHasPassword(userId: string): Promise<boolean> {
 export async function getUserForAccountDeletion(
   userId: string,
 ): Promise<{ id: string; email: string | null; passwordHash: string | null } | null> {
-  return prisma.user.findUnique({
+  return prismaRead.user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, passwordHash: true },
   });
@@ -298,5 +303,5 @@ export async function getUserForAccountDeletion(
  * RoomMembership rows; Room.ownerId and Commit.authorId are set to null.
  */
 export async function deleteUser(userId: string): Promise<void> {
-  await prisma.user.delete({ where: { id: userId } });
+  await prismaWrite.user.delete({ where: { id: userId } });
 }

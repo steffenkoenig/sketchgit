@@ -3,8 +3,8 @@ import { userHasPassword, getUserForAccountDeletion, deleteUser } from "./userRe
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock Prisma before importing the module under test
-vi.mock('@/lib/db/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/db/prisma', () => {
+  const client = {
     $transaction: vi.fn(),
     user: {
       findUnique: vi.fn(),
@@ -17,8 +17,10 @@ vi.mock('@/lib/db/prisma', () => ({
       findFirst: vi.fn(),
       deleteMany: vi.fn(),
     },
-  },
-}));
+  };
+  // P088 – prismaRead/prismaWrite alias the same mock client.
+  return { prisma: client, prismaRead: client, prismaWrite: client };
+});
 
 // P065 – mock argon2 (primary hashing algorithm)
 vi.mock('argon2', () => ({

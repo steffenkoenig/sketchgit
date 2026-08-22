@@ -228,6 +228,8 @@ All variables are validated at startup via `lib/env.ts`. Copy `.env.example` for
 | `OTEL_SERVICE_NAME` | — | Service name reported to the OTLP collector (default: `sketchgit`) |
 | `OTEL_SAMPLE_RATE` | — | Fraction of traces sampled, 0-1 (default: 1) |
 | `ADMIN_API_SECRET` | — | Shared secret for `/api/admin/*` routes (default: admin routes disabled) |
+| `DATABASE_URL_REPLICA` | — | Read-only replica URL; routes read-heavy queries there (default: falls back to `DATABASE_URL`) |
+| `DB_REPLICA_POOL_SIZE` | — | Replica's client-side connection pool size (default: 5) |
 
 ## Development
 

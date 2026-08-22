@@ -34,6 +34,8 @@ export type ClientState = WebSocket & {
 export interface ConnectionHandlerDeps {
   logger: pino.Logger;
   prisma: PrismaClient;
+  /** P088 – read-routed client (replica when configured, else same as `prisma`). */
+  prismaRead: PrismaClient;
   env: Env;
   rooms: Map<string, Map<string, ClientState>>;
   roomCache: { get: (roomId: string) => RoomSnapshot | undefined; set: (roomId: string, snapshot: RoomSnapshot) => void };
@@ -146,7 +148,7 @@ async function finalizeConnection(client: ClientState, roomId: string, clientId:
   deps.schedulePushPresence(roomId);
 
   let snapshot: RoomSnapshot | undefined | null = deps.roomCache.get(roomId);
-  if (!snapshot) { snapshot = await deps.dbLoadSnapshot(roomId, deps.prisma, deps.logger); if (snapshot) deps.roomCache.set(roomId, snapshot); }
+  if (!snapshot) { snapshot = await deps.dbLoadSnapshot(roomId, deps.prismaRead, deps.logger); if (snapshot) deps.roomCache.set(roomId, snapshot); }
   if (snapshot) {
     if (client.shareScope === "COMMIT" && client.allowedCommitSha) deps.sendTo(client, { type: "fullsync", targetId: clientId, commits: { [client.allowedCommitSha]: snapshot.commits[client.allowedCommitSha] }, branches: {}, HEAD: client.allowedCommitSha, detached: client.allowedCommitSha } as unknown as WsMessage);
     else deps.sendTo(client, { type: "fullsync", targetId: clientId, commits: snapshot.commits, branches: snapshot.branches, HEAD: snapshot.HEAD, detached: snapshot.detached } as unknown as WsMessage);

@@ -63,6 +63,33 @@ services:
       retries: 5
       start_period: 10s
 
+  # P088: Optional second PostgreSQL instance for exercising the read-replica
+  # connection-routing code path (lib/db/prisma.ts's `prismaRead`) locally.
+  # NOT real streaming replication — it's an independent, empty database, not
+  # a hot standby fed from `db`'s WAL. Genuine physical replication needs
+  # pg_basebackup/pg_hba.conf/replication-slot configuration well beyond a
+  # docker-compose service block. This is only useful for confirming that
+  # DATABASE_URL_REPLICA routing itself works (e.g. seed it separately and
+  # verify reads come from here instead of `db`); point DATABASE_URL_REPLICA
+  # at a real managed read replica (RDS, Cloud SQL, etc.) in production.
+  db-replica:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sketchgit
+      POSTGRES_USER: sketchgit
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata-replica:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sketchgit -d sketchgit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # P061: Local OTLP collector + UI for OpenTelemetry traces. Optional — only
   # useful when `app`'s OTEL_EXPORTER_OTLP_ENDPOINT is set (see .env.example).
   # UI: http://localhost:16686
@@ -116,3 +143,4 @@ services:
 
 volumes:
   pgdata:
+  pgdata-replica:
