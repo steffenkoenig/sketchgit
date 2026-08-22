@@ -222,6 +222,11 @@ All variables are validated at startup via `lib/env.ts`. Copy `.env.example` for
 | `ROOM_EVENT_RETENTION_DAYS` | — | Activity feed retention in days (default: 90) |
 | `SLOW_QUERY_MS` | — | Prisma slow-query log threshold in ms (default: 500) |
 | `PORT` | — | HTTP/WS listen port (default: 3000) |
+| `DATABASE_DIRECT_URL` | — | Direct PostgreSQL URL bypassing PgBouncer, for `migrate`/introspection (default: `DATABASE_URL`) |
+| `DATABASE_POOL_SIZE` | — | Prisma's client-side connection pool size (default: 10; use 1-5 behind PgBouncer) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP collector endpoint; unset disables tracing/metrics entirely (default: disabled) |
+| `OTEL_SERVICE_NAME` | — | Service name reported to the OTLP collector (default: `sketchgit`) |
+| `OTEL_SAMPLE_RATE` | — | Fraction of traces sampled, 0-1 (default: 1) |
 
 ## Development
 

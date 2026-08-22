@@ -180,6 +180,33 @@ Valid types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`
 
 ---
 
+## Copilot Agents & Skills
+
+Custom agents live in `.github/agents/*.md`; each references one or more
+skill files in `.github/agents/skills/*.md` that document a specific,
+repeatable pattern in this codebase, verified against the actual current
+source (not just the originating proposal's assumptions).
+
+| Agent | Purpose |
+|-------|---------|
+| `bug-scanner` | Scans the codebase for bugs, writes reports to `reports/bugs/` |
+| `scaffolder` | Scaffolds new API routes, WS message types, test factories, env vars, and proposal documents |
+
+| Skill | What it scaffolds |
+|-------|--------------------|
+| `new-api-route` | A Next.js API route handler + test file, following the auth/Zod/apiError pattern |
+| `new-ws-message-type` | A new real-time broadcast type (REST route → `broadcastToRoom()` → client dispatch) |
+| `new-factory` | A Prisma model factory function in `lib/test/factories.ts` |
+| `new-env-var` | A new env var across `lib/env.ts`, its test, `.env.example`, and the README table |
+| `new-proposal` | A new `reports/proposals/P0NN_*.md` document + summary table row |
+
+When asked "what can you automate in this repo?" or to perform one of the
+tasks above, read the matching skill file with `view` before generating any
+code — it documents the exact current pattern, including any places where
+the codebase evolved past what an older proposal originally assumed.
+
+---
+
 ## Key Files Reference
 
 | File | Purpose |

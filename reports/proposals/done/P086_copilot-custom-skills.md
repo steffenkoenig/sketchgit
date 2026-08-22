@@ -188,3 +188,43 @@ instruction text that reliably produces conformant output.
 - P068 ✅ (error codes — `new-api-route` skill relies on `apiError()`)
 - P077 ✅ (test factories — `new-factory` skill extends the established pattern)
 - P062 ✅ (OpenAPI — `new-api-route` skill exports named Zod schema for OpenAPI)
+
+## Implementation Notes (2026-08-22)
+
+Implemented with two deviations from the plan above, both discovered by
+inspecting the repo rather than assuming the proposal's design:
+
+1. **Format and location**: `.github/agents/skills/*.md` (plain instructional
+   Markdown), not `.github/copilot/skills/*.yaml`. The repo already had a
+   working skills convention — `.github/agents/bug-scanner.md` (an agent with
+   YAML frontmatter: name/description/tools) referencing
+   `.github/agents/skills/scan-codebase-for-bugs.md` and
+   `.github/agents/skills/write-bug-report.md` — created independently of
+   this proposal. Matched that established, real pattern instead of inventing
+   a second, parallel, unused one. Added one new agent, `.github/agents/
+   scaffolder.md`, that references all five skills (mirroring how
+   `bug-scanner.md` references its two).
+2. **`new-ws-message-type` content**: the proposal assumed inbound WS message
+   handling in `server.ts` is still the primary write path. It isn't anymore
+   — `lib/sketchgit/realtime/collaborationManager.ts` documents that
+   client-initiated events (draw, commit, object-lock, view-sync, etc.) are
+   now submitted as REST POSTs that the server validates/persists and then
+   broadcasts via `broadcastToRoom()`; `InboundWsMessageSchema`'s
+   discriminated union only still has `pong`/`fullsync-request`/`fullsync`.
+   The skill file documents the actual current pattern (REST route →
+   `broadcastToRoom()` → client dispatch in `collaborationManager.ts`),
+   verified against the real `object-lock`/`view-sync`/`branch-update`
+   implementations, with the old inbound-WS pattern kept as a documented
+   fallback for genuine peer-relay cases only.
+
+Also fixed a small pre-existing documentation gap found while writing the
+`new-env-var` skill: `README.md`'s Environment Variables table was missing
+the `DATABASE_DIRECT_URL`/`DATABASE_POOL_SIZE` (P060) and `OTEL_*` (P061)
+rows added earlier in this session — added them so the skill's own
+instructions describe a table that's actually complete.
+
+Not implemented: the proposal's "validated manually by invoking each skill
+via Copilot Chat" testing requirement — that requires the actual GitHub
+Copilot Coding Agent, which isn't available in this environment. The skill
+files' content was instead verified by cross-checking every referenced
+pattern against the real current source files.
