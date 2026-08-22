@@ -123,6 +123,11 @@ export default [
       "prisma/**",
       "e2e/**",
       "playwright.config.ts",
+      // P083 – k6 scripts use k6's own globals (__ENV, __VU) and ES module
+      // format incompatible with the TypeScript-ESLint ruleset; seed.ts is a
+      // standalone Node script in the same directory, ignored for consistency
+      // with prisma/seed.ts above.
+      "load-tests/**",
     ],
   },
   {

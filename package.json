@@ -24,6 +24,8 @@
     "db:studio": "prisma studio",
     "db:backfill-canvas-schema-version": "node scripts/backfill-canvas-schema-version.mjs",
     "db:seed": "tsx prisma/seed.ts",
+    "load-test:seed": "tsx load-tests/seed.ts",
+    "load-test:smoke": "k6 run load-tests/smoke.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "vercel-build": "prisma generate && prisma migrate deploy && next build"

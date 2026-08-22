@@ -93,6 +93,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P087 | Visual Regression Testing with Playwright Snapshots | Reliability, Maintainability | [P087](proposals/done/P087_visual-regression-testing.md) |
 | P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/done/P090_feature-flag-system.md) |
 | P091 † | Room Roles and Permissions (member role visibility + management API — distinct proposal, shares the P091 number with Granular Share Links above; see that report's Implementation Notes) | Security, Collaboration, Accessibility | [P091](proposals/done/P091_room-roles-permissions.md) |
+| P083 | Load and Stress Testing with k6 | Performance, Reliability | [P083](proposals/done/P083_load-and-stress-testing.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |
@@ -120,7 +121,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
 | P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/P081_react-error-boundaries.md) |
-| P083 | Load and Stress Testing with k6 | Performance, Reliability | [P083](proposals/P083_load-and-stress-testing.md) |
 | P084 | Production Error Tracking with Sentry | Reliability, Maintainability, Observability | [P084](proposals/P084_sentry-error-tracking.md) |
 | P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
@@ -335,7 +335,7 @@ tooling, and collaboration features.
 8. ~~**P090** – Feature flag system (safe incremental rollout; unblocks phased feature releases)~~ ✅ **Done**
 9. **P091** – Granular share links (collaboration; supersedes P066; requires P003/P007/P066)
 10. **P088** – Database read replica (scalability; requires P090 flag for progressive rollout)
-11. **P083** – Load and stress testing (validates the system after P088 and P090 are deployed)
+11. ~~**P083** – Load and stress testing (validates the system after P088 and P090 are deployed)~~ ✅ **Done**
 
 ---
 

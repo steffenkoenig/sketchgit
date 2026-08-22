@@ -9,3 +9,7 @@ tsconfig.server.tsbuildinfo
 playwright-report/
 test-results/
 *.env.local
+
+# P083 – k6 load test output (summaries, not source)
+load-tests/*.json
+load-tests/summary.html

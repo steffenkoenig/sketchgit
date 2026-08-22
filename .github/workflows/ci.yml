@@ -5,6 +5,7 @@ on:
     branches: [main, "copilot/**", "feature/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   ci:
@@ -84,6 +85,29 @@ jobs:
 
       - name: Build Next.js
         run: npm run build
+
+      # ─── P083: fast load-test smoke check (pre-merge, catches gross regressions) ──
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Start server for load-test smoke check
+        run: |
+          NODE_ENV=production nohup node_modules/.bin/tsx server.ts > /tmp/ci-server.log 2>&1 &
+          echo $! > /tmp/ci-server.pid
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3100/api/ready && break
+            sleep 1
+          done
+        env:
+          PORT: 3100
+          NEXTAUTH_URL: http://localhost:3100
+
+      - name: Run k6 smoke test
+        run: k6 run -e BASE_URL=http://localhost:3100 load-tests/smoke.js
+
+      - name: Stop load-test smoke server
+        if: always()
+        run: kill $(cat /tmp/ci-server.pid) 2>/dev/null || true
 
   # ─── P082: Accessibility audit (axe-core via Playwright) ─────────────────────
   a11y:
@@ -273,3 +297,75 @@ jobs:
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: trivy-results.sarif
+
+  # ─── P083: Load and stress testing (k6) ───────────────────────────────────────
+  # Runs against the full Docker Compose stack (app + PgBouncer + Redis + Postgres)
+  # so results reflect the pooled-connection topology used in production, not the
+  # bare `postgres` service the main `ci` job uses for unit tests. Post-merge only
+  # (and manually via workflow_dispatch) — not a PR merge gate — because a
+  # representative run takes minutes, not seconds; see the fast smoke check in the
+  # `ci` job above for the pre-merge signal.
+  load-test:
+    name: Load & stress test (k6)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Start Docker Compose stack
+        run: docker compose up -d --build
+
+      - name: Wait for app to be ready
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/ready && exit 0
+            sleep 2
+          done
+          echo "App did not become ready in time" >&2
+          docker compose logs app
+          exit 1
+
+      - name: Seed load-test data
+        run: npx tsx load-tests/seed.ts
+        env:
+          DATABASE_URL: postgres://sketchgit:dev_password@localhost:5433/sketchgit?pgbouncer=true
+
+      - name: Run k6 scenarios
+        run: |
+          set -e
+          k6 run --summary-export=load-tests/smoke-summary.json load-tests/smoke.js
+          k6 run --summary-export=load-tests/commits-api-summary.json load-tests/scenarios/commits-api.js
+          k6 run --summary-export=load-tests/ws-room-summary.json -e WS_URL=ws://localhost:3000/ws load-tests/scenarios/ws-room.js
+          k6 run --summary-export=load-tests/auth-ratelimit-summary.json load-tests/scenarios/auth-ratelimit.js
+        env:
+          BASE_URL: http://localhost:3000
+
+      - name: Upload k6 summaries
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: k6-summaries
+          path: load-tests/*-summary.json
+
+      - name: Dump app logs on failure
+        if: failure()
+        run: docker compose logs app
+
+      - name: Tear down Docker Compose stack
+        if: always()
+        run: docker compose down -v
