@@ -6,6 +6,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission } from "@prisma/client";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
+import { migrateCanvasJson } from "../sketchgit/git/canvasSchemaMigrations";
+import { SchemaVersionTooNewError } from "../sketchgit/git/canvasSchemaVersion";
 import { saveCommitHistogram } from "../server/metrics";
 
 export type { RoomEventType, ShareScope, SharePermission };
@@ -81,11 +83,15 @@ async function saveCommitTransaction(
         parents: commit.parents,
         branch: commit.branch,
         message: commit.message,
+        // P085 – migrateCanvasJson() parses and upgrades to the current
+        // schema version (or throws SchemaVersionTooNewError for a payload
+        // newer than this server understands).
         canvasJson: (() => {
           try {
-            return JSON.parse(commit.canvas) as object;
-          } catch {
-            throw new Error(`Invalid canvas JSON for commit ${commit.sha}`);
+            return migrateCanvasJson(commit.canvas) as object;
+          } catch (err) {
+            if (err instanceof SchemaVersionTooNewError) throw err;
+            throw new Error(`Invalid canvas JSON for commit ${commit.sha}`, { cause: err });
           }
         })(),
         isMerge: commit.isMerge,
@@ -140,12 +146,19 @@ async function saveCommitWithDeltaTransaction(
   commit: CommitRecord,
   userId?: string | null,
 ): Promise<"snapshot" | "delta"> {
+  // P085 – migrateCanvasJson() parses and upgrades to the current schema
+  // version (or throws SchemaVersionTooNewError for a payload newer than
+  // this server understands). The re-stringified, migrated form is used
+  // consistently below so the delta diff and any SNAPSHOT fallback both
+  // operate on the same (current-version) envelope.
   let canvasObj: object;
   try {
-    canvasObj = JSON.parse(commit.canvas) as object;
-  } catch {
-    throw new Error(`Invalid canvas JSON for commit ${commit.sha}`);
+    canvasObj = migrateCanvasJson(commit.canvas) as object;
+  } catch (err) {
+    if (err instanceof SchemaVersionTooNewError) throw err;
+    throw new Error(`Invalid canvas JSON for commit ${commit.sha}`, { cause: err });
   }
+  const migratedCanvasStr = JSON.stringify(canvasObj);
 
   let storageType: CommitStorageType = CommitStorageType.SNAPSHOT;
   let canvasToStore: object = canvasObj;
@@ -155,9 +168,9 @@ async function saveCommitWithDeltaTransaction(
       const parentCommit = await prisma.commit.findUnique({ where: { sha: commit.parent } });
       if (parentCommit && parentCommit.storageType === CommitStorageType.SNAPSHOT) {
         const parentCanvas = JSON.stringify(parentCommit.canvasJson);
-        const delta = computeCanvasDelta(parentCanvas, commit.canvas);
+        const delta = computeCanvasDelta(parentCanvas, migratedCanvasStr);
         const deltaStr = JSON.stringify(delta);
-        if (deltaStr.length < commit.canvas.length * 0.9) {
+        if (deltaStr.length < migratedCanvasStr.length * 0.9) {
           canvasToStore = delta as unknown as object;
           storageType = CommitStorageType.DELTA;
         }
@@ -759,7 +772,11 @@ export async function resolveCommitCanvas(
   const resolved = canvasCache.get(sha);
   if (!resolved) return null;
   try {
-    return JSON.parse(resolved) as object;
+    // P085 – migrate legacy (pre-versioning) commits at read time. Covers
+    // both the SNAPSHOT branch above and DELTA-replayed results (whose
+    // schemaVersion is inherited from the base snapshot the delta chain was
+    // replayed against).
+    return migrateCanvasJson(resolved) as object;
   } catch {
     return null;
   }

@@ -262,6 +262,7 @@
     "INVALID_JSON": "The request body could not be parsed.",
     "EXPORT_FAILED": "Canvas export failed. Please try again.",
     "CANVAS_NOT_FOUND": "No canvas data found for this commit.",
+    "SCHEMA_VERSION_TOO_NEW": "This canvas was created by a newer version of the app. Please refresh the page.",
     "INTERNAL_ERROR": "An unexpected error occurred. Please try again.",
     "INVITATION_EXPIRED": "This invitation has expired.",
     "INVITATION_EXHAUSTED": "This invitation has reached its use limit.",

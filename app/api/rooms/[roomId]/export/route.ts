@@ -24,6 +24,8 @@ import {
   resolveCommitCanvas,
 } from "@/lib/db/roomRepository";
 import { ExportQuerySchema, ExportBodySchema } from "@/lib/api/exportSchema";
+import { migrateCanvasJson } from "@/lib/sketchgit/git/canvasSchemaMigrations";
+import { SchemaVersionTooNewError } from "@/lib/sketchgit/git/canvasSchemaVersion";
 
 // Re-export schemas so that lib/api/openapi.ts can import them without
 // transitively pulling in canvasRenderer (→ fabric/node → jsdom/canvas native
@@ -159,7 +161,20 @@ export async function POST(
   const v = validate(ExportBodySchema, body);
   if (!v.success) return v.response;
 
-  const { canvasJson, format, theme } = v.data;
+  const { format, theme } = v.data;
+
+  // P085 – migrate legacy (pre-versioning) canvas payloads submitted by an
+  // old client; reject a payload from a client newer than this server
+  // understands rather than rendering a possibly-corrupted export.
+  let canvasJson: object;
+  try {
+    canvasJson = migrateCanvasJson(v.data.canvasJson);
+  } catch (err) {
+    if (err instanceof SchemaVersionTooNewError) {
+      return apiError(ApiErrorCode.SCHEMA_VERSION_TOO_NEW, err.message, 422);
+    }
+    throw err;
+  }
 
   // Dynamic import — same reason as in the GET handler (keep fabric/node out of
   // the static module graph to prevent build-time "Failed to collect page data").

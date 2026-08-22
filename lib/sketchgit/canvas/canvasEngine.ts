@@ -26,6 +26,8 @@ import {
 import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
 
 import { ensureObjId } from '../git/objectIdTracker';
+import { CANVAS_JSON_SCHEMA_VERSION } from '../git/canvasSchemaVersion';
+import { migrateCanvasJson } from '../git/canvasSchemaMigrations';
 import { logger } from '../logger';
 import { renderMermaidToDataUrl } from './mermaidRenderer';
 import { nearestPointOnBounds } from './snapEngine';
@@ -431,15 +433,20 @@ export class CanvasEngine {
     // toObject(), so _id and _isArrow are included in the output.
     // NOTE: FabricObject.customProperties is also set in init() as a belt-and-suspenders
     // guard so that any call path (toJSON included) always serialises these fields.
-    return JSON.stringify(this.canvas.toObject([
-      '_isArrow', '_id', '_link', '_fillPattern', '_fillColor',
-      '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
-      '_sloppiness', '_origGeom',
-      '_attachedFrom', '_attachedTo',
-      '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
-      '_x1', '_y1', '_x2', '_y2',
-      '_isMermaid', '_mermaidCode',
-    ]));
+    // P085 – schemaVersion is stamped on every write so old commits (which
+    // predate this field) can be distinguished from current ones at read time.
+    return JSON.stringify({
+      schemaVersion: CANVAS_JSON_SCHEMA_VERSION,
+      ...this.canvas.toObject([
+        '_isArrow', '_id', '_link', '_fillPattern', '_fillColor',
+        '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
+        '_sloppiness', '_origGeom',
+        '_attachedFrom', '_attachedTo',
+        '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
+        '_x1', '_y1', '_x2', '_y2',
+        '_isMermaid', '_mermaidCode',
+      ]),
+    });
   }
 
   loadCanvasData(data: string): void {
@@ -447,10 +454,20 @@ export class CanvasEngine {
     // (e.g. git checkout, merge) — local history is no longer valid.
     this.undoStack = [];
     this.redoStack = [];
+    // P085 – migrate legacy (pre-versioning) or older-schema payloads before
+    // loading. loadCanvasData() is the single funnel for all external canvas
+    // state (git checkout, merge, peer sync) — see canvasSchemaMigrations.ts.
+    let migrated: Record<string, unknown>;
+    try {
+      migrated = migrateCanvasJson(data);
+    } catch (err: unknown) {
+      logger.error({ err }, 'loadCanvasData: failed to migrate canvas JSON schema version');
+      return;
+    }
     // P022: requestRenderAll() in the loadFromJSON callback schedules a single
     // frame render rather than forcing a synchronous repaint.
     // Fabric v7: loadFromJSON is promise-based; use .then() instead of a callback.
-    void this.canvas?.loadFromJSON(JSON.parse(data) as Record<string, unknown>).then(() => {
+    void this.canvas?.loadFromJSON(migrated).then(() => {
       this.applyStrokeUniformToAll();
       this.postLoadApplyEndpointControls();
       this.canvas?.requestRenderAll();

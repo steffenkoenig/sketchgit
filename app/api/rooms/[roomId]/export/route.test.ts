@@ -71,6 +71,9 @@ function makePostRequest(roomId: string, body: unknown) {
 const ROOM_ID = 'room_abc';
 const COMMIT_SHA = 'sha_001';
 const CANVAS_JSON = { version: '5.3.1', objects: [], background: '#0a0a0f' };
+// P085 – migrateCanvasJson() stamps schemaVersion on the legacy CANVAS_JSON
+// fixture before it reaches the renderer.
+const MIGRATED_CANVAS_JSON = { ...CANVAS_JSON, schemaVersion: 1 };
 const SNAPSHOT_COMMIT = {
   sha: COMMIT_SHA,
   roomId: ROOM_ID,
@@ -224,7 +227,7 @@ describe('POST /api/rooms/[roomId]/export', () => {
     expect(res.headers.get('content-type')).toBe('image/png');
     expect(res.headers.get('content-disposition')).toContain('.png');
     expect(renderToPNG).toHaveBeenCalledOnce();
-    expect(renderToPNG).toHaveBeenCalledWith(CANVAS_JSON, 'dark');
+    expect(renderToPNG).toHaveBeenCalledWith(MIGRATED_CANVAS_JSON, 'dark');
   });
 
   it('returns SVG when format=svg', async () => {
@@ -234,7 +237,7 @@ describe('POST /api/rooms/[roomId]/export', () => {
     expect(res.headers.get('content-type')).toBe('image/svg+xml');
     expect(res.headers.get('content-disposition')).toContain('.svg');
     expect(renderToSVG).toHaveBeenCalledOnce();
-    expect(renderToSVG).toHaveBeenCalledWith(CANVAS_JSON, 'dark');
+    expect(renderToSVG).toHaveBeenCalledWith(MIGRATED_CANVAS_JSON, 'dark');
   });
 
   it('returns PDF when format=pdf', async () => {
@@ -244,14 +247,14 @@ describe('POST /api/rooms/[roomId]/export', () => {
     expect(res.headers.get('content-type')).toBe('application/pdf');
     expect(res.headers.get('content-disposition')).toContain('.pdf');
     expect(renderToPDF).toHaveBeenCalledOnce();
-    expect(renderToPDF).toHaveBeenCalledWith(CANVAS_JSON, 'dark');
+    expect(renderToPDF).toHaveBeenCalledWith(MIGRATED_CANVAS_JSON, 'dark');
   });
 
   it('passes theme to renderer', async () => {
     const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'svg', theme: 'light' });
     const res = await POST(req, { params });
     expect(res.status).toBe(200);
-    expect(renderToSVG).toHaveBeenCalledWith(CANVAS_JSON, 'light');
+    expect(renderToSVG).toHaveBeenCalledWith(MIGRATED_CANVAS_JSON, 'light');
   });
 
   it('returns no-store Cache-Control (POST responses are never immutable)', async () => {
@@ -259,6 +262,18 @@ describe('POST /api/rooms/[roomId]/export', () => {
     const res = await POST(req, { params });
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toContain('no-store');
+  });
+
+  it('P085: returns 422 SCHEMA_VERSION_TOO_NEW when canvasJson schemaVersion exceeds the current version', async () => {
+    const req = makePostRequest(ROOM_ID, {
+      canvasJson: { ...CANVAS_JSON, schemaVersion: 999 },
+      format: 'png',
+    });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(422);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('SCHEMA_VERSION_TOO_NEW');
+    expect(renderToPNG).not.toHaveBeenCalled();
   });
 
   it('returns 400 for invalid JSON body', async () => {

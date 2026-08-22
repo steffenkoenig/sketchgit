@@ -195,3 +195,52 @@ read paths and writing the Prisma back-fill.
 - P033 ✅ (delta storage — delta envelope also needs versioning)
 - P031 ✅ (WS payload validation — schema version check added here)
 - P039 ✅ (canvas export route — must run migration before export)
+
+## Implementation Notes (2026-08-22)
+
+Implemented with three deviations from the plan above, each found by reading
+the actual current architecture rather than assuming the proposal's design
+was still accurate (write paths moved from WebSocket to REST since this
+proposal was drafted — see the P086/`new-ws-message-type` implementation
+notes for the same discovery):
+
+1. **Enforcement point**: `lib/api/wsSchemas.ts`'s `commit` WS message type
+   is no longer the write path — `POST /api/rooms/[roomId]/commits` →
+   `saveCommitWithDelta()` in `lib/db/roomRepository.ts` is. Enforcement was
+   added there (and in the simpler unused `saveCommit()`), not in
+   `wsSchemas.ts`.
+2. **Reject-vs-migrate on write**: the proposal specified hard-rejecting any
+   payload where `schemaVersion !== CANVAS_JSON_SCHEMA_VERSION`. That would
+   break every existing client immediately on deploy — no client sends
+   `schemaVersion` yet (this proposal is what makes them start). Implemented
+   instead: migrate up transparently for `schemaVersion < CURRENT` (or
+   absent), reject only for `schemaVersion > CURRENT` (a payload from a
+   future client/server this build cannot safely interpret). This is
+   strictly more resilient and still satisfies the proposal's actual safety
+   goal — protecting against forward-incompatible data — without an
+   unnecessary breaking change.
+3. **Delta envelope versioning skipped as unnecessary**: verified that
+   `canvasDelta.ts`'s `replayCanvasDelta()` reconstructs a full canvas by
+   spreading the base snapshot's envelope (`{ ...parsed, objects: result }`)
+   — `schemaVersion` already propagates through every delta replay
+   automatically from the base SNAPSHOT it's chained to. Adding a second,
+   separate `schemaVersion` inside the `CanvasDelta` operations-list shape
+   itself would be redundant and risk drifting out of sync with the base.
+4. **Backfill as a standalone script, not a Prisma migration file**: the
+   proposal says "not an automatic migration — must be run as a one-time
+   admin task," but anything under `prisma/migrations/` *is* automatically
+   applied by `prisma migrate deploy` — there's no such thing as an opt-in
+   Prisma migration. Implemented as `scripts/backfill-canvas-schema-version.mjs`
+   (`npm run db:backfill-canvas-schema-version`) instead, which correctly
+   matches "run manually, once, by an operator." Also stamps `schemaVersion: 1`
+   directly (skipping the `0` sentinel step) since the migration function was
+   already available to apply in full, and only touches SNAPSHOT rows — DELTA
+   rows store an operations list, not a canvas envelope, and would be
+   corrupted by stamping a top-level field onto them.
+
+**Verified against a live database**, not just unit tests: ran real Postgres
+via Docker, seeded a legacy (unversioned) SNAPSHOT row, a current row, and a
+DELTA row, ran the backfill script in `--dry-run` (found exactly the 1 legacy
+row) then for real (updated it, left the other two untouched), and confirmed
+re-running finds zero remaining rows. Also confirmed `npm run build` succeeds
+with the client-side `canvasEngine.ts` changes.

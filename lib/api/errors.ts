@@ -34,6 +34,8 @@ export const ApiErrorCode = {
   // ── Export ───────────────────────────────────────────────────────────────
   EXPORT_FAILED: "EXPORT_FAILED",
   CANVAS_NOT_FOUND: "CANVAS_NOT_FOUND",
+  // ── Canvas schema versioning (P085) ─────────────────────────────────────
+  SCHEMA_VERSION_TOO_NEW: "SCHEMA_VERSION_TOO_NEW",
   // ── Invitations (P066) ───────────────────────────────────────────────────
   INVITATION_EXPIRED: "INVITATION_EXPIRED",
   INVITATION_EXHAUSTED: "INVITATION_EXHAUSTED",

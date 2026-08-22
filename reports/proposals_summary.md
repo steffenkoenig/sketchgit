@@ -88,6 +88,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P060 | Database Connection Pooling with PgBouncer | Reliability, Performance, Scalability | [P060](proposals/done/P060_pgbouncer-connection-pooling.md) |
 | P061 | OpenTelemetry Distributed Tracing and Metrics | Observability, Reliability | [P061](proposals/done/P061_opentelemetry-tracing-metrics.md) |
 | P086 | GitHub Copilot Custom Skills for SketchGit | Maintainability, Developer Experience | [P086](proposals/done/P086_copilot-custom-skills.md) |
+| P085 | Canvas JSON Schema Versioning and Migration | Reliability, Maintainability, Performance | [P085](proposals/done/P085_canvas-json-schema-versioning.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |
@@ -118,7 +119,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P082 | Automated Accessibility Testing with axe-core in CI | Reliability, Maintainability, Accessibility | [P082](proposals/P082_automated-accessibility-testing.md) |
 | P083 | Load and Stress Testing with k6 | Performance, Reliability | [P083](proposals/P083_load-and-stress-testing.md) |
 | P084 | Production Error Tracking with Sentry | Reliability, Maintainability, Observability | [P084](proposals/P084_sentry-error-tracking.md) |
-| P085 | Canvas JSON Schema Versioning and Migration | Reliability, Maintainability, Performance | [P085](proposals/P085_canvas-json-schema-versioning.md) |
 | P087 | Visual Regression Testing with Playwright Snapshots | Reliability, Maintainability | [P087](proposals/P087_visual-regression-testing.md) |
 | P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
@@ -327,7 +327,7 @@ tooling, and collaboration features.
 1. **P089** – License compliance scanning (zero-risk CI step; immediate compliance value)
 2. ~~**P086** – Copilot custom skills (high leverage for all subsequent scaffolding tasks)~~ ✅ **Done**
 3. **P081** – React error boundaries (critical reliability; prevents total UI crashes)
-4. **P085** – Canvas JSON schema versioning (data integrity; enables safe Fabric.js upgrades)
+4. ~~**P085** – Canvas JSON schema versioning (data integrity; enables safe Fabric.js upgrades)~~ ✅ **Done**
 5. **P084** – Sentry error tracking (observability; complements P010/P061)
 6. **P082** – Automated accessibility testing (extends P025/P038; CI gate for regressions)
 7. **P087** – Visual regression testing (extends P038; catches unintended UI changes)

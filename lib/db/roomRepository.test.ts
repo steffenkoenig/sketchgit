@@ -4,9 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock Prisma before importing the module under test
 vi.mock('@/lib/db/prisma', () => {
   const $transaction = vi.fn();
+  const $queryRaw = vi.fn();
   return {
     prisma: {
       $transaction,
+      $queryRaw,
       room: {
         upsert: vi.fn(),
         findMany: vi.fn(),
@@ -16,6 +18,7 @@ vi.mock('@/lib/db/prisma', () => {
       commit: {
         upsert: vi.fn(),
         findMany: vi.fn(),
+        findUnique: vi.fn(),
       },
       branch: {
         upsert: vi.fn(),
@@ -41,6 +44,8 @@ vi.mock('@/lib/db/prisma', () => {
 import {
   ensureRoom,
   saveCommit,
+  saveCommitWithDelta,
+  resolveCommitCanvas,
   loadRoomSnapshot,
   getUserRooms,
   pruneInactiveRooms,
@@ -48,13 +53,16 @@ import {
   COMMIT_PAGE_SIZE,
   type CommitRecord,
 } from './roomRepository';
+import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
 import { prisma } from '@/lib/db/prisma';
 
 const mock = {
   transaction: prisma.$transaction as ReturnType<typeof vi.fn>,
+  queryRaw: prisma.$queryRaw as ReturnType<typeof vi.fn>,
   roomUpsert: prisma.room.upsert as ReturnType<typeof vi.fn>,
   roomFindUnique: prisma.room.findUnique as ReturnType<typeof vi.fn>,
   commitFindMany: prisma.commit.findMany as ReturnType<typeof vi.fn>,
+  commitFindUnique: prisma.commit.findUnique as ReturnType<typeof vi.fn>,
   branchFindMany: prisma.branch.findMany as ReturnType<typeof vi.fn>,
   roomStateFindUnique: prisma.roomState.findUnique as ReturnType<typeof vi.fn>,
   membershipFindMany: prisma.roomMembership.findMany as ReturnType<typeof vi.fn>,
@@ -128,6 +136,87 @@ describe('saveCommit', () => {
     });
 
     await expect(saveCommit('room-1', badCommit)).rejects.toThrow('Invalid canvas JSON');
+  });
+
+  it('P085: stamps schemaVersion on a legacy (unversioned) canvas payload', async () => {
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+    let storedCanvasJson: { schemaVersion?: number } | undefined;
+    (prisma.commit.upsert as ReturnType<typeof vi.fn>).mockImplementation(({ create }: { create: { canvasJson: { schemaVersion?: number } } }) => {
+      storedCanvasJson = create.canvasJson;
+      return Promise.resolve({});
+    });
+
+    await saveCommit('room-1', sampleCommit, 'user-1');
+
+    expect(storedCanvasJson?.schemaVersion).toBe(CANVAS_JSON_SCHEMA_VERSION);
+  });
+
+  it('P085: rejects a canvas payload whose schemaVersion is newer than this build understands', async () => {
+    const futureCommit: CommitRecord = {
+      ...sampleCommit,
+      canvas: JSON.stringify({ schemaVersion: CANVAS_JSON_SCHEMA_VERSION + 1, objects: [] }),
+    };
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+    (prisma.commit.upsert as ReturnType<typeof vi.fn>).mockImplementation(({ create }: { create: { canvasJson: unknown } }) => {
+      void create.canvasJson;
+      return Promise.resolve({});
+    });
+
+    await expect(saveCommit('room-1', futureCommit)).rejects.toThrow('schemaVersion');
+  });
+});
+
+describe('saveCommitWithDelta (P033/P085)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('stamps schemaVersion on a legacy canvas payload and stores it as SNAPSHOT (no parent)', async () => {
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+    let storedCanvasJson: { schemaVersion?: number } | undefined;
+    (prisma.commit.upsert as ReturnType<typeof vi.fn>).mockImplementation(({ create }: { create: { canvasJson: { schemaVersion?: number } } }) => {
+      storedCanvasJson = create.canvasJson;
+      return Promise.resolve({});
+    });
+
+    await saveCommitWithDelta('room-1', sampleCommit, 'user-1');
+
+    expect(storedCanvasJson?.schemaVersion).toBe(CANVAS_JSON_SCHEMA_VERSION);
+  });
+
+  it('rejects a canvas payload newer than this build understands', async () => {
+    const futureCommit: CommitRecord = {
+      ...sampleCommit,
+      canvas: JSON.stringify({ schemaVersion: CANVAS_JSON_SCHEMA_VERSION + 1, objects: [] }),
+    };
+
+    await expect(saveCommitWithDelta('room-1', futureCommit)).rejects.toThrow('schemaVersion');
+    // Should fail before ever attempting the transaction.
+    expect(mock.transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveCommitCanvas (P085)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('migrates a legacy (unversioned) stored SNAPSHOT to the current schema version', async () => {
+    mock.queryRaw.mockResolvedValue([
+      { sha: 'abc123', parentSha: null, canvasJson: { objects: [] }, storageType: 'SNAPSHOT' },
+    ]);
+
+    const result = await resolveCommitCanvas('abc123', 'room-1') as { schemaVersion?: number } | null;
+
+    expect(result?.schemaVersion).toBe(CANVAS_JSON_SCHEMA_VERSION);
+  });
+
+  it('returns null when no commit chain is found', async () => {
+    mock.queryRaw.mockResolvedValue([]);
+    const result = await resolveCommitCanvas('missing-sha', 'room-1');
+    expect(result).toBeNull();
   });
 });
 
