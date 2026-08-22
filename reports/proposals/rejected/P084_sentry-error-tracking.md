@@ -1,7 +1,14 @@
 # P084 – Production Error Tracking with Sentry
 
 ## Status
-Not Started
+Rejected — Won't Do
+
+**Rationale (2026-08-22):** Explicit product decision by the repo owner to
+not adopt Sentry. The existing observability stack (Pino structured logging
+per P010/P036, OpenTelemetry tracing/metrics per P061) is considered
+sufficient for now; adding a third-party error-tracking SaaS is not wanted
+at this time. Revisit if observability gaps are identified that the current
+stack can't cover.
 
 ## Dimensions
 Reliability · Maintainability · Observability

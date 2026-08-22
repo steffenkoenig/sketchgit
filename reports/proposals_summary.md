@@ -121,10 +121,22 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | ID | Title | Dimension(s) | File |
 |----|-------|--------------|------|
 | P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/P081_react-error-boundaries.md) |
-| P084 | Production Error Tracking with Sentry | Reliability, Maintainability, Observability | [P084](proposals/P084_sentry-error-tracking.md) |
 | P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
 | P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/done/P091_granular-share-links.md) |
+| P092 | Offline Mode and Background Synchronization | Reliability, UX | [P092](proposals/P092_offline-mode-sync.md) |
+| P093 | Room Password Protection | Security | [P093](proposals/P093_room-password-protection.md) |
+| P094 | Email Notifications for Room Activity | UX, Collaboration | [P094](proposals/P094_email-notifications-room-activity.md) |
+| P095 | Custom Templates and Shape Library | UX, Productivity | [P095](proposals/P095_custom-templates-shape-library.md) |
+| P096 | Canvas Minimap / Radar View | UX | [P096](proposals/P096_canvas-minimap-radar.md) |
+
+---
+
+## Proposals – Rejected
+
+| ID | Title | Dimension(s) | File | Reason |
+|----|-------|--------------|------|--------|
+| P084 | Production Error Tracking with Sentry | Reliability, Maintainability, Observability | [P084](proposals/rejected/P084_sentry-error-tracking.md) | Product decision (2026-08-22): existing Pino + OpenTelemetry stack is sufficient; no third-party error-tracking SaaS wanted at this time. |
 
 ---
 
@@ -329,7 +341,7 @@ tooling, and collaboration features.
 2. ~~**P086** – Copilot custom skills (high leverage for all subsequent scaffolding tasks)~~ ✅ **Done**
 3. **P081** – React error boundaries (critical reliability; prevents total UI crashes)
 4. ~~**P085** – Canvas JSON schema versioning (data integrity; enables safe Fabric.js upgrades)~~ ✅ **Done**
-5. **P084** – Sentry error tracking (observability; complements P010/P061)
+5. ~~**P084** – Sentry error tracking~~ ❌ **Rejected** (product decision — see Proposals – Rejected)
 6. ~~**P082** – Automated accessibility testing (extends P025/P038; CI gate for regressions)~~ ✅ **Done**
 7. ~~**P087** – Visual regression testing (extends P038; catches unintended UI changes)~~ ✅ **Done**
 8. ~~**P090** – Feature flag system (safe incremental rollout; unblocks phased feature releases)~~ ✅ **Done**
