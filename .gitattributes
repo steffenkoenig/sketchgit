@@ -1,0 +1,3 @@
+# P087 – visual regression baseline snapshots are binary; mark them so git
+# diffs don't try to treat them as text (avoids noisy/garbled diff output).
+e2e/visual/**/*.png binary

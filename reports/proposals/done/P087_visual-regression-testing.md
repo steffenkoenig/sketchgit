@@ -170,3 +170,55 @@ is low if snapshot updates are consistently committed with UI changes.
 - P078 ✅ (theme toggle — dark/light variants require the toggle to be implemented)
 - P016 ✅ (CI pipeline — new job added here)
 - P025 ✅ (accessibility — stable ARIA selectors enable reliable element targeting)
+
+## Implementation Notes (2026-08-22)
+
+Implemented a smaller set than the proposal's ~22 baselines: toolbar
+(light/dark), empty canvas (light/dark), and the two auth pages (6 baselines
+total) — the highest-value, most stable surfaces per the proposal's own
+"Implementation Order" step 2. Skipped `canvas-with-objects`,
+`timeline-with-commits`, `modal-merge-conflict`, `collab-panel`, and
+`dashboard`: each needs deterministic seeded state (specific canvas objects,
+a second WS peer, multiple rooms) that adds substantial setup complexity
+beyond what a first pass should take on; the pattern established here
+extends directly to those once needed.
+
+**The one thing that actually matters for this proposal not to be
+decorative**: screenshot comparison is font-rendering/anti-aliasing
+sensitive, so a baseline generated on a local macOS machine (or any
+environment that doesn't exactly match CI) will not reliably match CI's
+Linux Chromium — the proposal doesn't address this at all, and it's the
+difference between a real regression gate and a CI job that's flaky or
+permanently red. Handled by:
+- Generating every baseline PNG inside
+  `mcr.microsoft.com/playwright:v1.61.0-noble` (Docker), not locally — verified
+  by actually doing this (not assumed): copied the repo into a throwaway
+  container, ran `npm ci` fresh there (a bind-mounted `node_modules` built on
+  macOS ARM64 would carry the wrong-platform esbuild binary — hit and worked
+  around this exact issue earlier in the session for P087's own tooling), then
+  `playwright test --project=visual --update-snapshots` against a real
+  Postgres on a Docker network.
+  Then re-ran against the *committed* baselines from a second, independent
+  fresh container — all 6 passed with zero diff, confirming the baselines are
+  stable and actually match on comparison, not just written once and assumed
+  correct.
+- The `visual` CI job runs inside that exact same Docker image
+  (`container: mcr.microsoft.com/playwright:v1.61.0-noble` in `ci.yml`) rather
+  than the more common "install Playwright browsers on the ubuntu-latest
+  runner directly" pattern used for the sibling `a11y` job — eliminates any
+  font-package or Chromium-build drift between local baseline generation and
+  CI comparison, at the cost of needing to keep the image tag and
+  `@playwright/test`'s version in package.json in sync (documented inline in
+  `ci.yml`).
+
+Also implemented, per the proposal: `.gitattributes` marking
+`e2e/visual/**/*.png` as binary (avoids git attempting text diffs on PNGs).
+
+Not implemented: the `[update-snapshots]` commit-message-triggered
+auto-update-on-main-push workflow from the proposal's "CI integration"
+section — snapshots should be regenerated deliberately (via the same Docker
+recipe above) and committed alongside the UI change that caused them to
+differ, reviewed like any other diff, not auto-written by CI. This also
+sidesteps the risk of a compromised or buggy CI auto-commit silently
+"fixing" a real regression by overwriting the baseline that was supposed to
+catch it.
