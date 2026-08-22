@@ -4,9 +4,15 @@ import type { SketchGitCall } from "@/components/sketchgit/types";
 
 type ContextMenuProps = { call: SketchGitCall };
 
-export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenuProps) {
+export const ContextMenu = React.memo(function ContextMenu({
+  call,
+}: ContextMenuProps) {
   const t = useTranslations("toolbar");
-  const [menuState, setMenuState] = useState<{ x: number; y: number; show: boolean } | null>(null);
+  const [menuState, setMenuState] = useState<{
+    x: number;
+    y: number;
+    show: boolean;
+  } | null>(null);
 
   const [canGroup, setCanGroup] = useState(false);
   const [canUngroup, setCanUngroup] = useState(false);
@@ -20,7 +26,7 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
       setMenuState({
         x: ce.detail.x,
         y: ce.detail.y,
-        show: true
+        show: true,
       });
       setCanGroup(ce.detail.canGroup);
       setCanUngroup(ce.detail.canUngroup);
@@ -64,7 +70,7 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
         margin: 0,
         // Override tb-dropdown-menu translation animation for perfect cursor positioning
         transform: "none",
-        zIndex: 9999
+        zIndex: 9999,
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -75,38 +81,67 @@ export const ContextMenu = React.memo(function ContextMenu({ call }: ContextMenu
       {hasSelection ? (
         <>
           {canGroup && (
-            <button className="tb-dropdown-item" onClick={() => call("groupSelection")}>
+            <button
+              className="tb-dropdown-item"
+              onClick={() => call("groupSelection")}
+            >
               {t("groupObjects") || "Group"}
             </button>
           )}
           {canUngroup && (
-            <button className="tb-dropdown-item" onClick={() => call("ungroupSelection")}>
+            <button
+              className="tb-dropdown-item"
+              onClick={() => call("ungroupSelection")}
+            >
               {t("ungroupObjects") || "Ungroup"}
             </button>
           )}
           {(canGroup || canUngroup) && <div className="tb-dropdown-sep" />}
 
-          <button className="tb-dropdown-item" onClick={() => call("bringForward")}>
+          <button
+            className="tb-dropdown-item"
+            onClick={() => call("bringForward")}
+          >
             {t("bringForward") || "Bring Forward"}
           </button>
-          <button className="tb-dropdown-item" onClick={() => call("sendBackward")}>
+          <button
+            className="tb-dropdown-item"
+            onClick={() => call("sendBackward")}
+          >
             {t("sendBackward") || "Send Backward"}
           </button>
-          <button className="tb-dropdown-item" onClick={() => call("bringToFront")}>
+          <button
+            className="tb-dropdown-item"
+            onClick={() => call("bringToFront")}
+          >
             {t("bringToFront") || "Bring to Front"}
           </button>
-          <button className="tb-dropdown-item" onClick={() => call("sendToBack")}>
+          <button
+            className="tb-dropdown-item"
+            onClick={() => call("sendToBack")}
+          >
             {t("sendToBack") || "Send to Back"}
           </button>
 
           <div className="tb-dropdown-sep" />
 
-          <button className="tb-dropdown-item" style={{ color: "var(--a2)" }} onClick={() => call("deleteSelection")}>
+          <button
+            className="tb-dropdown-item"
+            style={{ color: "var(--a2)" }}
+            onClick={() => call("deleteSelection")}
+          >
             {t("delete") || "Delete"}
           </button>
         </>
       ) : (
-        <div style={{ padding: "8px 12px", color: "var(--tx2)", fontSize: "12px", textAlign: "center" }}>
+        <div
+          style={{
+            padding: "8px 12px",
+            color: "var(--tx2)",
+            fontSize: "12px",
+            textAlign: "center",
+          }}
+        >
           {t("noSelection") || "No selection"}
         </div>
       )}

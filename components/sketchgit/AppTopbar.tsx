@@ -34,110 +34,219 @@ type AppTopbarProps = {
 
 function IconCollab() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="5" cy="5" r="2.5"/>
-      <circle cx="11" cy="5" r="2.5"/>
-      <path d="M1 13c0-2.2 1.8-4 4-4h6c2.2 0 4 1.8 4 4"/>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="5" cy="5" r="2.5" />
+      <circle cx="11" cy="5" r="2.5" />
+      <path d="M1 13c0-2.2 1.8-4 4-4h6c2.2 0 4 1.8 4 4" />
     </svg>
   );
 }
 
 function IconMerge() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="4" cy="4" r="1.5"/>
-      <circle cx="4" cy="12" r="1.5"/>
-      <circle cx="12" cy="8" r="1.5"/>
-      <path d="M4 5.5v5M4 5.5C4 8 12 8 12 8"/>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="4" cy="4" r="1.5" />
+      <circle cx="4" cy="12" r="1.5" />
+      <circle cx="12" cy="8" r="1.5" />
+      <path d="M4 5.5v5M4 5.5C4 8 12 8 12 8" />
     </svg>
   );
 }
 
 function IconBranch() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="4" cy="4" r="1.5"/>
-      <circle cx="4" cy="12" r="1.5"/>
-      <circle cx="12" cy="4" r="1.5"/>
-      <path d="M4 5.5v5M4 5.5C4 8 12 8 12 5.5"/>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="4" cy="4" r="1.5" />
+      <circle cx="4" cy="12" r="1.5" />
+      <circle cx="12" cy="4" r="1.5" />
+      <path d="M4 5.5v5M4 5.5C4 8 12 8 12 5.5" />
     </svg>
   );
 }
 
 function IconCommit() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-      <circle cx="8" cy="8" r="3"/>
-      <line x1="1" y1="8" x2="5" y2="8"/>
-      <line x1="11" y1="8" x2="15" y2="8"/>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="3" />
+      <line x1="1" y1="8" x2="5" y2="8" />
+      <line x1="11" y1="8" x2="15" y2="8" />
     </svg>
   );
 }
 
 function IconShare() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M11 2l3 3-3 3"/>
-      <path d="M14 5H5.5A3.5 3.5 0 0 0 2 8.5V9"/>
-      <path d="M5 14l-3-3 3-3"/>
-      <path d="M2 11h8.5a3.5 3.5 0 0 0 3.5-3.5V7"/>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11 2l3 3-3 3" />
+      <path d="M14 5H5.5A3.5 3.5 0 0 0 2 8.5V9" />
+      <path d="M5 14l-3-3 3-3" />
+      <path d="M2 11h8.5a3.5 3.5 0 0 0 3.5-3.5V7" />
     </svg>
   );
 }
 
 function IconExport() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M8 2v8M5 7l3 3 3-3"/>
-      <path d="M3 11v2h10v-2"/>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2v8M5 7l3 3 3-3" />
+      <path d="M3 11v2h10v-2" />
     </svg>
   );
 }
 
 function IconPng() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="2" width="12" height="12" rx="2"/>
-      <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/>
-      <path d="M2 10l3-3 2.5 2.5L10 7l4 4"/>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="2" />
+      <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+      <path d="M2 10l3-3 2.5 2.5L10 7l4 4" />
     </svg>
   );
 }
 
 function IconSvg() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M8 3L4 8l4 5M8 3l4 5-4 5"/>
-      <path d="M3 8h10"/>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 3L4 8l4 5M8 3l4 5-4 5" />
+      <path d="M3 8h10" />
     </svg>
   );
 }
 
 function IconPdf() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M10 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z"/>
-      <polyline points="10,2 10,6 14,6"/>
-      <line x1="5" y1="9" x2="11" y2="9"/>
-      <line x1="5" y1="11" x2="9" y2="11"/>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z" />
+      <polyline points="10,2 10,6 14,6" />
+      <line x1="5" y1="9" x2="11" y2="9" />
+      <line x1="5" y1="11" x2="9" y2="11" />
     </svg>
   );
 }
 
 function IconGlobe() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="8" cy="8" r="6"/>
-      <path d="M8 2c-1.7 2-2.5 4-2.5 6s.8 4 2.5 6M8 2c1.7 2 2.5 4 2.5 6S9.7 14 8 14"/>
-      <line x1="2" y1="8" x2="14" y2="8"/>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 2c-1.7 2-2.5 4-2.5 6s.8 4 2.5 6M8 2c1.7 2 2.5 4 2.5 6S9.7 14 8 14" />
+      <line x1="2" y1="8" x2="14" y2="8" />
     </svg>
   );
 }
 
 function IconChevronDown() {
   return (
-    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="2,3 5,7 8,3"/>
+    <svg
+      width="9"
+      height="9"
+      viewBox="0 0 10 10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="2,3 5,7 8,3" />
     </svg>
   );
 }
@@ -169,7 +278,7 @@ function usePortalDropdown(align: "left" | "right" = "left") {
       setMenuStyle(
         align === "left"
           ? { top: r.bottom + 6, left: r.left }
-          : { top: r.bottom + 6, right: window.innerWidth - r.right }
+          : { top: r.bottom + 6, right: window.innerWidth - r.right },
       );
     }
 
@@ -190,9 +299,14 @@ function usePortalDropdown(align: "left" | "right" = "left") {
 
 /* ── ExportDropdown ──────────────────────────────────────────────────────── */
 
-function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null }) {
+function ExportDropdown({
+  getCanvasJson,
+}: {
+  getCanvasJson: () => string | null;
+}) {
   const t = useTranslations();
-  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("left");
+  const { open, setOpen, triggerRef, menuRef, menuStyle } =
+    usePortalDropdown("left");
   const [busy, setBusy] = React.useState(false);
 
   const items = [
@@ -213,7 +327,9 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
       // use the actual current room ID.
       const params = new URLSearchParams(window.location.search);
       const roomId = params.get("room") || "default";
-      const theme = document.documentElement.classList.contains("theme-light") ? "light" : "dark";
+      const theme = document.documentElement.classList.contains("theme-light")
+        ? "light"
+        : "dark";
       const base = `/api/rooms/${encodeURIComponent(roomId)}/export`;
 
       // Prefer POST with the live canvas JSON so the export succeeds even when
@@ -284,24 +400,32 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
         {busy ? "…" : t("topbar.export")}
         <IconChevronDown />
       </button>
-      {open && createPortal(
-        <div ref={menuRef} className="tb-dropdown-menu open" style={menuStyle} role="menu">
-          {items.map(({ format, label, icon }) => (
-            <button
-              key={format}
-              className="tb-dropdown-item"
-              role="menuitem"
-              aria-label={label}
-              disabled={busy}
-              onClick={() => { void doExport(format); }}
-            >
-              {icon}
-              {label}
-            </button>
-          ))}
-        </div>,
-        document.body
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="tb-dropdown-menu open"
+            style={menuStyle}
+            role="menu"
+          >
+            {items.map(({ format, label, icon }) => (
+              <button
+                key={format}
+                className="tb-dropdown-item"
+                role="menuitem"
+                aria-label={label}
+                disabled={busy}
+                onClick={() => {
+                  void doExport(format);
+                }}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -311,7 +435,8 @@ function ExportDropdown({ getCanvasJson }: { getCanvasJson: () => string | null 
 function LocaleDropdown() {
   const t = useTranslations();
   const locale = useLocale();
-  const { open, setOpen, triggerRef, menuRef, menuStyle } = usePortalDropdown("right");
+  const { open, setOpen, triggerRef, menuRef, menuStyle } =
+    usePortalDropdown("right");
 
   const current = LOCALES.find((l) => l.code === locale) ?? LOCALES[0];
 
@@ -325,7 +450,9 @@ function LocaleDropdown() {
   }
 
   function handleMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const items = menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']");
+    const items = menuRef.current?.querySelectorAll<HTMLButtonElement>(
+      "[role='menuitemradio']",
+    );
     if (!items || items.length === 0) return;
     const focused = document.activeElement as HTMLButtonElement;
     const idx = Array.from(items).indexOf(focused);
@@ -354,33 +481,38 @@ function LocaleDropdown() {
         aria-label={`${t("topbar.language")}: ${current.label}`}
       >
         <IconGlobe />
-        <span>{current.flag} {current.code.toUpperCase()}</span>
+        <span>
+          {current.flag} {current.code.toUpperCase()}
+        </span>
         <IconChevronDown />
       </button>
-      {open && createPortal(
-        <div
-          ref={menuRef}
-          className="tb-dropdown-menu open"
-          style={menuStyle}
-          role="menu"
-          aria-label={t("topbar.language")}
-          onKeyDown={handleMenuKeyDown}
-        >
-          {LOCALES.map(({ code, flag, label }) => (
-            <button
-              key={code}
-              role="menuitemradio"
-              aria-checked={code === locale}
-              className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
-              onClick={() => switchLocale(code)}
-            >
-              <span className="tb-locale-flag" aria-hidden="true">{flag}</span>
-              {label}
-            </button>
-          ))}
-        </div>,
-        document.body
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="tb-dropdown-menu open"
+            style={menuStyle}
+            role="menu"
+            aria-label={t("topbar.language")}
+            onKeyDown={handleMenuKeyDown}
+          >
+            {LOCALES.map(({ code, flag, label }) => (
+              <button
+                key={code}
+                role="menuitemradio"
+                aria-checked={code === locale}
+                className={`tb-dropdown-item${code === locale ? " active-locale" : ""}`}
+                onClick={() => switchLocale(code)}
+              >
+                <span className="tb-locale-flag" aria-hidden="true">
+                  {flag}
+                </span>
+                {label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -424,14 +556,21 @@ function ThemeToggle() {
 
 /* ── AppTopbar ───────────────────────────────────────────────────────────── */
 
-export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionStatus, getCanvasJson }: AppTopbarProps) {
+export const AppTopbar = React.memo(function AppTopbar({
+  call,
+  session,
+  sessionStatus,
+  getCanvasJson,
+}: AppTopbarProps) {
   // P050: translation helper
   const t = useTranslations();
 
   return (
     <header id="topbar" role="banner" aria-label="Application toolbar">
       <div className="logo" aria-label="SketchGit application logo">
-        <div className="logo-badge" aria-hidden="true">⌥</div>
+        <div className="logo-badge" aria-hidden="true">
+          ⌥
+        </div>
         SketchGit
       </div>
 
@@ -442,9 +581,21 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
         aria-label="Current branch — click to switch branches"
         aria-haspopup="dialog"
       >
-        <div className="dot" id="currentBranchDot" style={{ background: "var(--a1)" }} aria-hidden="true"></div>
-        <span id="currentBranchName" aria-live="polite">main</span>
-        <span style={{ color: "var(--tx3)", marginLeft: "2px" }} aria-hidden="true">▾</span>
+        <div
+          className="dot"
+          id="currentBranchDot"
+          style={{ background: "var(--a1)" }}
+          aria-hidden="true"
+        ></div>
+        <span id="currentBranchName" aria-live="polite">
+          main
+        </span>
+        <span
+          style={{ color: "var(--tx3)", marginLeft: "2px" }}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
       </button>
 
       <span
@@ -455,8 +606,19 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
       ></span>
 
       <div className="sep" role="separator" aria-orientation="vertical"></div>
-      <div className="avatar-row" id="avatarRow" aria-label="Connected peers" role="list"></div>
-      <div className="live-ind" id="liveInd" style={{ display: "none" }} aria-label="Live collaboration active" aria-live="polite"></div>
+      <div
+        className="avatar-row"
+        id="avatarRow"
+        aria-label="Connected peers"
+        role="list"
+      ></div>
+      <div
+        className="live-ind"
+        id="liveInd"
+        style={{ display: "none" }}
+        aria-label="Live collaboration active"
+        aria-live="polite"
+      ></div>
 
       <button
         className="topbtn"
@@ -532,16 +694,29 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
           <Link
             href="/dashboard"
             style={{
-              display: "flex", alignItems: "center", gap: "6px",
-              background: "var(--s2)", border: "1px solid var(--bdr)",
-              borderRadius: "6px", padding: "3px 10px",
-              fontSize: "12px", color: "var(--tx)", textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "var(--s2)",
+              border: "1px solid var(--bdr)",
+              borderRadius: "6px",
+              padding: "3px 10px",
+              fontSize: "12px",
+              color: "var(--tx)",
+              textDecoration: "none",
               cursor: "pointer",
             }}
             aria-label={`Go to My Drawings (signed in as ${session.user.name ?? session.user.email})`}
           >
             <span aria-hidden="true">👤</span>
-            <span style={{ maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span
+              style={{
+                maxWidth: "100px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {session.user.name ?? session.user.email}
             </span>
           </Link>
@@ -549,14 +724,18 @@ export const AppTopbar = React.memo(function AppTopbar({ call, session, sessionS
             className="topbtn"
             onClick={() => signOut({ callbackUrl: "/" })}
             aria-label="Sign out of SketchGit"
-          >{t("topbar.signOut")}</button>
+          >
+            {t("topbar.signOut")}
+          </button>
         </div>
       ) : (
         <button
           className="topbtn"
           onClick={() => signIn()}
           aria-label="Sign in or create a SketchGit account"
-        >{t("topbar.signIn")}</button>
+        >
+          {t("topbar.signIn")}
+        </button>
       )}
     </header>
   );
