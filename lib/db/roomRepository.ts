@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission } from "@prisma/client";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
+import { saveCommitHistogram } from "../server/metrics";
 
 export type { RoomEventType, ShareScope, SharePermission };
 
@@ -53,6 +54,19 @@ export async function ensureRoom(
  * HEAD state. All three writes happen in a single transaction.
  */
 export async function saveCommit(
+  roomId: string,
+  commit: CommitRecord,
+  userId?: string | null
+): Promise<void> {
+  const start = performance.now();
+  try {
+    await saveCommitTransaction(roomId, commit, userId);
+  } finally {
+    saveCommitHistogram.record(performance.now() - start, { storage: "snapshot" });
+  }
+}
+
+async function saveCommitTransaction(
   roomId: string,
   commit: CommitRecord,
   userId?: string | null
@@ -112,6 +126,20 @@ export async function saveCommitWithDelta(
   commit: CommitRecord,
   userId?: string | null,
 ): Promise<void> {
+  const start = performance.now();
+  let storage: "snapshot" | "delta" = "snapshot";
+  try {
+    storage = await saveCommitWithDeltaTransaction(roomId, commit, userId);
+  } finally {
+    saveCommitHistogram.record(performance.now() - start, { storage });
+  }
+}
+
+async function saveCommitWithDeltaTransaction(
+  roomId: string,
+  commit: CommitRecord,
+  userId?: string | null,
+): Promise<"snapshot" | "delta"> {
   let canvasObj: object;
   try {
     canvasObj = JSON.parse(commit.canvas) as object;
@@ -172,6 +200,8 @@ export async function saveCommitWithDelta(
       update: { headSha: commit.sha, headBranch: commit.branch },
     }),
   ]);
+
+  return storageType === CommitStorageType.DELTA ? "delta" : "snapshot";
 }
 
 // ─── Full-state load ──────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { LRUCache } from "lru-cache";
 import type { RoomSnapshot } from "../db/roomRepository";
+import { cacheHitCounter, cacheMissCounter } from "../server/metrics";
 
 export interface RoomSnapshotCacheStats {
   size: number;
@@ -21,7 +22,7 @@ export function createRoomSnapshotCache(maxSize = 200): RoomSnapshotCacheInterfa
   return {
     get(roomId) {
       const v = cache.get(roomId);
-      if (v !== undefined) { hits++; } else { misses++; }
+      if (v !== undefined) { hits++; cacheHitCounter.add(1); } else { misses++; cacheMissCounter.add(1); }
       return v;
     },
     set(roomId, snapshot) { cache.set(roomId, snapshot); },

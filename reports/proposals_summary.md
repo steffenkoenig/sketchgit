@@ -86,6 +86,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/done/P081_react-error-boundaries.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/done/P089_dependency-license-compliance.md) |
 | P060 | Database Connection Pooling with PgBouncer | Reliability, Performance, Scalability | [P060](proposals/done/P060_pgbouncer-connection-pooling.md) |
+| P061 | OpenTelemetry Distributed Tracing and Metrics | Observability, Reliability | [P061](proposals/done/P061_opentelemetry-tracing-metrics.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |
@@ -299,7 +300,7 @@ These proposals address issues discovered in subsequent review cycles. Proposals
 6. **P058** – Bundle analysis (performance; measurable immediate impact)
 7. **P059** – WebSocket compression (performance; one-line config change)
 8. ~~**P060** – PgBouncer (infrastructure; most impact on scaled deployments)~~ ✅ **Done**
-9. **P061** – OpenTelemetry (observability; enables data-driven decisions for remaining work)
+9. ~~**P061** – OpenTelemetry (observability; enables data-driven decisions for remaining work)~~ ✅ **Done**
 10. **P066** – Invitation tokens (security/UX; requires schema migration)
 11. **P067** – Object locking (UX/reliability; requires canvas + WS changes)
 

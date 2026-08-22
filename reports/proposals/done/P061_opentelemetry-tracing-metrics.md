@@ -210,3 +210,46 @@ Make the sample rate configurable via `OTEL_SAMPLE_RATE` env var.
 - Builds on: P010 ✅ (Pino logging; OTEL complements rather than replaces structured logging), P013 ✅ (TypeScript server), P023 ✅ (health check)
 - Complements: P012 ✅ (horizontal scaling; OTEL traces correlate requests across replicas), P043 ✅ (graceful shutdown; OTEL must flush on shutdown)
 - Independent of: Next.js build, client-side code, auth
+
+## Implementation Notes (2026-08-22)
+
+Implemented with one significant architectural deviation, discovered by empirical
+testing rather than assumed from the plan above:
+
+**The proposal's "call `initTelemetry()` as the FIRST import in server.ts" approach
+does not work.** Verified by testing directly: a plain first-import inside a
+tsx-executed `.ts` file produces zero spans — no `node:http`, `pg`, or any other
+auto-instrumentation fires. tsx re-execs itself once to install its own module
+loader, and by the time any `import` statement inside the tsx-run script body
+executes, that ordering no longer guarantees OTel's `require`/`import` hooks wrap
+ahead of the modules they need to patch.
+
+The working pattern (verified against a live Jaeger instance — see below): register
+OpenTelemetry via Node's own `--import` flag, supplied through `NODE_OPTIONS`,
+which loads and runs *before* tsx's loader takes over. This requires:
+- `lib/otelRegister.mjs` (plain JS, not TypeScript — it must be loadable by Node's
+  native ESM loader before tsx exists) does the actual `NodeSDK.start()`, and
+  stores the instance on `globalThis.__sketchgitOtelSdk`.
+- `lib/telemetry.ts` is a thin typed wrapper server.ts imports normally, exposing
+  `shutdownTelemetry()` which reads that global — bridging the two module
+  realms (register.mjs runs via `--import`; server.ts runs via tsx).
+- `package.json`'s `dev`/`start` scripts and the Dockerfile's `ENV NODE_OPTIONS`
+  set `--import=./lib/otelRegister.mjs`, rather than server.ts importing it
+  directly.
+- One cosmetic side effect: tsx's own self-re-exec means `otelRegister.mjs` runs
+  twice per process start (once in tsx's bootstrap process, once in the real
+  long-running one) — two "OpenTelemetry started" log lines at boot, no
+  functional impact (documented in the file).
+
+**Verified end-to-end**, not just unit-tested: brought up real `db` + `pgbouncer`
++ `jaeger` containers, ran the actual `saveCommit()` and `handleWsMessage()`
+production code paths with `OTEL_EXPORTER_OTLP_ENDPOINT` pointed at Jaeger, and
+confirmed via Jaeger's API that both auto-instrumented spans (`pg.query:INSERT`,
+`dns.lookup`, `tcp.connect`, …) and the manual `ws.message.ping` span landed
+correctly. Also smoke-tested the real `npm run dev` entrypoint (full server.ts,
+not an isolated script) against `db`+`pgbouncer` and confirmed `/api/health`
+responds normally with telemetry disabled (default, zero overhead).
+
+**Not implemented**: Jaeger is included in `docker-compose.yml` as documented
+(optional, commented-out `OTEL_EXPORTER_OTLP_ENDPOINT` on `app`), matching the
+proposal's "optional dev dependency" framing.

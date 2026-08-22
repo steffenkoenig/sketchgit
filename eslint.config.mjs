@@ -126,7 +126,7 @@ export default [
     ],
   },
   {
-    files: ["*.mjs", "scripts/**/*.mjs"],
+    files: ["*.mjs", "scripts/**/*.mjs", "lib/otelRegister.mjs"],
     languageOptions: {
       globals: {
         ...globals.node,

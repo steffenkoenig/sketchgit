@@ -99,6 +99,17 @@ const EnvSchema = z.object({
   // not explicitly set. Must be at least 32 characters.
   INVITATION_SECRET: z.string().min(32).optional(),
 
+  // ── OpenTelemetry (P061) ──────────────────────────────────────────────────
+  // Unset by default: telemetry is opt-in. When set, traces and metrics are
+  // exported via OTLP/HTTP to this collector endpoint (e.g. Jaeger, Grafana
+  // Tempo). See lib/otelRegister.mjs, which actually starts the SDK — it must
+  // load before tsx's own loader (see the `dev`/`start` scripts).
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  OTEL_SERVICE_NAME: z.string().default("sketchgit"),
+  // Fraction of traces to sample (0-1). Default 1 = sample everything; lower
+  // for high-traffic deployments to control collector storage/cost.
+  OTEL_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
+
   // ── Share-link token secret (P091) ────────────────────────────────────────
   // HMAC secret used to sign share-link tokens and scope cookies.
   // Falls back to INVITATION_SECRET → AUTH_SECRET when not explicitly set.

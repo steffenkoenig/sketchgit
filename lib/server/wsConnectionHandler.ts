@@ -2,6 +2,8 @@ import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import type { PrismaClient } from "@prisma/client";
+import { trace } from "@opentelemetry/api";
+import { wsMessageCounter } from "./metrics.js";
 
 import type { Env } from "../env.js";
 import { checkRoomAccess, addRoomMember, resolveRoomId, appendRoomEvent, type ClientRole, type RoomAccessResult } from "../db/roomRepository.js";
@@ -89,16 +91,25 @@ async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId
   return access;
 }
 
+const wsTracer = trace.getTracer("sketchgit-ws");
+
 export async function handleWsMessage(client: ClientState, message: WsMessage, roomId: string, clientId: string, logger: pino.Logger, sendTo: (ws: ClientState, payload: WsMessage) => void, broadcastRoom: (roomId: string, payload: WsMessage, excludeClientId?: string | null) => void): Promise<void> {
-  if (message.type === "ping" || message.type === "pong") return;
-  if (client.shareScope === "COMMIT") {
-    if (message.type !== "fullsync-request") { sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Share link grants read-only commit access" } as unknown as WsMessage); return; }
-  }
-  if (message.type === "fullsync-request" || message.type === "fullsync") {
-    const relay: WsMessage = { ...message, senderId: client.clientId, senderName: client.displayName, senderColor: client.displayColor, roomId };
-    broadcastRoom(roomId, relay, client.clientId); return;
-  }
-  logger.warn({ clientId, roomId, type: message.type }, "ws: ignoring legacy inbound message (use REST API)");
+  wsMessageCounter.add(1, { type: message.type });
+  return wsTracer.startActiveSpan(`ws.message.${message.type}`, async (span) => {
+    try {
+      if (message.type === "ping" || message.type === "pong") return;
+      if (client.shareScope === "COMMIT") {
+        if (message.type !== "fullsync-request") { sendTo(client, { type: "error", code: "SHARE_LINK_FORBIDDEN", detail: "Share link grants read-only commit access" } as unknown as WsMessage); return; }
+      }
+      if (message.type === "fullsync-request" || message.type === "fullsync") {
+        const relay: WsMessage = { ...message, senderId: client.clientId, senderName: client.displayName, senderColor: client.displayColor, roomId };
+        broadcastRoom(roomId, relay, client.clientId); return;
+      }
+      logger.warn({ clientId, roomId, type: message.type }, "ws: ignoring legacy inbound message (use REST API)");
+    } finally {
+      span.end();
+    }
+  });
 }
 
 async function processConnection(client: ClientState, reqUrl: URL, deps: ConnectionHandlerDeps) {

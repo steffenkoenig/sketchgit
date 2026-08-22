@@ -82,6 +82,9 @@ COPY --from=builder --chown=sketchgit:nodejs /app/node_modules ./node_modules
 USER sketchgit
 EXPOSE 3000
 ENV PORT=3000
+# P061 – must load before tsx's own loader so OpenTelemetry auto-instrumentation
+# can patch node:http/pg/ioredis; no-ops when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+ENV NODE_OPTIONS=--import=./lib/otelRegister.mjs
 
 # Health check – polls the /api/health endpoint added in P023.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

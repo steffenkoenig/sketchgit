@@ -33,6 +33,8 @@ import { parseAllowedOrigins } from "./lib/server/allowedOrigins.js";
 import { parseCookies } from "./lib/server/cookieHelpers.js";
 import { getGlobalPresence } from "./lib/server/presence.js";
 import { initRoomBroadcaster } from "./lib/server/wsRoomBroadcaster.js";
+import { shutdownTelemetry } from "./lib/telemetry.js";
+import { wsConnectionGauge } from "./lib/server/metrics.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -192,6 +194,13 @@ type ClientState = WebSocket & {
 };
 
 const rooms = new Map<string, Map<string, ClientState>>();
+
+// P061 – report the live WebSocket connection count on each metrics export tick.
+wsConnectionGauge.addCallback((result) => {
+  let total = 0;
+  for (const room of rooms.values()) total += room.size;
+  result.observe(total);
+});
 
 // P030 – LRU snapshot cache to avoid re-loading DB state on every connection.
 const roomCache = createRoomSnapshotCache();
@@ -800,6 +809,9 @@ void app.prepare()
 
     // 5. Disconnect from the database
     await prisma.$disconnect();
+
+    // 6. P061 – flush any pending OpenTelemetry spans/metrics before exit.
+    await shutdownTelemetry();
 
     logger.info("Graceful shutdown complete");
     process.exit(0);

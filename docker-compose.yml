@@ -63,6 +63,18 @@ services:
       retries: 5
       start_period: 10s
 
+  # P061: Local OTLP collector + UI for OpenTelemetry traces. Optional — only
+  # useful when `app`'s OTEL_EXPORTER_OTLP_ENDPOINT is set (see .env.example).
+  # UI: http://localhost:16686
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4318:4318"   # OTLP HTTP receiver
+
   app:
     build: .
     ports:
@@ -80,6 +92,8 @@ services:
       NODE_ENV: production
       # P012: Redis URL for horizontal scalability (optional – remove to run single-instance)
       REDIS_URL: redis://redis:6379
+      # P061: uncomment to send traces/metrics to the local Jaeger instance above.
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     # Run Prisma migrations then start the server
     command: >
       sh -c "npx prisma migrate deploy && node_modules/.bin/tsx server.ts"
@@ -90,6 +104,8 @@ services:
         condition: service_healthy
       pgbouncer:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
