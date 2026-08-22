@@ -2293,7 +2293,7 @@ describe('CanvasEngine – connector snapping and following', () => {
     (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
 
     const eng = engine as unknown as {
-      rebuildSketchPathForMove: (p: unknown, x1: number, y1: number, x2: number, y2: number) => void;
+      rebuildSketchPathForMove: (p: unknown, x1: number, y1: number, x2: number, y2: number) => FabricObject | null;
     };
     eng.rebuildSketchPathForMove(sketchPath, 10, 20, 80, 90);
 
