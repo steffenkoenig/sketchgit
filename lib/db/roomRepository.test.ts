@@ -38,6 +38,13 @@ vi.mock('@/lib/db/prisma', () => {
       create: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
     },
+    roomSubscription: {
+      upsert: vi.fn(),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findUnique: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   };
   // P088 – prismaRead/prismaWrite alias the same mock client (matches the
   // no-replica-configured default this repo runs under in tests).
@@ -56,6 +63,15 @@ import {
   listRoomMembers,
   setRoomMemberRole,
   COMMIT_PAGE_SIZE,
+  upsertRoomSubscription,
+  deleteRoomSubscription,
+  deleteRoomSubscriptionById,
+  getRoomSubscription,
+  getUserSubscriptions,
+  claimSubscriptionForDigest,
+  revertDigestClaim,
+  getDueSubscriptions,
+  getRoomEventsSince,
   type CommitRecord,
 } from './roomRepository';
 import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
@@ -549,5 +565,154 @@ describe('setRoomMemberRole (P091)', () => {
     const result = await setRoomMemberRole('room_1', 'usr_1', 'VIEWER');
     expect(result).toEqual({ ok: true });
     expect(prisma.roomMembership.count).not.toHaveBeenCalled();
+  });
+});
+
+describe('Room email subscriptions (P094)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  describe('upsertRoomSubscription', () => {
+    it('upserts on the roomId_userId composite key', async () => {
+      (prisma.roomSubscription.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      await upsertRoomSubscription('room_1', 'usr_1', 'DAILY');
+      expect(prisma.roomSubscription.upsert).toHaveBeenCalledWith({
+        where: { roomId_userId: { roomId: 'room_1', userId: 'usr_1' } },
+        create: { roomId: 'room_1', userId: 'usr_1', frequency: 'DAILY' },
+        update: { frequency: 'DAILY' },
+      });
+    });
+  });
+
+  describe('deleteRoomSubscription / deleteRoomSubscriptionById', () => {
+    it('returns true when a row was deleted', async () => {
+      (prisma.roomSubscription.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+      expect(await deleteRoomSubscription('room_1', 'usr_1')).toBe(true);
+    });
+
+    it('returns false when no row matched', async () => {
+      (prisma.roomSubscription.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+      expect(await deleteRoomSubscription('room_1', 'usr_1')).toBe(false);
+    });
+
+    it('deleteRoomSubscriptionById deletes by id, not roomId/userId', async () => {
+      (prisma.roomSubscription.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+      const result = await deleteRoomSubscriptionById('sub_1');
+      expect(result).toBe(true);
+      expect(prisma.roomSubscription.deleteMany).toHaveBeenCalledWith({ where: { id: 'sub_1' } });
+    });
+  });
+
+  describe('getRoomSubscription', () => {
+    it('returns null when no subscription exists', async () => {
+      (prisma.roomSubscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      expect(await getRoomSubscription('room_1', 'usr_1')).toBeNull();
+    });
+
+    it('returns the subscription id and frequency', async () => {
+      (prisma.roomSubscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'sub_1', frequency: 'HOURLY' });
+      expect(await getRoomSubscription('room_1', 'usr_1')).toEqual({ id: 'sub_1', frequency: 'HOURLY' });
+    });
+  });
+
+  describe('getUserSubscriptions', () => {
+    it('maps rows to flattened summaries with roomSlug', async () => {
+      (prisma.roomSubscription.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: 'sub_1', roomId: 'room_1', frequency: 'DAILY', createdAt: new Date(1000), room: { slug: 'my-room' } },
+        { id: 'sub_2', roomId: 'room_2', frequency: 'HOURLY', createdAt: new Date(2000), room: { slug: null } },
+      ]);
+      const result = await getUserSubscriptions('usr_1');
+      expect(result).toEqual([
+        { id: 'sub_1', roomId: 'room_1', frequency: 'DAILY', createdAt: new Date(1000), roomSlug: 'my-room' },
+        { id: 'sub_2', roomId: 'room_2', frequency: 'HOURLY', createdAt: new Date(2000), roomSlug: null },
+      ]);
+    });
+  });
+
+  describe('claimSubscriptionForDigest', () => {
+    it('returns true when the conditional update matched a row', async () => {
+      (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+      const windowStart = new Date('2026-01-01T00:00:00Z');
+      const sentAt = new Date('2026-01-02T00:00:00Z');
+      const result = await claimSubscriptionForDigest('sub_1', windowStart, sentAt);
+      expect(result).toBe(true);
+      expect(prisma.roomSubscription.updateMany).toHaveBeenCalledWith({
+        where: { id: 'sub_1', OR: [{ lastSentAt: null }, { lastSentAt: { lt: windowStart } }] },
+        data: { lastSentAt: sentAt },
+      });
+    });
+
+    it('returns false when another instance already claimed it (0 rows matched)', async () => {
+      (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+      const result = await claimSubscriptionForDigest('sub_1', new Date(), new Date());
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('revertDigestClaim', () => {
+    it('restores the previous lastSentAt, guarded on the exact sentAt this call set', async () => {
+      (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+      const sentAt = new Date('2026-01-02T00:00:00Z');
+      const previous = new Date('2026-01-01T00:00:00Z');
+      await revertDigestClaim('sub_1', sentAt, previous);
+      expect(prisma.roomSubscription.updateMany).toHaveBeenCalledWith({
+        where: { id: 'sub_1', lastSentAt: sentAt },
+        data: { lastSentAt: previous },
+      });
+    });
+
+    it('reverts to null when there was no previous send', async () => {
+      (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+      const sentAt = new Date('2026-01-02T00:00:00Z');
+      await revertDigestClaim('sub_1', sentAt, null);
+      expect(prisma.roomSubscription.updateMany).toHaveBeenCalledWith({
+        where: { id: 'sub_1', lastSentAt: sentAt },
+        data: { lastSentAt: null },
+      });
+    });
+  });
+
+  describe('getDueSubscriptions', () => {
+    it('filters out subscribers with no email and flattens the shape, including lastSentAt', async () => {
+      const lastSentAt = new Date('2025-12-31T00:00:00Z');
+      (prisma.roomSubscription.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: 'sub_1', roomId: 'room_1', userId: 'usr_1', lastSentAt, user: { email: 'a@b.com' }, room: { slug: 'my-room' } },
+        { id: 'sub_2', roomId: 'room_2', userId: 'usr_2', lastSentAt: null, user: { email: null }, room: { slug: null } },
+      ]);
+      const result = await getDueSubscriptions('DAILY', new Date('2026-01-01T00:00:00Z'));
+      // The email:null row would already be excluded by the DB-level
+      // `user: { email: { not: null } }` filter in the real query; the
+      // in-memory filter here is a defensive belt-and-suspenders guard.
+      expect(result).toEqual([
+        { id: 'sub_1', roomId: 'room_1', userId: 'usr_1', userEmail: 'a@b.com', roomSlug: 'my-room', lastSentAt },
+      ]);
+    });
+
+    it('queries with the frequency and windowStart passed through', async () => {
+      (prisma.roomSubscription.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      const windowStart = new Date('2026-01-01T00:00:00Z');
+      await getDueSubscriptions('HOURLY', windowStart);
+      expect(prisma.roomSubscription.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            frequency: 'HOURLY',
+            OR: [{ lastSentAt: null }, { lastSentAt: { lt: windowStart } }],
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('getRoomEventsSince', () => {
+    it('queries events created after the given date, oldest-first, capped at 200', async () => {
+      (prisma.roomEvent.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      const since = new Date('2026-01-01T00:00:00Z');
+      await getRoomEventsSince('room_1', since);
+      expect(prisma.roomEvent.findMany).toHaveBeenCalledWith({
+        where: { roomId: 'room_1', createdAt: { gt: since } },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+        select: { id: true, eventType: true, actorId: true, payload: true, createdAt: true },
+      });
+    });
   });
 });

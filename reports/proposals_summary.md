@@ -97,6 +97,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/done/P088_database-read-replica.md) |
 | P092 | Offline Mode and Background Synchronization | Reliability, UX | [P092](proposals/done/P092_offline-mode-sync.md) |
 | P093 | Room Password Protection | Security | [P093](proposals/done/P093_room-password-protection.md) |
+| P094 | Email Notifications for Room Activity | UX, Collaboration | [P094](proposals/done/P094_email-notifications-room-activity.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |
@@ -126,7 +127,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/P081_react-error-boundaries.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
 | P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/done/P091_granular-share-links.md) |
-| P094 | Email Notifications for Room Activity | UX, Collaboration | [P094](proposals/P094_email-notifications-room-activity.md) |
 | P095 | Custom Templates and Shape Library | UX, Productivity | [P095](proposals/P095_custom-templates-shape-library.md) |
 | P096 | Canvas Minimap / Radar View | UX | [P096](proposals/P096_canvas-minimap-radar.md) |
 

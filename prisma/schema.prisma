@@ -31,6 +31,7 @@ model User {
   roomEvents       RoomEvent[]      @relation("RoomEventActor")
   createdInvitations RoomInvitation[] @relation("RoomInvitationCreator")
   createdShareLinks  ShareLink[]      @relation("ShareLinkCreator")
+  roomSubscriptions  RoomSubscription[]
 }
 
 model Account {
@@ -91,6 +92,7 @@ model Room {
   events      RoomEvent[]
   invitations RoomInvitation[]
   shareLinks  ShareLink[]
+  subscriptions RoomSubscription[]
 }
 
 model RoomMembership {
@@ -268,4 +270,34 @@ model FeatureFlag {
   targetScope Json     @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ─── Room email subscriptions (P094) ──────────────────────────────────────
+
+enum DigestFrequency {
+  HOURLY
+  DAILY
+}
+
+model RoomSubscription {
+  id        String          @id @default(cuid())
+  roomId    String
+  userId    String
+  frequency DigestFrequency @default(DAILY)
+  createdAt DateTime        @default(now())
+  /// Set by the digest job when a digest covering activity up to this
+  /// subscription's last-sent window was successfully dispatched. Also
+  /// doubles as the atomic dispatch claim: the job does an UPDATE ...
+  /// WHERE lastSentAt IS NULL OR lastSentAt < :windowStart, and only the
+  /// instance whose UPDATE actually matched the row sends the email —
+  /// safe under concurrent/multi-instance job runs without a Redis lock.
+  lastSentAt DateTime?
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  // Digest job scans "due" subscriptions per frequency tier.
+  @@index([frequency, lastSentAt])
+  @@index([userId])
 }

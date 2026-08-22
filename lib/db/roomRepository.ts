@@ -7,7 +7,7 @@
 // set (falls back to the primary otherwise); prismaWrite always targets the
 // primary. See the per-function routing decisions below.
 import { prismaRead, prismaWrite } from "@/lib/db/prisma";
-import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission } from "@prisma/client";
+import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission, DigestFrequency } from "@prisma/client";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 import { migrateCanvasJson } from "../sketchgit/git/canvasSchemaMigrations";
 import { SchemaVersionTooNewError } from "../sketchgit/git/canvasSchemaVersion";
@@ -464,6 +464,29 @@ export async function getRoomEvents(
     },
     orderBy: { createdAt: "desc" },
     take: Math.min(take, 100),
+    select: { id: true, eventType: true, actorId: true, payload: true, createdAt: true },
+  });
+}
+
+/**
+ * P094 – Returns events for a room created after `since`, oldest-first (the
+ * natural chronological read order for a digest email), capped at 200 to
+ * bound a single digest's size for a very high-activity room.
+ */
+export async function getRoomEventsSince(
+  roomId: string,
+  since: Date,
+): Promise<Array<{
+  id: string;
+  eventType: RoomEventType;
+  actorId: string | null;
+  payload: unknown;
+  createdAt: Date;
+}>> {
+  return prismaRead.roomEvent.findMany({
+    where: { roomId, createdAt: { gt: since } },
+    orderBy: { createdAt: "asc" },
+    take: 200,
     select: { id: true, eventType: true, actorId: true, payload: true, createdAt: true },
   });
 }
@@ -1097,4 +1120,144 @@ export async function revokeShareLink(
 export async function revokeAllShareLinks(roomId: string): Promise<number> {
   const result = await prismaWrite.shareLink.deleteMany({ where: { roomId } });
   return result.count;
+}
+
+// ─── Room email subscriptions (P094) ───────────────────────────────────────
+
+export interface RoomSubscriptionSummary {
+  id: string;
+  roomId: string;
+  frequency: DigestFrequency;
+  createdAt: Date;
+  roomSlug: string | null;
+}
+
+/**
+ * Create or update the calling user's subscription for a room. Upsert:
+ * changing frequency on an existing subscription does not reset
+ * `lastSentAt` (a user switching from DAILY to HOURLY still only gets
+ * caught up on activity since their last digest, not a duplicate one).
+ */
+export async function upsertRoomSubscription(
+  roomId: string,
+  userId: string,
+  frequency: DigestFrequency,
+): Promise<void> {
+  await prismaWrite.roomSubscription.upsert({
+    where: { roomId_userId: { roomId, userId } },
+    create: { roomId, userId, frequency },
+    update: { frequency },
+  });
+}
+
+/** Removes a user's subscription to a room. Returns true if a row was deleted. */
+export async function deleteRoomSubscription(roomId: string, userId: string): Promise<boolean> {
+  const result = await prismaWrite.roomSubscription.deleteMany({ where: { roomId, userId } });
+  return result.count > 0;
+}
+
+/** Removes a subscription by its own id (used by the one-click unsubscribe link). */
+export async function deleteRoomSubscriptionById(id: string): Promise<boolean> {
+  const result = await prismaWrite.roomSubscription.deleteMany({ where: { id } });
+  return result.count > 0;
+}
+
+/** Returns the calling user's subscription for a room, or null if not subscribed. */
+export async function getRoomSubscription(
+  roomId: string,
+  userId: string,
+): Promise<{ id: string; frequency: DigestFrequency } | null> {
+  return prismaRead.roomSubscription.findUnique({
+    where: { roomId_userId: { roomId, userId } },
+    select: { id: true, frequency: true },
+  });
+}
+
+/** Lists all of a user's active room subscriptions, newest-first — for the dashboard. */
+export async function getUserSubscriptions(userId: string): Promise<RoomSubscriptionSummary[]> {
+  const rows = await prismaRead.roomSubscription.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, roomId: true, frequency: true, createdAt: true, room: { select: { slug: true } } },
+  });
+  return rows.map((r) => ({ id: r.id, roomId: r.roomId, frequency: r.frequency, createdAt: r.createdAt, roomSlug: r.room.slug }));
+}
+
+/**
+ * P094 – Atomically claims a due subscription for digest dispatch.
+ *
+ * The digest job SELECTs candidate subscriptions (via getDueSubscriptions)
+ * then calls this for each before actually sending an email. The WHERE
+ * clause (`lastSentAt IS NULL OR lastSentAt < windowStart`) means only one
+ * concurrent caller's UPDATE can match a given row — safe under multiple
+ * server instances running the same interval-based job without a Redis
+ * lock. Returns true if this call won the claim (an email should be sent);
+ * false means another instance already claimed (or is claiming) it this
+ * cycle.
+ */
+export async function claimSubscriptionForDigest(
+  id: string,
+  windowStart: Date,
+  sentAt: Date,
+): Promise<boolean> {
+  const result = await prismaWrite.roomSubscription.updateMany({
+    where: { id, OR: [{ lastSentAt: null }, { lastSentAt: { lt: windowStart } }] },
+    data: { lastSentAt: sentAt },
+  });
+  return result.count > 0;
+}
+
+/**
+ * P094 – Reverts a claim made by claimSubscriptionForDigest() when the
+ * email send itself failed, restoring `previousLastSentAt` so the
+ * subscription is "due" again on the next job tick rather than silently
+ * skipping that digest until the next full window (an hour/day later).
+ * This is the retry mechanism referenced in the proposal's reliability
+ * requirement — retried on the next tick rather than true exponential
+ * backoff, since the job itself already runs on a fixed interval.
+ *
+ * Guarded by an `updatedAt`-free compare against `sentAt` implicitly via
+ * the caller passing back exactly the value it just set: if a *different*
+ * job run already re-claimed this subscription in the meantime (e.g. this
+ * one was slow and another instance's tick already retried it), this
+ * no-ops rather than clobbering that newer claim.
+ */
+export async function revertDigestClaim(
+  id: string,
+  sentAt: Date,
+  previousLastSentAt: Date | null,
+): Promise<void> {
+  await prismaWrite.roomSubscription.updateMany({
+    where: { id, lastSentAt: sentAt },
+    data: { lastSentAt: previousLastSentAt },
+  });
+}
+
+/**
+ * P094 – Returns subscriptions of the given frequency that are due for a
+ * digest (never sent, or last sent before `windowStart`), along with the
+ * subscriber's email and room slug for composing the digest.
+ */
+export async function getDueSubscriptions(
+  frequency: DigestFrequency,
+  windowStart: Date,
+): Promise<Array<{ id: string; roomId: string; userId: string; userEmail: string; roomSlug: string | null; lastSentAt: Date | null }>> {
+  const rows = await prismaRead.roomSubscription.findMany({
+    where: {
+      frequency,
+      OR: [{ lastSentAt: null }, { lastSentAt: { lt: windowStart } }],
+      user: { email: { not: null } },
+    },
+    select: {
+      id: true,
+      roomId: true,
+      userId: true,
+      lastSentAt: true,
+      user: { select: { email: true } },
+      room: { select: { slug: true } },
+    },
+  });
+  return rows
+    .filter((r): r is typeof r & { user: { email: string } } => r.user.email !== null)
+    .map((r) => ({ id: r.id, roomId: r.roomId, userId: r.userId, userEmail: r.user.email, roomSlug: r.room.slug, lastSentAt: r.lastSentAt }));
 }

@@ -216,7 +216,9 @@ All variables are validated at startup via `lib/env.ts`. Copy `.env.example` for
 | `REDIS_URL` | — | Redis URL (required for multi-instance) |
 | `REDIS_MODE` | — | `standalone` (default), `sentinel`, or `cluster` |
 | `GITHUB_ID` / `GITHUB_SECRET` | — | GitHub OAuth credentials |
-| `RESEND_API_KEY` / `EMAIL_FROM` | — | Email sending for password reset |
+| `RESEND_API_KEY` / `EMAIL_FROM` | — | Email sending (password reset, 2FA codes, room activity digests) — absent in dev, emails silently no-op |
+| `DIGEST_JOB_INTERVAL_MINUTES` | — | How often the room-activity email digest job checks for due subscriptions (default: 15) |
+| `EMAIL_UNSUBSCRIBE_SECRET` | — | HMAC secret for one-click unsubscribe links (default: falls back to `AUTH_SECRET`) |
 | `MAX_CLIENTS_PER_ROOM` | — | Max WebSocket clients per room (default: 50) |
 | `INVITATION_SECRET` | — | HMAC secret for invitation tokens |
 | `ROOM_EVENT_RETENTION_DAYS` | — | Activity feed retention in days (default: 90) |

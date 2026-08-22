@@ -20,6 +20,8 @@ export type RoomSettingsModalProps = {
   roomId: string | null;
 };
 
+type DigestFrequency = "HOURLY" | "DAILY";
+
 export function RoomSettingsModal({ isOpen, onClose, roomId }: RoomSettingsModalProps) {
   const t = useTranslations();
   const [password, setPassword] = useState("");
@@ -27,6 +29,13 @@ export function RoomSettingsModal({ isOpen, onClose, roomId }: RoomSettingsModal
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // ── P094: email subscription state ─────────────────────────────────────
+  const [subscribed, setSubscribed] = useState(false);
+  const [frequency, setFrequency] = useState<DigestFrequency>("DAILY");
+  const [subLoading, setSubLoading] = useState(false);
+  const [subSaving, setSubSaving] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
 
   // P093 accessibility requirement — same focus-trap/Escape-key handling
   // the vanilla-DOM modals already have (lib/sketchgit/ui/modals.ts).
@@ -57,6 +66,60 @@ export function RoomSettingsModal({ isOpen, onClose, roomId }: RoomSettingsModal
     setPassword("");
     setHasPassword(null);
   }, [isOpen]);
+
+  // P094 – load the caller's current subscription state each time the
+  // modal opens (separate from the password logic above — subscriptions
+  // are per-caller, not owner-only, so this works for any signed-in user).
+  useEffect(() => {
+    if (!isOpen || !roomId) return;
+    setSubError(null);
+    setSubLoading(true);
+    fetch(`/api/rooms/${encodeURIComponent(roomId)}/subscribe`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { subscription: { frequency: DigestFrequency } | null } | null) => {
+        if (data?.subscription) {
+          setSubscribed(true);
+          setFrequency(data.subscription.frequency);
+        } else {
+          setSubscribed(false);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSubLoading(false));
+  }, [isOpen, roomId]);
+
+  const saveSubscription = useCallback(
+    async (nextSubscribed: boolean, nextFrequency: DigestFrequency) => {
+      if (!roomId) return;
+      setSubSaving(true);
+      setSubError(null);
+      try {
+        if (nextSubscribed) {
+          const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/subscribe`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ frequency: nextFrequency }),
+          });
+          if (res.ok) {
+            setSubscribed(true);
+            setFrequency(nextFrequency);
+          } else {
+            const err = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+            setSubError(resolveApiError(err));
+          }
+        } else {
+          const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/subscribe`, { method: "DELETE" });
+          if (res.ok) setSubscribed(false);
+          else setSubError(t("errors.INTERNAL_ERROR"));
+        }
+      } catch {
+        setSubError(t("errors.INTERNAL_ERROR"));
+      } finally {
+        setSubSaving(false);
+      }
+    },
+    [roomId, resolveApiError, t],
+  );
 
   const submitPassword = useCallback(
     async (newPassword: string | null) => {
@@ -154,6 +217,46 @@ export function RoomSettingsModal({ isOpen, onClose, roomId }: RoomSettingsModal
             </button>
           </div>
         </form>
+
+        <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid var(--bdr)" }} />
+
+        <h3 style={{ fontSize: "14px", margin: "0 0 8px" }}>Email updates</h3>
+        <p className="info-box">Get an email digest summarizing new commits and activity in this room.</p>
+        {subLoading ? (
+          <p>Loading…</p>
+        ) : (
+          <>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="checkbox"
+                checked={subscribed}
+                disabled={subSaving}
+                onChange={(e) => void saveSubscription(e.target.checked, frequency)}
+                aria-describedby={subError ? "roomSettingsSubError" : undefined}
+              />
+              Email me updates for this room
+            </label>
+            {subscribed && (
+              <div style={{ marginTop: "8px" }}>
+                <label htmlFor="roomSettingsFrequency">Frequency</label>
+                <select
+                  id="roomSettingsFrequency"
+                  value={frequency}
+                  disabled={subSaving}
+                  onChange={(e) => void saveSubscription(true, e.target.value as DigestFrequency)}
+                >
+                  <option value="HOURLY">Hourly digest</option>
+                  <option value="DAILY">Daily digest</option>
+                </select>
+              </div>
+            )}
+            {subError && (
+              <p id="roomSettingsSubError" role="alert" className="info-box error">
+                {subError}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

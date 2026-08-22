@@ -28,6 +28,7 @@ import { validateEnv } from "./lib/env.js";
 import type { WsMessage } from "./lib/sketchgit/types.js";
 import { createRoomSnapshotCache } from "./lib/cache/roomSnapshotCache.js";
 import { pruneInactiveRooms, type ClientRole } from "./lib/db/roomRepository.js";
+import { runDigestJob } from "./lib/server/digestJob.js";
 import { wrapWithReadFallback } from "./lib/db/prisma.js";
 import { checkDbHealth } from "./lib/db/health.js";
 import { parseAllowedOrigins } from "./lib/server/allowedOrigins.js";
@@ -565,6 +566,36 @@ pruneJobTimer = startPruningJob(
   env.ROOM_EVENT_RETENTION_DAYS,
 );
 
+// P094 – periodic room activity digest job. Same setInterval + reentrancy-
+// guard pattern as the pruning job above; multi-instance safety comes from
+// runDigestJob()'s own atomic claim on each subscription (see
+// lib/server/digestJob.ts), not from anything server.ts needs to coordinate.
+function startDigestJob(intervalMs: number): ReturnType<typeof setInterval> {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) {
+      logger.warn("digest: previous job still running, skipping this interval");
+      return;
+    }
+    running = true;
+    void runDigestJob()
+      .then((result) => {
+        const totalSent = result.HOURLY.sent + result.DAILY.sent;
+        if (totalSent > 0) {
+          logger.info({ result }, "digest: sent room activity emails");
+        }
+      })
+      .catch((err: unknown) => logger.error({ err }, "digest: job run failed"))
+      .finally(() => {
+        running = false;
+      });
+  }, intervalMs);
+  timer.unref();
+  return timer;
+}
+
+const digestJobTimer = startDigestJob(env.DIGEST_JOB_INTERVAL_MINUTES * 60 * 1000);
+
 /**
  * P042 – Helper to wrap an async event-handler in a synchronous callback.
  * Catches any rejection from the async body and logs it, preventing unhandled
@@ -812,6 +843,8 @@ void app.prepare()
     clearInterval(pingInterval);
     // P032 – stop pruning job
     if (pruneJobTimer) clearInterval(pruneJobTimer);
+    // P094 – stop the digest job
+    clearInterval(digestJobTimer);
     // P044 – cancel any pending presence-debounce timers so they don't fire
     // after the server has begun shutting down.
     presenceDebounceTimers.forEach((timer) => clearTimeout(timer));

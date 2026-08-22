@@ -6,13 +6,14 @@
  */
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getUserRooms, type RoomSummary } from "@/lib/db/roomRepository";
+import { getUserRooms, getUserSubscriptions, type RoomSummary } from "@/lib/db/roomRepository";
 import { userHasPassword } from "@/lib/db/userRepository";
 import { getAuthSession } from "@/lib/authTypes";
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { DeleteAccountButton } from "@/components/auth/DeleteAccountButton";
 import { RenameRoomButton } from "@/components/dashboard/RenameRoomButton";
+import { SubscriptionsList } from "@/components/dashboard/SubscriptionsList";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -29,6 +30,9 @@ export default async function DashboardPage() {
   // P041: Check if the user has a credentials password to conditionally require
   // password re-entry in the delete confirmation dialog.
   const hasPassword = await userHasPassword(userId);
+
+  // P094 – room activity email subscriptions
+  const subscriptions = await getUserSubscriptions(userId);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
@@ -50,6 +54,15 @@ export default async function DashboardPage() {
           </div>
         )}
       </main>
+
+      <SubscriptionsList
+        initialSubscriptions={subscriptions.map((s) => ({
+          id: s.id,
+          roomId: s.roomId,
+          roomSlug: s.roomSlug,
+          frequency: s.frequency,
+        }))}
+      />
     </div>
   );
 }

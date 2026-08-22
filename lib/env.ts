@@ -82,6 +82,13 @@ const EnvSchema = z.object({
   PRUNE_INACTIVE_ROOMS_DAYS: z.coerce.number().int().min(1).default(30),
   PRUNE_INTERVAL_HOURS: z.coerce.number().int().min(1).default(24),
 
+  // ── Optional – room activity email digests (P094) ─────────────────────────
+  // How often the digest job checks for due subscriptions. Independent of
+  // the subscription's own frequency (HOURLY/DAILY) — this just needs to be
+  // frequent enough that an HOURLY subscriber's digest goes out reasonably
+  // close to an hour after their window opened, not exactly on the hour.
+  DIGEST_JOB_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(15),
+
   // ── Optional – room capacity limit (P069) ─────────────────────────────────
   // Maximum number of simultaneous WebSocket clients allowed in a single room.
   // Connections beyond this limit receive a ROOM_FULL error and are closed.

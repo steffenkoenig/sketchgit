@@ -11,6 +11,7 @@ import { z } from "zod";
 import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { createPasswordResetToken } from "@/lib/db/userRepository";
+import { sendEmail } from "@/lib/server/email";
 
 const Schema = z.object({
   email: z.string().email().max(254),
@@ -33,23 +34,15 @@ export async function POST(req: NextRequest) {
     const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
     const resetLink = `${baseUrl}/auth/reset-password?token=${token}`;
 
-    // Send email when credentials are configured; otherwise log for dev.
-    if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
-      try {
-        const { Resend } = await import("resend");
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        await resend.emails.send({
-          from: process.env.EMAIL_FROM,
-          to: email,
-          subject: "Reset your SketchGit password",
-          html: `<p>Click the link below to reset your password (valid for 24 hours):</p>
+    // Send email when credentials are configured; otherwise a silent no-op (dev mode).
+    // sendEmail() never throws — failures are not surfaced to the caller.
+    await sendEmail({
+      to: email,
+      subject: "Reset your SketchGit password",
+      html: `<p>Click the link below to reset your password (valid for 24 hours):</p>
 <p><a href="${resetLink}">${resetLink}</a></p>
 <p>If you did not request this, you can safely ignore this email.</p>`,
-        });
-      } catch {
-        // Do not surface email-send failures to the caller.
-      }
-    }
+    });
   }
 
   return NextResponse.json({ message: SAFE_MESSAGE });
