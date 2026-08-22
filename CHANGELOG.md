@@ -6,6 +6,21 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.11.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.2...sketchgit-next-v0.11.0) (2026-08-22)
+
+
+### Features
+
+* implement P060 PgBouncer transaction-mode connection pooling ([1c092e5](https://github.com/steffenkoenig/sketchgit/commit/1c092e556e443610a5faebba05cae72647410fa5))
+* implement P061 OpenTelemetry distributed tracing and metrics ([404ed72](https://github.com/steffenkoenig/sketchgit/commit/404ed721164f20ea53c2070b441330e3a1af8a51))
+* implement P082 automated accessibility testing with axe-core ([811140f](https://github.com/steffenkoenig/sketchgit/commit/811140fae24d869d4ebd62520599b7e9f9073242))
+* implement P083 load and stress testing with k6 ([a6eeebd](https://github.com/steffenkoenig/sketchgit/commit/a6eeebdbf42dc3ef88e0b752d1362aa3d9ee365b))
+* implement P085 canvas JSON schema versioning and migration ([490d95b](https://github.com/steffenkoenig/sketchgit/commit/490d95b89e142cd11216bc7754d62fb1421b733f))
+* implement P086 GitHub Copilot custom skills for scaffolding ([c875c9e](https://github.com/steffenkoenig/sketchgit/commit/c875c9e182a72defe1492e1cedbc905c73d3e9dc))
+* implement P087 visual regression testing with Playwright snapshots ([7f81dd0](https://github.com/steffenkoenig/sketchgit/commit/7f81dd0760aecbca5bc01ec8020c798f1bf684ef))
+* implement P090 feature flag system; fix missing 2FA migration ([0fb28c0](https://github.com/steffenkoenig/sketchgit/commit/0fb28c09a0920f3565b2bc794ac1c5a65a590384))
+* implement P091 room roles and permissions; fix 3 severe production bugs ([ab03c87](https://github.com/steffenkoenig/sketchgit/commit/ab03c872b906e20d96034f73f5f04c91195fdfbf))
+
 ## [0.10.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.1...sketchgit-next-v0.10.2) (2026-08-21)
 
 
