@@ -18,6 +18,9 @@ import bcrypt from "bcryptjs";
 // P088 – prismaRead routes to the read replica when configured; prismaWrite
 // always targets the primary. See the per-function routing decisions below.
 import { prismaRead, prismaWrite } from "@/lib/db/prisma";
+// P093 – shared with room-password hashing (app/api/rooms/[roomId]/unlock)
+// so both use identical, already-audited Argon2id parameters.
+import { ARGON2_OPTIONS } from "@/lib/passwordHashing";
 
 export interface CreateUserInput {
   email: string;
@@ -33,14 +36,6 @@ export interface PublicUser {
   twoFactorEnabled: boolean;
   createdAt: Date;
 }
-
-// ─── Argon2id parameters (OWASP recommendation) ────────────────────────────────
-const ARGON2_OPTIONS: argon2.Options & { raw?: false } = {
-  type: argon2.argon2id,
-  memoryCost: 65536,  // 64 MB
-  timeCost: 3,
-  parallelism: 4,
-};
 
 /**
  * Returns true when `hash` is a bcrypt hash (legacy format: "$2b$…" or "$2a$…").

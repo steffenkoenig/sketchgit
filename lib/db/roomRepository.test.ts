@@ -444,6 +444,57 @@ describe('checkRoomAccess (P034)', () => {
     const result = await checkRoomAccess('priv-room', 'usr_owner');
     expect(result).toEqual({ allowed: true, role: 'OWNER' });
   });
+
+  // ── P093: password protection ──────────────────────────────────────────
+
+  it('denies access to a password-protected public room without an unlock', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash123', ownerId: null });
+    const result = await checkRoomAccess('pw-room', null);
+    expect(result).toEqual({ allowed: false, reason: 'PASSWORD_REQUIRED' });
+  });
+
+  it('denies an authenticated non-owner without an unlock, even with membership', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash123', ownerId: 'usr_owner' });
+    const result = await checkRoomAccess('pw-room', 'usr_member');
+    expect(result).toEqual({ allowed: false, reason: 'PASSWORD_REQUIRED' });
+    // Membership lookup should short-circuit before this — password gate wins.
+    expect(mock.membershipFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('allows access to a password-protected room when hasPasswordUnlock is true', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash123', ownerId: null });
+    const result = await checkRoomAccess('pw-room', null, true);
+    expect(result).toEqual({ allowed: true, role: 'EDITOR' });
+  });
+
+  it('allows the room owner into a password-protected room without an unlock', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash123', ownerId: 'usr_owner' });
+    mock.membershipFindUnique.mockResolvedValue(null);
+    const result = await checkRoomAccess('pw-room', 'usr_owner', false);
+    expect(result.allowed).toBe(true);
+  });
+
+  it('does not treat an anonymous requester as the owner of an ownerless password-protected room', async () => {
+    // Regression guard: ownerId is nullable, and userId is null for anonymous
+    // requesters — `userId === room.ownerId` must not evaluate true for
+    // null === null, or anonymous users would bypass every ownerless room's
+    // password.
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash123', ownerId: null });
+    const result = await checkRoomAccess('pw-room', null, false);
+    expect(result).toEqual({ allowed: false, reason: 'PASSWORD_REQUIRED' });
+  });
+
+  it('does not require a password when passwordHash is null', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: null, ownerId: null });
+    const result = await checkRoomAccess('pw-room', null);
+    expect(result).toEqual({ allowed: true, role: 'EDITOR' });
+  });
+
+  it('password protection applies to private rooms too, checked before the private/member logic', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: false, passwordHash: 'hash123', ownerId: 'usr_owner' });
+    const result = await checkRoomAccess('pw-priv-room', 'usr_member', false);
+    expect(result).toEqual({ allowed: false, reason: 'PASSWORD_REQUIRED' });
+  });
 });
 
 describe('listRoomMembers (P091)', () => {

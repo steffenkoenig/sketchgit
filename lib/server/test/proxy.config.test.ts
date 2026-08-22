@@ -32,6 +32,8 @@ describe('Proxy Config', () => {
     expect(config.matcher).toContain('/api/auth/signin');
     expect(config.matcher).toContain('/api/auth/forgot-password');
     expect(config.matcher).toContain('/api/auth/reset-password');
-    expect(config.matcher.length).toBe(5);
+    // P093 – room-unlock rate limiting
+    expect(config.matcher).toContain('/api/rooms/:roomId/unlock');
+    expect(config.matcher.length).toBe(6);
   });
 });

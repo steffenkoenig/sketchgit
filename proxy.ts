@@ -43,6 +43,14 @@ const RATE_LIMITED_PATHS = new Set([
   "/api/auth/reset-password",
 ]);
 
+// P093 – room-unlock is a dynamic route (roomId is a path segment, not a
+// literal), so it can't live in the static RATE_LIMITED_PATHS set above.
+const ROOM_UNLOCK_PATH_RE = /^\/api\/rooms\/[^/]+\/unlock$/;
+
+function isRateLimitedPath(pathname: string): boolean {
+  return RATE_LIMITED_PATHS.has(pathname) || ROOM_UNLOCK_PATH_RE.test(pathname);
+}
+
 function getRateLimit(): { max: number; windowMs: number } {
   const max = parseInt(process.env.RATE_LIMIT_MAX ?? "10", 10);
   const windowSec = parseInt(process.env.RATE_LIMIT_WINDOW ?? "60", 10);
@@ -196,7 +204,7 @@ function applyRateLimit(req: NextRequest): NextResponse | null | Promise<NextRes
 export default auth(async (req) => {
   const pathname = req.nextUrl.pathname;
 
-  if (RATE_LIMITED_PATHS.has(pathname)) {
+  if (isRateLimitedPath(pathname)) {
     const rateLimitResponse = await applyRateLimit(req);
     if (rateLimitResponse) return rateLimitResponse;
   }
@@ -229,5 +237,6 @@ export const config = {
     "/api/auth/signin",
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
+    "/api/rooms/:roomId/unlock",
   ],
 };

@@ -32,6 +32,8 @@ import { PropertiesPanel } from "./sketchgit/PropertiesPanel";
 import { ContextMenu } from "./sketchgit/ContextMenu";
 import { ShareModal } from "./sketchgit/ShareModal";
 import { MembersModal } from "./sketchgit/MembersModal";
+import { RoomPasswordModal } from "./sketchgit/RoomPasswordModal";
+import { RoomSettingsModal } from "./sketchgit/RoomSettingsModal";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
 export default function SketchGitApp() {
@@ -53,6 +55,14 @@ export default function SketchGitApp() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [membersRoomId, setMembersRoomId] = useState('default');
 
+  // ── Room password modal state (P093) ─────────────────────────────────────
+  const [roomPasswordOpen, setRoomPasswordOpen] = useState(false);
+  const [roomPasswordRoomId, setRoomPasswordRoomId] = useState<string | null>(null);
+
+  // ── Room settings modal state (P093) ─────────────────────────────────────
+  const [roomSettingsOpen, setRoomSettingsOpen] = useState(false);
+  const [roomSettingsRoomId, setRoomSettingsRoomId] = useState('default');
+
   // Listen for the canvas-side custom event that requests the share modal to open.
   useEffect(() => {
     function handleOpenShareModal(e: Event) {
@@ -73,6 +83,28 @@ export default function SketchGitApp() {
     }
     document.addEventListener('sketchgit:openMembersModal', handleOpenMembersModal);
     return () => document.removeEventListener('sketchgit:openMembersModal', handleOpenMembersModal);
+  }, []);
+
+  // P093 – listen for the WS-layer custom event fired when the server
+  // rejects the connection because the room needs a password.
+  useEffect(() => {
+    function handleRoomPasswordRequired(e: Event) {
+      const detail = (e as CustomEvent<{ roomId: string }>).detail;
+      setRoomPasswordRoomId(detail.roomId);
+      setRoomPasswordOpen(true);
+    }
+    document.addEventListener('sketchgit:roomPasswordRequired', handleRoomPasswordRequired);
+    return () => document.removeEventListener('sketchgit:roomPasswordRequired', handleRoomPasswordRequired);
+  }, []);
+
+  // P093 – listen for the topbar "Room Settings" button.
+  useEffect(() => {
+    function handleOpenRoomSettingsModal() {
+      setRoomSettingsRoomId(new URLSearchParams(window.location.search).get('room') ?? 'default');
+      setRoomSettingsOpen(true);
+    }
+    document.addEventListener('sketchgit:openRoomSettingsModal', handleOpenRoomSettingsModal);
+    return () => document.removeEventListener('sketchgit:openRoomSettingsModal', handleOpenRoomSettingsModal);
   }, []);
 
   // P020: Return a cleanup function so the engine is destroyed on unmount,
@@ -386,6 +418,21 @@ export default function SketchGitApp() {
         isOpen={membersOpen}
         onClose={() => setMembersOpen(false)}
         roomId={membersRoomId}
+      />
+
+      <RoomPasswordModal
+        isOpen={roomPasswordOpen}
+        roomId={roomPasswordRoomId}
+        onUnlocked={() => {
+          setRoomPasswordOpen(false);
+          call("retryRoomConnection");
+        }}
+      />
+
+      <RoomSettingsModal
+        isOpen={roomSettingsOpen}
+        onClose={() => setRoomSettingsOpen(false)}
+        roomId={roomSettingsRoomId}
       />
     </>
   );

@@ -82,4 +82,12 @@ describe('POST /api/rooms/[roomId]/draw', () => {
     const res = await POST(makePostReq({ type: 'draw', clientId: 'c1', canvas: '{}' }), { params: PARAMS });
     expect(res.status).toBe(403);
   });
+
+  it('returns 401 with PASSWORD_REQUIRED when the room needs a password (P093)', async () => {
+    mockCheckRoomAccess.mockResolvedValue({ allowed: false, reason: 'PASSWORD_REQUIRED' });
+    const res = await POST(makePostReq({ type: 'draw', clientId: 'c1', canvas: '{}' }), { params: PARAMS });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROOM_PASSWORD_REQUIRED');
+  });
 });

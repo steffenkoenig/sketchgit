@@ -17,6 +17,7 @@ import { getAuthSession } from "@/lib/authTypes";
 import { validate } from "@/lib/api/validate";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
 import { checkRoomAccess, getRoomEvents, resolveRoomId } from "@/lib/db/roomRepository";
+import { hasValidRoomUnlock, ROOM_UNLOCK_COOKIE_NAME } from "@/lib/server/roomPasswordCookie";
 
 export const EventsQuerySchema = z.object({
   take: z.coerce.number().int().min(1).max(100).default(50),
@@ -50,10 +51,14 @@ export async function GET(
   }
 
   // Check room access
-  const access = await checkRoomAccess(roomId, authSession.user.id);
+  const hasPasswordUnlock = hasValidRoomUnlock(req.cookies.get(ROOM_UNLOCK_COOKIE_NAME)?.value, roomId);
+  const access = await checkRoomAccess(roomId, authSession.user.id, hasPasswordUnlock);
   if (!access.allowed) {
     if (access.reason === "ROOM_NOT_FOUND") {
       return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
+    }
+    if (access.reason === "PASSWORD_REQUIRED") {
+      return apiError(ApiErrorCode.ROOM_PASSWORD_REQUIRED, "This room requires a password", 401);
     }
     return apiError(ApiErrorCode.FORBIDDEN, "Access denied", 403);
   }

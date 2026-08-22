@@ -80,6 +80,14 @@ export class WsClient {
   onMessage: ((data: WsMessage) => void) | null = null;
   onStatusChange: ((status: ConnectionStatus) => void) | null = null;
   onClientId: ((id: string) => void) | null = null;
+  /**
+   * P093 – fired when the server rejects the connection with a specific
+   * reason (e.g. "PASSWORD_REQUIRED"). Passes the roomId this connection
+   * attempt was actually for — not `CollaborationManager.currentRoomId`,
+   * which is only updated on a successful `welcome` and would still be
+   * stale (or the previous room's id) at the moment a connection is denied.
+   */
+  onAccessDenied: ((reason: string, roomId: string) => void) | null = null;
 
   // ─── Public API ───────────────────────────────────────────────────────────
 
@@ -104,6 +112,15 @@ export class WsClient {
     // Stop polling – WS is about to (re)connect.
     this._stopPolling();
     this._openSocket();
+  }
+
+  /**
+   * P093 – Re-attempts the connection with the same room/name/color as the
+   * last `connect()` call. Used after the user resolves whatever caused an
+   * `onAccessDenied` callback (e.g. just entered the correct room password).
+   */
+  retryConnect(): void {
+    this.connect(this.roomId, this.myName, this.myColor);
   }
 
   /** Close the connection cleanly – no reconnect will be attempted. */
@@ -261,6 +278,17 @@ export class WsClient {
       if (data.type === 'error' && (data as WsMessage & { code?: string }).code === 'ROOM_FULL') {
         showToast('⚠ This room is full. Please try a different room.', true);
         this.intentionalClose = true;
+        return;
+      }
+
+      // P093 – access denied (e.g. password-protected room); suppress the
+      // default reconnect loop (retrying with the same credentials would
+      // just fail the same way) and let the app layer prompt for whatever's
+      // missing. retryConnect() re-attempts once that's resolved.
+      if (data.type === 'error' && (data as WsMessage & { code?: string }).code === 'ACCESS_DENIED') {
+        this.intentionalClose = true;
+        const reason = (data as WsMessage & { reason?: string }).reason ?? 'UNKNOWN';
+        this.onAccessDenied?.(reason, this.roomId);
         return;
       }
 

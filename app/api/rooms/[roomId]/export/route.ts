@@ -19,11 +19,13 @@ import {
   resolveRoomId,
   getRoomPublicFlag,
   getRoomMembership,
+  getRoomPasswordHash,
   getCommitShaInRoom,
   getRoomHeadSha,
   resolveCommitCanvas,
 } from "@/lib/db/roomRepository";
 import { ExportQuerySchema, ExportBodySchema } from "@/lib/api/exportSchema";
+import { hasValidRoomUnlock, ROOM_UNLOCK_COOKIE_NAME } from "@/lib/server/roomPasswordCookie";
 import { migrateCanvasJson } from "@/lib/sketchgit/git/canvasSchemaMigrations";
 import { SchemaVersionTooNewError } from "@/lib/sketchgit/git/canvasSchemaVersion";
 
@@ -55,9 +57,21 @@ export async function GET(
   if (!room) {
     return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
+  const session = await auth();
+  const authSession = getAuthSession(session);
+
+  // P093 — password protection gates export too (it's a canvas-data read),
+  // regardless of isPublic, unless the requester is the room owner.
+  const passwordMeta = await getRoomPasswordHash(roomId);
+  const isOwner = authSession?.user.id != null && authSession.user.id === passwordMeta?.ownerId;
+  if (passwordMeta?.passwordHash && !isOwner) {
+    const hasUnlock = hasValidRoomUnlock(req.cookies.get(ROOM_UNLOCK_COOKIE_NAME)?.value, roomId);
+    if (!hasUnlock) {
+      return apiError(ApiErrorCode.ROOM_PASSWORD_REQUIRED, "This room requires a password", 401);
+    }
+  }
+
   if (!room.isPublic) {
-    const session = await auth();
-    const authSession = getAuthSession(session);
     if (!authSession) {
       return apiError(ApiErrorCode.UNAUTHENTICATED, "Authentication required", 401);
     }

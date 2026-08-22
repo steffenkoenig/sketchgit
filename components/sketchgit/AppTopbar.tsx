@@ -97,6 +97,16 @@ function IconMembers() {
   );
 }
 
+/** P093 – room settings (password protection) entry point. */
+function IconRoomSettings() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="7" width="10" height="7" rx="1.5"/>
+      <path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7"/>
+    </svg>
+  );
+}
+
 function IconExport() {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -580,6 +590,17 @@ function BranchActions({ call, t, session }: { call: SketchGitCall; t: (key: str
         >
           <IconMembers />
           {t("topbar.members")}
+        </button>
+      )}
+      {session?.user && (
+        <button
+          className="topbtn"
+          onClick={() => call("openRoomSettingsModal")}
+          aria-label="Open room settings dialog"
+          aria-haspopup="dialog"
+        >
+          <IconRoomSettings />
+          {t("topbar.roomSettings")}
         </button>
       )}
     </>

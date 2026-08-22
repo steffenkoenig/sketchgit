@@ -115,6 +115,17 @@ export function createPublicAPI(
         new CustomEvent('sketchgit:openMembersModal', { detail: {} }),
       );
     },
+    // P093 – re-attempts the WS connection after the room-password modal
+    // reports a successful unlock.
+    retryRoomConnection: () => ws.retryConnect(),
+    // P093 – opens the room settings modal (password protection). Owner-only
+    // in practice, same pattern as openMembersModal: the underlying PATCH
+    // /api/rooms/[roomId] endpoint returns 403 for non-owners.
+    openRoomSettingsModal: () => {
+      document.dispatchEvent(
+        new CustomEvent('sketchgit:openRoomSettingsModal', { detail: {} }),
+      );
+    },
     destroy(): void {
       document.removeEventListener('click', outsideClickHandler);
       tl.destroyScrollListener();

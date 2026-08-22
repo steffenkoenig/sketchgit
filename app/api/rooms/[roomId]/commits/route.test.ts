@@ -181,6 +181,38 @@ describe('GET /api/rooms/[roomId]/commits', () => {
     expect(body.code).toBe('FORBIDDEN');
   });
 
+  // ── P093: password protection ────────────────────────────────────────────────
+
+  it('returns 401 PASSWORD_REQUIRED for a password-protected room without an unlock cookie', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'pw-room', isPublic: true, passwordHash: 'hash123', ownerId: null }));
+    const res = await GET(makeRequest('pw-room'), { params: Promise.resolve({ roomId: 'pw-room' }) });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROOM_PASSWORD_REQUIRED');
+  });
+
+  it('allows a password-protected room through with a valid unlock cookie', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'pw-room', isPublic: true, passwordHash: 'hash123', ownerId: null }));
+    mockCommitFindMany.mockResolvedValue([]);
+    const { grantRoomUnlock, ROOM_UNLOCK_COOKIE_NAME } = await import('@/lib/server/roomPasswordCookie');
+    const cookieValue = grantRoomUnlock(undefined, 'pw-room');
+    const req = new NextRequest(`http://localhost/api/rooms/pw-room/commits`, {
+      headers: { Cookie: `${ROOM_UNLOCK_COOKIE_NAME}=${cookieValue}` },
+    });
+    const res = await GET(req, { params: Promise.resolve({ roomId: 'pw-room' }) });
+    expect(res.status).toBe(200);
+  });
+
+  it('allows the room owner into a password-protected room without an unlock cookie', async () => {
+    mockRoomFindUnique.mockResolvedValue(makeRoom({ id: 'pw-room', isPublic: true, passwordHash: 'hash123', ownerId: 'usr_owner' }));
+    mockCommitFindMany.mockResolvedValue([]);
+    const session = { user: { id: 'usr_owner' } };
+    mockAuth.mockResolvedValueOnce(session);
+    mockGetAuthSession.mockReturnValueOnce(session);
+    const res = await GET(makeRequest('pw-room'), { params: Promise.resolve({ roomId: 'pw-room' }) });
+    expect(res.status).toBe(200);
+  });
+
   // ── P070: Cache-Control headers ──────────────────────────────────────────────
 
   it('returns immutable Cache-Control when cursor (SHA) is provided', async () => {
@@ -339,6 +371,14 @@ describe('POST /api/rooms/[roomId]/commits', () => {
     mockCheckRoomAccess.mockResolvedValue({ allowed: false, reason: 'PRIVATE_ROOM' });
     const res = await POST(makePostRequest('room_1', VALID_BODY), { params });
     expect(res.status).toBe(403);
+  });
+
+  it('returns 401 PASSWORD_REQUIRED when the room needs a password (P093)', async () => {
+    mockCheckRoomAccess.mockResolvedValue({ allowed: false, reason: 'PASSWORD_REQUIRED' });
+    const res = await POST(makePostRequest('room_1', VALID_BODY), { params });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROOM_PASSWORD_REQUIRED');
   });
 
   it('returns 500 when saveCommitWithDelta throws', async () => {

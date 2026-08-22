@@ -2,11 +2,14 @@
  * PATCH /api/rooms/[roomId]
  *
  * P049 – Set or clear a memorable slug for a room.
- * Only the room owner (or a user with OWNER membership role) may update the slug.
+ * P093 – Set, change, or clear a room password.
+ * Only the room owner (or a user with OWNER membership role) may update either.
  *
- * Body: { slug: string | null }
+ * Body: { slug?: string | null, password?: string | null }
  *   - slug must be 3–50 lowercase alphanumeric + hyphens, no leading/trailing hyphens.
  *   - slug: null clears the slug.
+ *   - password: a string (4–200 chars) sets/changes the password; null clears
+ *     password protection entirely; omitted (undefined) leaves it unchanged.
  *
  * Errors:
  *   - 401  Unauthenticated
@@ -21,7 +24,8 @@ import { auth } from "@/lib/auth";
 import { validate } from "@/lib/api/validate";
 import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
-import { getRoomOwnership, updateRoomSlug } from "@/lib/db/roomRepository";
+import { getRoomOwnership, updateRoomSlug, setRoomPassword } from "@/lib/db/roomRepository";
+import { hashPassword } from "@/lib/passwordHashing";
 
 export const PatchRoomSchema = z.object({
   slug: z
@@ -32,7 +36,14 @@ export const PatchRoomSchema = z.object({
       /^[a-z0-9][a-z0-9-]*[a-z0-9]$/,
       "Slug must contain only lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen.",
     )
-    .nullable(),
+    .nullable()
+    .optional(),
+  password: z
+    .string()
+    .min(4, "Password must be at least 4 characters.")
+    .max(200, "Password must be at most 200 characters.")
+    .nullable()
+    .optional(),
 });
 
 export async function PATCH(
@@ -67,9 +78,25 @@ export async function PATCH(
   const v = validate(PatchRoomSchema, body);
   if (!v.success) return v.response;
 
+  if (v.data.slug === undefined && v.data.password === undefined) {
+    return apiError(ApiErrorCode.VALIDATION_ERROR, "No fields to update", 422);
+  }
+
+  const responseExtra: { passwordProtected?: boolean } = {};
+
+  if (v.data.password !== undefined) {
+    const passwordHash = v.data.password === null ? null : await hashPassword(v.data.password);
+    await setRoomPassword(roomId, passwordHash);
+    responseExtra.passwordProtected = v.data.password !== null;
+  }
+
+  if (v.data.slug === undefined) {
+    return NextResponse.json({ id: roomId, ...responseExtra });
+  }
+
   try {
     const updated = await updateRoomSlug(roomId, v.data.slug);
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, ...responseExtra });
   } catch (err: unknown) {
     // Prisma unique-constraint violation (P2002) → slug already in use.
     if ((err as { code?: string }).code === "P2002") {

@@ -475,13 +475,21 @@ export type ClientRole = MemberRole | "ANONYMOUS";
 
 export type RoomAccessResult =
   | { allowed: true; role: ClientRole }
-  | { allowed: false; reason: "ROOM_NOT_FOUND" | "PRIVATE_ROOM" | "NOT_A_MEMBER" };
+  | { allowed: false; reason: "ROOM_NOT_FOUND" | "PRIVATE_ROOM" | "NOT_A_MEMBER" | "PASSWORD_REQUIRED" };
 
 /**
- * Determine whether a user is allowed to connect to a room via WebSocket.
+ * Determine whether a user is allowed to connect to a room via WebSocket
+ * (or, via the REST-route call sites, an HTTP request).
  *
  * Rules:
  * - Room does not exist yet → allowed as ANONYMOUS (creation-on-join semantics).
+ * - P093 — a room with a password set requires `hasPasswordUnlock` (the
+ *   caller has already verified the room-unlock cookie / a just-submitted
+ *   password) UNLESS the requester is the room owner. This check runs
+ *   BEFORE the public/private logic below and applies regardless of
+ *   isPublic — a password-protected public room still requires the
+ *   password; the proposal is explicit that this holds "regardless of
+ *   whether they have the room's URL".
  * - Room is public → any user (including anonymous) is allowed.
  * - Room is private + unauthenticated user → denied with reason PRIVATE_ROOM.
  * - Room is private + authenticated user → allowed only if a membership record
@@ -490,15 +498,21 @@ export type RoomAccessResult =
 export async function checkRoomAccess(
   roomId: string,
   userId: string | null,
+  hasPasswordUnlock = false,
 ): Promise<RoomAccessResult> {
   const room = await prismaRead.room.findUnique({
     where: { id: roomId },
-    select: { isPublic: true },
+    select: { isPublic: true, passwordHash: true, ownerId: true },
   });
 
   // Room does not exist → creation-on-join, always allowed.
   // Give EDITOR so the creator can immediately draw/commit.
   if (!room) return { allowed: true, role: "EDITOR" };
+
+  const isOwner = userId !== null && userId === room.ownerId;
+  if (room.passwordHash && !isOwner && !hasPasswordUnlock) {
+    return { allowed: false, reason: "PASSWORD_REQUIRED" };
+  }
 
   if (room.isPublic) {
     if (!userId) {
@@ -603,6 +617,44 @@ export async function updateRoomSlug(
     where: { id: roomId },
     data: { slug },
     select: { id: true, slug: true },
+  });
+}
+
+/**
+ * P093 – Set, change, or clear a room's password. Pass `passwordHash: null`
+ * to remove password protection entirely. The caller is responsible for
+ * hashing (see lib/passwordHashing.ts) — this function only persists.
+ */
+export async function setRoomPassword(
+  roomId: string,
+  passwordHash: string | null,
+): Promise<void> {
+  await prismaWrite.room.update({
+    where: { id: roomId },
+    data: { passwordHash },
+  });
+}
+
+/** P093 – Returns whether a room currently has a password set. Read-only; safe on the replica. */
+export async function getRoomHasPassword(roomId: string): Promise<boolean> {
+  const room = await prismaRead.room.findUnique({
+    where: { id: roomId },
+    select: { passwordHash: true },
+  });
+  return room?.passwordHash != null;
+}
+
+/**
+ * P093 – Returns the room's password hash (for verification by the unlock
+ * route) and ownerId (so the caller can special-case the owner). Returns
+ * null when the room doesn't exist.
+ */
+export async function getRoomPasswordHash(
+  roomId: string,
+): Promise<{ passwordHash: string | null; ownerId: string | null } | null> {
+  return prismaRead.room.findUnique({
+    where: { id: roomId },
+    select: { passwordHash: true, ownerId: true },
   });
 }
 

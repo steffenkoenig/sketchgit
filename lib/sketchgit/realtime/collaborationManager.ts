@@ -64,6 +64,13 @@ export interface CollabCallbacks {
    * queue mutations can coalesce before the UI re-renders.
    */
   onOfflineQueueChanged?: () => void;
+  /**
+   * P093 – Called when the server rejects the WS connection with a specific
+   * reason (currently only "PASSWORD_REQUIRED" is acted on client-side; other
+   * reasons are logged but otherwise behave as before P093 — the connection
+   * just doesn't retry).
+   */
+  onAccessDenied?: (reason: string, roomId: string) => void;
 }
 
 export class CollaborationManager {
@@ -108,6 +115,7 @@ export class CollaborationManager {
 
     this.ws.onMessage = (data) => this.handleMessage(data);
     this.ws.onStatusChange = (status) => this.handleStatusChange(status);
+    this.ws.onAccessDenied = (reason, roomId) => this.cb.onAccessDenied?.(reason, roomId);
   }
 
   // ─── REST event helper ────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ function makeMockWs() {
     onMessage: null as ((data: WsMessage) => void) | null,
     onStatusChange: null as ((status: ConnectionStatus) => void) | null,
     onClientId: null as ((id: string) => void) | null,
+    onAccessDenied: null as ((reason: string, roomId: string) => void) | null,
     send: vi.fn(),
     sendBatched: vi.fn(),
     connect: vi.fn(),
@@ -86,6 +87,18 @@ describe('CollaborationManager – construction', () => {
     new CollaborationManager(ws as unknown as WsClient, makeCallbacks());
     expect(ws.onMessage).toBeTypeOf('function');
     expect(ws.onStatusChange).toBeTypeOf('function');
+  });
+
+  it('P093: registers onAccessDenied on the WsClient and relays it to the callback', () => {
+    setupDom();
+    const ws = makeMockWs();
+    const cb = makeCallbacks();
+    const onAccessDenied = vi.fn();
+    new CollaborationManager(ws as unknown as WsClient, { ...cb, onAccessDenied });
+    expect(ws.onAccessDenied).toBeTypeOf('function');
+
+    ws.onAccessDenied?.('PASSWORD_REQUIRED', 'room-1');
+    expect(onAccessDenied).toHaveBeenCalledWith('PASSWORD_REQUIRED', 'room-1');
   });
 });
 

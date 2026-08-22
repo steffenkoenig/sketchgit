@@ -12,16 +12,22 @@ vi.mock('@/lib/db/prisma', () => {
   // no-replica-configured default: reads and writes both hit the primary).
   return { prisma: client, prismaRead: client, prismaWrite: client };
 });
+// P093 – avoid real Argon2id hashing (~200-500ms by design) in unit tests.
+vi.mock('@/lib/passwordHashing', () => ({
+  hashPassword: vi.fn(async (pw: string) => `hashed:${pw}`),
+}));
 
 import { PATCH } from './route';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
+import { hashPassword } from '@/lib/passwordHashing';
 import { NextRequest } from 'next/server';
 import { makeRoom, makeMembership } from '@/lib/test/factories';
 
 const mockAuth = auth as ReturnType<typeof vi.fn>;
 const mockRoomFindUnique = prisma.room.findUnique as ReturnType<typeof vi.fn>;
 const mockRoomUpdate = prisma.room.update as ReturnType<typeof vi.fn>;
+const mockHashPassword = hashPassword as ReturnType<typeof vi.fn>;
 
 const SESSION = { user: { id: 'usr_1' } };
 const OWNER_ROOM = { ...makeRoom({ id: 'room_1', ownerId: 'usr_1' }), memberships: [] };
@@ -124,5 +130,68 @@ describe('PATCH /api/rooms/[roomId] (P049)', () => {
     expect(res.status).toBe(409);
     const json = await res.json() as { code: string };
     expect(json.code).toBe('SLUG_ALREADY_TAKEN');
+  });
+
+  // ── P093: password protection ────────────────────────────────────────────────
+
+  it('returns 422 when neither slug nor password is provided', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockRoomFindUnique.mockResolvedValue(OWNER_ROOM);
+    const res = await PATCH(makeRequest('room_1', {}), { params });
+    expect(res.status).toBe(422);
+  });
+
+  it('hashes and persists a new password, returning passwordProtected:true', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockRoomFindUnique.mockResolvedValue(OWNER_ROOM);
+    mockRoomUpdate.mockResolvedValue({});
+    const res = await PATCH(makeRequest('room_1', { password: 'sekret123' }), { params });
+    expect(res.status).toBe(200);
+    expect(mockHashPassword).toHaveBeenCalledWith('sekret123');
+    expect(mockRoomUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { passwordHash: 'hashed:sekret123' } }),
+    );
+    const data = await res.json() as { passwordProtected: boolean };
+    expect(data.passwordProtected).toBe(true);
+  });
+
+  it('clears the password when password:null is sent', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockRoomFindUnique.mockResolvedValue(OWNER_ROOM);
+    mockRoomUpdate.mockResolvedValue({});
+    const res = await PATCH(makeRequest('room_1', { password: null }), { params });
+    expect(res.status).toBe(200);
+    expect(mockHashPassword).not.toHaveBeenCalled();
+    expect(mockRoomUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { passwordHash: null } }),
+    );
+    const data = await res.json() as { passwordProtected: boolean };
+    expect(data.passwordProtected).toBe(false);
+  });
+
+  it('rejects a password shorter than 4 characters', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockRoomFindUnique.mockResolvedValue(OWNER_ROOM);
+    const res = await PATCH(makeRequest('room_1', { password: 'abc' }), { params });
+    expect(res.status).toBe(422);
+  });
+
+  it('sets both slug and password in one request', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockRoomFindUnique.mockResolvedValue(OWNER_ROOM);
+    mockRoomUpdate.mockResolvedValue({ id: 'room_1', slug: 'my-room' });
+    const res = await PATCH(makeRequest('room_1', { slug: 'my-room', password: 'sekret123' }), { params });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { slug: string; passwordProtected: boolean };
+    expect(data.slug).toBe('my-room');
+    expect(data.passwordProtected).toBe(true);
+  });
+
+  it('a non-owner cannot set a room password', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockRoomFindUnique.mockResolvedValue(NON_OWNER_ROOM);
+    const res = await PATCH(makeRequest('room_1', { password: 'sekret123' }), { params });
+    expect(res.status).toBe(403);
+    expect(mockHashPassword).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,7 @@ import { WsBranchUpdateSchema } from "@/lib/api/wsSchemas";
 import { checkRoomAccess, appendRoomEvent } from "@/lib/db/roomRepository";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
+import { hasValidRoomUnlock, ROOM_UNLOCK_COOKIE_NAME } from "@/lib/server/roomPasswordCookie";
 
 export const BranchRequestSchema = WsBranchUpdateSchema.extend({
   clientId: z.string().min(1).max(64),
@@ -42,8 +43,12 @@ export async function POST(
   // Access control
   const session = await auth();
   const authSession = getAuthSession(session);
-  const access = await checkRoomAccess(roomId, authSession?.user.id ?? null);
+  const hasPasswordUnlock = hasValidRoomUnlock(req.cookies.get(ROOM_UNLOCK_COOKIE_NAME)?.value, roomId);
+  const access = await checkRoomAccess(roomId, authSession?.user.id ?? null, hasPasswordUnlock);
   if (!access.allowed) {
+    if (access.reason === "PASSWORD_REQUIRED") {
+      return apiError(ApiErrorCode.ROOM_PASSWORD_REQUIRED, "This room requires a password", 401);
+    }
     return apiError(ApiErrorCode.FORBIDDEN, "Access denied", 403);
   }
   if (access.role === "VIEWER") {

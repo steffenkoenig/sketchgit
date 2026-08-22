@@ -132,6 +132,16 @@ export function setupCollaborationManager(
     // P092 – re-check offline queue depth whenever it changes (action
     // queued, synced, or drain completes).
     onOfflineQueueChanged: () => void updateOfflineBadge(collab.currentRoomId),
+    // P093 – surface a password prompt when the room requires one. Other
+    // denial reasons (PRIVATE_ROOM, NOT_A_MEMBER) aren't actionable from a
+    // prompt the same way, so they're left to the existing "connection
+    // lost" UX rather than a bespoke dialog per reason.
+    onAccessDenied: (reason, roomId) => {
+      if (reason !== 'PASSWORD_REQUIRED') return;
+      document.dispatchEvent(
+        new CustomEvent('sketchgit:roomPasswordRequired', { detail: { roomId } }),
+      );
+    },
   });
 
   // P092 – also react to raw browser online/offline transitions so the

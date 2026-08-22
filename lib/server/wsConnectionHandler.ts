@@ -12,6 +12,7 @@ import type { RoomSnapshot } from "../db/dbLoadSnapshot.js";
 
 import { parseCookies } from "./cookieHelpers.js";
 import { verifyScopeCookie, mapPermissionToRole } from "./shareLinkTokens.js";
+import { hasValidRoomUnlock, ROOM_UNLOCK_COOKIE_NAME } from "./roomPasswordCookie.js";
 import { InboundWsMessageSchema } from "../api/wsSchemas.js";
 
 export type ClientState = WebSocket & {
@@ -66,7 +67,19 @@ export function createWsConnectionHandler(deps: ConnectionHandlerDeps) {
 }
 
 async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId: string, inviteToken?: string | null): Promise<RoomAccessResult> {
-  let access: RoomAccessResult = await checkRoomAccess(roomId, client.userId);
+  const cookies = parseCookies(client._cookieHeader);
+  // P093 – checked once up front; a valid unlock cookie grants access to a
+  // password-protected room the same as if the password had just been
+  // entered (checkRoomAccess still separately verifies isPublic/membership
+  // for the room's normal access rules on top of this).
+  const hasPasswordUnlock = hasValidRoomUnlock(cookies[ROOM_UNLOCK_COOKIE_NAME], roomId);
+  let access: RoomAccessResult = await checkRoomAccess(roomId, client.userId, hasPasswordUnlock);
+  // P093 – a password-protected room is a hard stop: invite tokens and
+  // share-link cookies grant room/branch/commit-level access, not a
+  // password bypass, so neither fallback below applies when the reason is
+  // specifically PASSWORD_REQUIRED (they still apply for PRIVATE_ROOM /
+  // NOT_A_MEMBER, unchanged from before P093).
+  if (!access.allowed && access.reason === "PASSWORD_REQUIRED") return access;
   if (!access.allowed && inviteToken) {
     const invitation = await prisma.roomInvitation.findUnique({ where: { token: inviteToken }, select: { roomId: true, expiresAt: true, maxUses: true, useCount: true } });
     if (invitation && invitation.roomId === roomId && invitation.expiresAt > new Date() && (invitation.maxUses === null || invitation.useCount < invitation.maxUses)) {
@@ -75,7 +88,6 @@ async function authorizeClient(prisma: PrismaClient, client: ClientState, roomId
     }
   }
   if (!access.allowed) {
-    const cookies = parseCookies(client._cookieHeader);
     const scopeValue = cookies["sketchgit_share_scope"];
     if (scopeValue) {
       const payload = verifyScopeCookie(scopeValue);

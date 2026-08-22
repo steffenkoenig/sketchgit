@@ -187,6 +187,58 @@ describe('WsClient', () => {
     expect(client.onMessage).not.toHaveBeenCalled();
   });
 
+  // ── P093: access denied (room password) ──────────────────────────────────
+
+  it('fires onAccessDenied with the reason and roomId, not onMessage, for ACCESS_DENIED', () => {
+    const client = makeClient();
+    const denials: Array<{ reason: string; roomId: string }> = [];
+    client.onAccessDenied = (reason, roomId) => denials.push({ reason, roomId });
+    client.onMessage = vi.fn();
+    client.connect('pw-room', 'Alice', '#blue');
+    openSocket();
+
+    const ws = MockWebSocket.lastInstance!;
+    ws._emit('message', new MessageEvent('message', {
+      data: JSON.stringify({ type: 'error', code: 'ACCESS_DENIED', reason: 'PASSWORD_REQUIRED' }),
+    }));
+
+    expect(denials).toEqual([{ reason: 'PASSWORD_REQUIRED', roomId: 'pw-room' }]);
+    expect(client.onMessage).not.toHaveBeenCalled();
+  });
+
+  it('suppresses the automatic reconnect loop after ACCESS_DENIED', () => {
+    const statuses: string[] = [];
+    const client = makeClient();
+    client.onStatusChange = (s) => statuses.push(s);
+    client.connect('pw-room', 'Alice', '#blue');
+    openSocket();
+
+    const ws = MockWebSocket.lastInstance!;
+    ws._emit('message', new MessageEvent('message', {
+      data: JSON.stringify({ type: 'error', code: 'ACCESS_DENIED', reason: 'PASSWORD_REQUIRED' }),
+    }));
+    statuses.length = 0;
+    ws.readyState = MockWebSocket.CLOSED;
+    ws._emit('close', new CloseEvent('close', { code: 1008 }));
+
+    // A genuine reconnect attempt would push 'reconnecting'; retrying with
+    // the same (still-missing) credentials would just get denied again.
+    expect(statuses).not.toContain('reconnecting');
+  });
+
+  it('retryConnect() re-opens a connection with the same room/name/color as the last connect()', () => {
+    const client = makeClient();
+    client.connect('pw-room', 'Alice', '#blue');
+    openSocket();
+    MockWebSocket.lastInstance = null;
+
+    client.retryConnect();
+    const ws = MockWebSocket.lastInstance as MockWebSocket | null;
+    expect(ws).not.toBeNull();
+    expect(ws?.url).toContain('room=pw-room');
+    expect(ws?.url).toContain('name=Alice');
+  });
+
   // ── Message queue ────────────────────────────────────────────────────────
 
   it('queues messages sent while offline and flushes them on connect', () => {

@@ -45,6 +45,18 @@ export const ApiErrorCode = {
   SHARE_LINK_EXHAUSTED: "SHARE_LINK_EXHAUSTED",
   SHARE_LINK_INVALID: "SHARE_LINK_INVALID",
   SHARE_LINK_FORBIDDEN: "SHARE_LINK_FORBIDDEN",
+  // ── Room passwords (P093) ─────────────────────────────────────────────────
+  // Deliberately distinct from PASSWORD_REQUIRED above (that one means
+  // "confirm your account password" for account deletion) — reusing it here
+  // would show the wrong message on a room's password prompt.
+  // ROOM_PASSWORD_REQUIRED: informational — returned by any room-scoped route
+  //   when the caller hasn't unlocked the room yet (no attempt made).
+  // ROOM_PASSWORD_INCORRECT: returned only by the unlock route itself, after
+  //   a submitted password fails verification — a distinct message from the
+  //   above ("this room needs a password" vs. "that password was wrong").
+  ROOM_PASSWORD_REQUIRED: "ROOM_PASSWORD_REQUIRED",
+  ROOM_PASSWORD_INCORRECT: "ROOM_PASSWORD_INCORRECT",
+  ROOM_NOT_PASSWORD_PROTECTED: "ROOM_NOT_PASSWORD_PROTECTED",
   // ── Server ────────────────────────────────────────────────────────────────
   INTERNAL_ERROR: "INTERNAL_ERROR",
   WS_UNAVAILABLE: "WS_UNAVAILABLE",

@@ -75,6 +75,11 @@ model Room {
   slug      String?  @unique
   ownerId   String?
   isPublic  Boolean  @default(true)
+  /// P093 — Argon2id hash of an optional room password. Null means no
+  /// password is set (the pre-P093 default for every room). When set, this
+  /// gate applies regardless of isPublic/membership — see checkRoomAccess()
+  /// in lib/db/roomRepository.ts. The room owner is always exempt.
+  passwordHash String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

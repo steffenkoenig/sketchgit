@@ -63,6 +63,8 @@ export function makeRoom(overrides: Partial<Room> = {}): Room {
     // ownerId is nullable in the schema; set explicitly when ownership matters.
     ownerId: null,
     isPublic: true,
+    // P093 – no password by default; set explicitly when testing protected rooms.
+    passwordHash: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,

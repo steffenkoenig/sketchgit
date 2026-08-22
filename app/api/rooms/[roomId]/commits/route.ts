@@ -8,6 +8,7 @@ import { immutableHeaders, mutableHeaders } from "@/lib/api/cacheHeaders";
 import {
   getRoomPublicFlag,
   getRoomMembership,
+  getRoomPasswordHash,
   getCommitPage,
   checkRoomAccess,
   saveCommitWithDelta,
@@ -18,6 +19,7 @@ import { broadcastToRoom } from "@/lib/server/wsRoomBroadcaster";
 import { validateCommitMessage } from "@/lib/server/commitValidation";
 import { WsCommitSchema } from "@/lib/api/wsSchemas";
 import { createRoomSnapshotCache } from "@/lib/cache/roomSnapshotCache";
+import { hasValidRoomUnlock, ROOM_UNLOCK_COOKIE_NAME } from "@/lib/server/roomPasswordCookie";
 
 export const CommitsQuerySchema = z.object({
   cursor: z.string().max(64).optional(),
@@ -58,9 +60,21 @@ export async function GET(
     return apiError(ApiErrorCode.ROOM_NOT_FOUND, "Room not found", 404);
   }
 
+  const session = await auth();
+  const authSession = getAuthSession(session);
+
+  // P093 — password protection gates read access too (commit history/canvas
+  // data), regardless of isPublic, unless the requester is the room owner.
+  const passwordMeta = await getRoomPasswordHash(roomId);
+  const isOwner = authSession?.user.id != null && authSession.user.id === passwordMeta?.ownerId;
+  if (passwordMeta?.passwordHash && !isOwner) {
+    const hasUnlock = hasValidRoomUnlock(req.cookies.get(ROOM_UNLOCK_COOKIE_NAME)?.value, roomId);
+    if (!hasUnlock) {
+      return apiError(ApiErrorCode.ROOM_PASSWORD_REQUIRED, "This room requires a password", 401);
+    }
+  }
+
   if (!room.isPublic) {
-    const session = await auth();
-    const authSession = getAuthSession(session);
     if (!authSession) {
       return apiError(ApiErrorCode.UNAUTHENTICATED, "Authentication required", 401);
     }
@@ -131,8 +145,12 @@ export async function POST(
   // Access control
   const session = await auth();
   const authSession = getAuthSession(session);
-  const access = await checkRoomAccess(roomId, authSession?.user.id ?? null);
+  const hasPasswordUnlock = hasValidRoomUnlock(req.cookies.get(ROOM_UNLOCK_COOKIE_NAME)?.value, roomId);
+  const access = await checkRoomAccess(roomId, authSession?.user.id ?? null, hasPasswordUnlock);
   if (!access.allowed) {
+    if (access.reason === "PASSWORD_REQUIRED") {
+      return apiError(ApiErrorCode.ROOM_PASSWORD_REQUIRED, "This room requires a password", 401);
+    }
     return apiError(ApiErrorCode.FORBIDDEN, "Access denied", 403);
   }
   if (access.role === "VIEWER") {
