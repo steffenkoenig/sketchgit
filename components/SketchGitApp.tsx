@@ -34,6 +34,7 @@ import { ShareModal } from "./sketchgit/ShareModal";
 import { MembersModal } from "./sketchgit/MembersModal";
 import { RoomPasswordModal } from "./sketchgit/RoomPasswordModal";
 import { RoomSettingsModal } from "./sketchgit/RoomSettingsModal";
+import { ShapeLibraryModal } from "./sketchgit/ShapeLibraryModal";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
 export default function SketchGitApp() {
@@ -62,6 +63,10 @@ export default function SketchGitApp() {
   // ── Room settings modal state (P093) ─────────────────────────────────────
   const [roomSettingsOpen, setRoomSettingsOpen] = useState(false);
   const [roomSettingsRoomId, setRoomSettingsRoomId] = useState('default');
+
+  // ── Shape library modal state (P095) ──────────────────────────────────────
+  const [shapeLibraryOpen, setShapeLibraryOpen] = useState(false);
+  const [shapeLibraryPendingSave, setShapeLibraryPendingSave] = useState<{ objects: object[] } | null>(null);
 
   // Listen for the canvas-side custom event that requests the share modal to open.
   useEffect(() => {
@@ -105,6 +110,18 @@ export default function SketchGitApp() {
     }
     document.addEventListener('sketchgit:openRoomSettingsModal', handleOpenRoomSettingsModal);
     return () => document.removeEventListener('sketchgit:openRoomSettingsModal', handleOpenRoomSettingsModal);
+  }, []);
+
+  // P095 – listen for the "Shape Library" topbar button and the context
+  // menu's "Save as Template" action (which pre-fills pendingSave).
+  useEffect(() => {
+    function handleOpenShapeLibraryModal(e: Event) {
+      const detail = (e as CustomEvent<{ pendingSave?: { objects: object[] } }>).detail;
+      setShapeLibraryPendingSave(detail.pendingSave ?? null);
+      setShapeLibraryOpen(true);
+    }
+    document.addEventListener('sketchgit:openShapeLibraryModal', handleOpenShapeLibraryModal);
+    return () => document.removeEventListener('sketchgit:openShapeLibraryModal', handleOpenShapeLibraryModal);
   }, []);
 
   // P020: Return a cleanup function so the engine is destroyed on unmount,
@@ -433,6 +450,13 @@ export default function SketchGitApp() {
         isOpen={roomSettingsOpen}
         onClose={() => setRoomSettingsOpen(false)}
         roomId={roomSettingsRoomId}
+      />
+
+      <ShapeLibraryModal
+        isOpen={shapeLibraryOpen}
+        onClose={() => setShapeLibraryOpen(false)}
+        pendingSave={shapeLibraryPendingSave}
+        call={call}
       />
     </>
   );

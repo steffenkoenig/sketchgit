@@ -5,6 +5,10 @@ const mockCanvasInstance = {
   toSVG: vi.fn().mockReturnValue('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
   toDataURL: vi.fn().mockReturnValue('data:image/png;base64,iVBORw0KGgo='),
   dispose: vi.fn(),
+  // P095 – used by renderShapeTemplateThumbnail's bounding-box fit logic.
+  getObjects: vi.fn().mockReturnValue([]),
+  setViewportTransform: vi.fn(),
+  renderAll: vi.fn(),
 };
 
 // Use a real class-like constructor so `new StaticCanvas(...)` works correctly.
@@ -32,7 +36,7 @@ vi.mock('pdf-lib', () => ({
   PDFDocument: { create: vi.fn().mockResolvedValue(mockPdfDoc) },
 }));
 
-import { renderToSVG, renderToPNG, renderToPDF } from './canvasRenderer';
+import { renderToSVG, renderToPNG, renderToPDF, renderShapeTemplateThumbnail } from './canvasRenderer';
 
 describe('renderToSVG', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -76,6 +80,53 @@ describe('renderToPNG', () => {
     mockCanvasInstance.toDataURL.mockReturnValue('data:image/png;base64,iVBORw0KGgo=');
     await renderToPNG({}, 'dark', 3);
     expect(mockCanvasInstance.toDataURL).toHaveBeenCalledWith(expect.objectContaining({ multiplier: 3 }));
+  });
+});
+
+describe('P095 renderShapeTemplateThumbnail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCanvasInstance.getObjects.mockReturnValue([]);
+    mockCanvasInstance.toDataURL.mockReturnValue('data:image/png;base64,iVBORw0KGgo=');
+  });
+
+  it('returns a Buffer', async () => {
+    const result = await renderShapeTemplateThumbnail({ objects: [] });
+    expect(Buffer.isBuffer(result)).toBe(true);
+  });
+
+  it('skips the viewport-fit transform when there are no objects', async () => {
+    await renderShapeTemplateThumbnail({ objects: [] });
+    expect(mockCanvasInstance.setViewportTransform).not.toHaveBeenCalled();
+  });
+
+  it('fits and centers the objects bounding box into the requested thumbnail size', async () => {
+    mockCanvasInstance.getObjects.mockReturnValue([
+      { getBoundingRect: () => ({ left: 100, top: 100, width: 50, height: 50 }) },
+    ]);
+    await renderShapeTemplateThumbnail({ objects: [{ type: 'rect' }] }, 'dark', 320, 240);
+    expect(mockCanvasInstance.setViewportTransform).toHaveBeenCalledTimes(1);
+    const [transform] = mockCanvasInstance.setViewportTransform.mock.calls[0] as [number[]];
+    const [scaleX, skewY, skewX, scaleY] = transform;
+    expect(scaleX).toBe(scaleY);
+    expect(skewY).toBe(0);
+    expect(skewX).toBe(0);
+    expect(scaleX).toBeGreaterThan(0);
+    expect(scaleX).toBeLessThanOrEqual(1);
+  });
+
+  it('never upscales above 1x for a small object', async () => {
+    mockCanvasInstance.getObjects.mockReturnValue([
+      { getBoundingRect: () => ({ left: 0, top: 0, width: 10, height: 10 }) },
+    ]);
+    await renderShapeTemplateThumbnail({ objects: [{ type: 'rect' }] });
+    const [transform] = mockCanvasInstance.setViewportTransform.mock.calls[0] as [number[]];
+    expect(transform[0]).toBeLessThanOrEqual(1);
+  });
+
+  it('calls dispose after rendering', async () => {
+    await renderShapeTemplateThumbnail({ objects: [] });
+    expect(mockCanvasInstance.dispose).toHaveBeenCalled();
   });
 });
 

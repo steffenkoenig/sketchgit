@@ -21,7 +21,7 @@ import { UISyncManager } from './uiSyncManager';
  */
 
 import {
-  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, ActiveSelection, FabricImage, FabricObject, Point, Pattern, Control,
+  Canvas, Path, Polyline, Rect, Ellipse, Line, IText, Polygon, Group, ActiveSelection, FabricImage, FabricObject, Point, Pattern, Control, util,
 } from 'fabric';
 import type { TPointerEventInfo, XY, TMat2D } from 'fabric';
 
@@ -424,6 +424,18 @@ export class CanvasEngine {
 
   // ── Serialisation ─────────────────────────────────────────────────────────
 
+  // P095: also used by getSelectionData() so a saved template round-trips
+  // through the same custom fields as a full canvas save/load.
+  private static readonly CUSTOM_PROPERTIES = [
+    '_isArrow', '_id', '_link', '_fillPattern', '_fillColor',
+    '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
+    '_sloppiness', '_origGeom',
+    '_attachedFrom', '_attachedTo',
+    '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
+    '_x1', '_y1', '_x2', '_y2',
+    '_isMermaid', '_mermaidCode',
+  ];
+
   getCanvasData(): string {
     if (!this.canvas) return JSON.stringify(undefined);
     this.canvas.getObjects().forEach((o: FabricObject) => ensureObjId(o));
@@ -437,16 +449,63 @@ export class CanvasEngine {
     // predate this field) can be distinguished from current ones at read time.
     return JSON.stringify({
       schemaVersion: CANVAS_JSON_SCHEMA_VERSION,
-      ...this.canvas.toObject([
-        '_isArrow', '_id', '_link', '_fillPattern', '_fillColor',
-        '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
-        '_sloppiness', '_origGeom',
-        '_attachedFrom', '_attachedTo',
-        '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
-        '_x1', '_y1', '_x2', '_y2',
-        '_isMermaid', '_mermaidCode',
-      ]),
+      ...this.canvas.toObject(CanvasEngine.CUSTOM_PROPERTIES),
     });
+  }
+
+  /**
+   * P095 – Serialise the current selection (one or more objects) for saving
+   * as a reusable shape template. Returns null when nothing is selected.
+   * Object positions are kept as-is (absolute canvas coordinates); the
+   * server strips `_id` and validates the payload before persisting it.
+   */
+  getSelectionData(): { objects: object[] } | null {
+    if (!this.canvas) return null;
+    const active = this.canvas.getActiveObjects();
+    if (active.length === 0) return null;
+    active.forEach((o: FabricObject) => ensureObjId(o));
+    return { objects: active.map((o) => o.toObject(CanvasEngine.CUSTOM_PROPERTIES)) };
+  }
+
+  /**
+   * P095 – Instantiate a saved shape template onto the canvas. `canvasJson`
+   * is the sanitized `{ objects: [...] }` payload returned by
+   * GET /api/templates/[id] (server-stripped of `_id`; reassigned here via
+   * the same object:added → ensureObjId() listener used everywhere else).
+   * New objects are offset from their saved position so a repeated paste
+   * doesn't stack exactly on top of the previous one.
+   */
+  async instantiateTemplate(canvasJson: { objects: unknown[] }): Promise<void> {
+    if (!this.canvas) return;
+    const rawObjects = (canvasJson.objects ?? []) as Array<Record<string, unknown>>;
+    if (rawObjects.length === 0) return;
+
+    this.pushHistory();
+
+    const OFFSET = 24;
+    const prepared = rawObjects.map((o) => {
+      const { _id: _unused, ...rest } = o;
+      const left = typeof rest.left === 'number' ? rest.left : 0;
+      const top = typeof rest.top === 'number' ? rest.top : 0;
+      return { ...rest, left: left + OFFSET, top: top + OFFSET };
+    });
+
+    const enlivened = (await util.enlivenObjects(prepared)) as FabricObject[];
+    for (const obj of enlivened) {
+      ensureObjId(obj);
+      this.canvas.add(obj);
+    }
+
+    if (enlivened.length > 1) {
+      const selection = new ActiveSelection(enlivened, { canvas: this.canvas });
+      this.canvas.setActiveObject(selection);
+    } else if (enlivened.length === 1) {
+      this.canvas.setActiveObject(enlivened[0]);
+    }
+
+    this.canvas.requestRenderAll();
+    this.markDirty();
+    this.onBroadcastDraw(true);
   }
 
   loadCanvasData(data: string): void {

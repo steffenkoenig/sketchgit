@@ -77,6 +77,7 @@
     "alignCenterV": "Align Center Vertical",
     "alignBottom": "Align Bottom",
     "noSelection": "No selection",
+    "saveAsTemplate": "Save as Template",
     "delete": "Delete"
   },
   "topbar": {
@@ -87,6 +88,7 @@
     "share": "Share",
     "members": "Members",
     "roomSettings": "Room Settings",
+    "shapeLibrary": "Shape Library",
     "export": "Export",
     "language": "Language",
     "signIn": "Sign in",

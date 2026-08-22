@@ -50,6 +50,11 @@ function getCanvasAPI(canvas: CanvasEngine) {
     alignCenterV: () => canvas.alignCenterV(),
     alignBottom: () => canvas.alignBottom(),
     getCanvasJson: (): string => canvas.getCanvasData(),
+    // P095 – template instantiation is async (util.enlivenObjects), so this
+    // is a fire-and-forget dispatch like the rest of the call() API.
+    insertTemplate: (canvasJson: unknown) => {
+      void canvas.instantiateTemplate(canvasJson as { objects: unknown[] });
+    },
   };
 }
 
@@ -124,6 +129,22 @@ export function createPublicAPI(
     openRoomSettingsModal: () => {
       document.dispatchEvent(
         new CustomEvent('sketchgit:openRoomSettingsModal', { detail: {} }),
+      );
+    },
+    // P095 – opens the shape library in browse mode (no pending save).
+    openShapeLibraryModal: () => {
+      document.dispatchEvent(
+        new CustomEvent('sketchgit:openShapeLibraryModal', { detail: {} }),
+      );
+    },
+    // P095 – called from the context menu's "Save as Template" item; grabs
+    // the current selection and opens the shape library pre-armed to save
+    // it (the modal shows the name-and-save form when pendingSave is set).
+    saveSelectionAsTemplate: () => {
+      const selection = canvas.getSelectionData();
+      if (!selection) return;
+      document.dispatchEvent(
+        new CustomEvent('sketchgit:openShapeLibraryModal', { detail: { pendingSave: selection } }),
       );
     },
     destroy(): void {

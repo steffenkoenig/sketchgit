@@ -124,9 +124,15 @@ vi.mock('fabric', () => ({
   Control: vi.fn(function MockControl(this: Record<string, unknown>, opts: Record<string, unknown> = {}) {
     Object.assign(this, opts);
   }),
+  // P095 – util.enlivenObjects() turns plain object descriptors into live
+  // Fabric object instances (used by instantiateTemplate()).
+  util: {
+    enlivenObjects: vi.fn(async (objects: Array<Record<string, unknown>>) =>
+      objects.map((o) => makeFabricObject(o))),
+  },
 }));
 
-import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group, FabricObject } from 'fabric';
+import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group, FabricObject, util } from 'fabric';
 import { CanvasEngine } from './canvasEngine';
 import { nearestPointOnBounds } from './snapEngine';
 
@@ -3411,6 +3417,103 @@ describe('CanvasEngine – endpoint selection controls', () => {
 
       expect(rect1.set).not.toHaveBeenCalled();
       expect((engine as any).pushHistory).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('CanvasEngine – shape templates (P095)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  describe('getSelectionData', () => {
+    it('returns null when nothing is selected', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      mockCanvasInstance.getActiveObjects.mockReturnValue([]);
+      expect(engine.getSelectionData()).toBeNull();
+    });
+
+    it('serialises each selected object with the same custom-properties list as getCanvasData', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      const rect = makeFabricObject({ type: 'rect', _id: 'r1' });
+      mockCanvasInstance.getActiveObjects.mockReturnValue([rect]);
+      rect.toObject = vi.fn().mockReturnValue({ type: 'rect', left: 5, top: 5 });
+
+      const result = engine.getSelectionData();
+
+      expect(rect.toObject).toHaveBeenCalledWith([
+        '_isArrow', '_id', '_link', '_fillPattern', '_fillColor',
+        '_arrowHeadStart', '_arrowHeadEnd', '_arrowType',
+        '_sloppiness', '_origGeom',
+        '_attachedFrom', '_attachedTo',
+        '_attachedFromAnchorX', '_attachedFromAnchorY', '_attachedToAnchorX', '_attachedToAnchorY',
+        '_x1', '_y1', '_x2', '_y2',
+        '_isMermaid', '_mermaidCode',
+      ]);
+      expect(result).toEqual({ objects: [{ type: 'rect', left: 5, top: 5 }] });
+    });
+
+    it('assigns an _id to any not-yet-tracked selected object before serialising', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      const rect = makeFabricObject({ type: 'rect', _id: undefined });
+      rect.toObject = vi.fn().mockReturnValue({ type: 'rect' });
+      mockCanvasInstance.getActiveObjects.mockReturnValue([rect]);
+      engine.getSelectionData();
+      expect(rect._id).toBeTruthy();
+    });
+  });
+
+  describe('instantiateTemplate', () => {
+    it('does nothing for an empty objects array', async () => {
+      const { engine } = makeEngine();
+      engine.init();
+      (engine as any).pushHistory = vi.fn();
+      await engine.instantiateTemplate({ objects: [] });
+      expect((engine as any).pushHistory).not.toHaveBeenCalled();
+      expect(mockCanvasInstance.add).not.toHaveBeenCalled();
+    });
+
+    it('enlivens objects, offsets their position, adds them, and selects the single result', async () => {
+      const { engine, onBroadcastDraw } = makeEngine();
+      engine.init();
+      (engine as any).pushHistory = vi.fn();
+
+      await engine.instantiateTemplate({ objects: [{ type: 'rect', left: 10, top: 20 }] });
+
+      expect(util.enlivenObjects).toHaveBeenCalledWith([{ type: 'rect', left: 34, top: 44 }]);
+      expect(mockCanvasInstance.add).toHaveBeenCalledTimes(1);
+      expect(mockCanvasInstance.setActiveObject).toHaveBeenCalledTimes(1);
+      expect((engine as any).pushHistory).toHaveBeenCalled();
+      expect(onBroadcastDraw).toHaveBeenCalledWith(true);
+    });
+
+    it('wraps multiple instantiated objects in an ActiveSelection', async () => {
+      const { engine } = makeEngine();
+      engine.init();
+      (engine as any).pushHistory = vi.fn();
+
+      await engine.instantiateTemplate({
+        objects: [
+          { type: 'rect', left: 0, top: 0 },
+          { type: 'circle', left: 20, top: 20 },
+        ],
+      });
+
+      expect(mockCanvasInstance.add).toHaveBeenCalledTimes(2);
+      const { ActiveSelection } = await import('fabric');
+      expect(ActiveSelection).toHaveBeenCalled();
+      expect(mockCanvasInstance.setActiveObject).toHaveBeenCalledTimes(1);
+    });
+
+    it('strips _id from enlivened objects before assigning a fresh one', async () => {
+      const { engine } = makeEngine();
+      engine.init();
+      (engine as any).pushHistory = vi.fn();
+
+      await engine.instantiateTemplate({ objects: [{ type: 'rect', _id: 'leaked_id', left: 0, top: 0 }] });
+
+      expect(util.enlivenObjects).toHaveBeenCalledWith([{ type: 'rect', left: 24, top: 24 }]);
     });
   });
 });

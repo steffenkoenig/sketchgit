@@ -107,6 +107,17 @@ function IconRoomSettings() {
   );
 }
 
+function IconShapeLibrary() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="2" width="5" height="5" rx="1"/>
+      <rect x="9" y="2" width="5" height="5" rx="1"/>
+      <rect x="2" y="9" width="5" height="5" rx="1"/>
+      <rect x="9" y="9" width="5" height="5" rx="1"/>
+    </svg>
+  );
+}
+
 function IconExport() {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -601,6 +612,17 @@ function BranchActions({ call, t, session }: { call: SketchGitCall; t: (key: str
         >
           <IconRoomSettings />
           {t("topbar.roomSettings")}
+        </button>
+      )}
+      {session?.user && (
+        <button
+          className="topbtn"
+          onClick={() => call("openShapeLibraryModal")}
+          aria-label="Open shape library dialog"
+          aria-haspopup="dialog"
+        >
+          <IconShapeLibrary />
+          {t("topbar.shapeLibrary")}
         </button>
       )}
     </>

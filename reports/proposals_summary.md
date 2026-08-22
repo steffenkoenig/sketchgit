@@ -111,6 +111,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P062 | Auto-generate OpenAPI 3.1 Specification from Zod Schemas | Maintainability | [P062](proposals/done/P062_openapi-documentation.md) |
 | P065 | Migrate Password Hashing from bcryptjs to Argon2id | Security | [P065](proposals/done/P065_argon2id-password-hashing.md) |
 | P073 | Batch Multiple Small WebSocket Messages Within a Single Tick | Performance | [P073](proposals/done/P073_websocket-message-batching.md) |
+| P095 | Custom Templates and Shape Library | UX, Productivity | [P095](proposals/done/P095_custom-templates-shape-library.md) |
 
 ---
 
@@ -127,7 +128,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P081 | Add React Error Boundaries for Graceful UI Failure Isolation | Reliability, UX, Maintainability | [P081](proposals/P081_react-error-boundaries.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
 | P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/done/P091_granular-share-links.md) |
-| P095 | Custom Templates and Shape Library | UX, Productivity | [P095](proposals/P095_custom-templates-shape-library.md) |
 | P096 | Canvas Minimap / Radar View | UX | [P096](proposals/P096_canvas-minimap-radar.md) |
 
 ---

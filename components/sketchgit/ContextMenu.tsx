@@ -75,6 +75,11 @@ const ContextMenuItems = React.memo(function ContextMenuItems({ canGroup, canUng
       )}
       {(canGroup || canUngroup) && <div className="tb-dropdown-sep" />}
 
+      <button className="tb-dropdown-item" onClick={() => call("saveSelectionAsTemplate")}>
+        {t("saveAsTemplate") || "Save as Template"}
+      </button>
+      <div className="tb-dropdown-sep" />
+
       <button className="tb-dropdown-item" onClick={() => call("bringForward")}>
         {t("bringForward") || "Bring Forward"}
       </button>

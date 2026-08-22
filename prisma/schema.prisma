@@ -32,6 +32,7 @@ model User {
   createdInvitations RoomInvitation[] @relation("RoomInvitationCreator")
   createdShareLinks  ShareLink[]      @relation("ShareLinkCreator")
   roomSubscriptions  RoomSubscription[]
+  shapeTemplates     ShapeTemplate[]
 }
 
 model Account {
@@ -299,5 +300,25 @@ model RoomSubscription {
   @@unique([roomId, userId])
   // Digest job scans "due" subscriptions per frequency tier.
   @@index([frequency, lastSentAt])
+  @@index([userId])
+}
+
+// ─── Custom shape templates (P095) ─────────────────────────────────────────
+
+model ShapeTemplate {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  /// Sanitized Fabric.js object JSON for the saved selection (object IDs
+  /// stripped — reassigned on instantiation, see ensureObjId()).
+  canvasJson    Json
+  /// Small PNG preview rendered via canvasRenderer.ts's renderToPNG(). Null
+  /// while a template's thumbnail hasn't been (re)generated yet.
+  thumbnailPng  Bytes?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }

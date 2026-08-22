@@ -77,6 +77,7 @@
     "alignCenterV": "Vertikal zentrieren",
     "alignBottom": "Unten ausrichten",
     "noSelection": "Keine Auswahl",
+    "saveAsTemplate": "Als Vorlage speichern",
     "delete": "Löschen"
   },
   "topbar": {
@@ -87,6 +88,7 @@
     "share": "Teilen",
     "members": "Mitglieder",
     "roomSettings": "Raumeinstellungen",
+    "shapeLibrary": "Formenbibliothek",
     "export": "Exportieren",
     "language": "Sprache",
     "signIn": "Anmelden",
