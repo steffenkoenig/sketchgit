@@ -92,6 +92,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P082 | Automated Accessibility Testing with axe-core in CI | Reliability, Maintainability, Accessibility | [P082](proposals/done/P082_automated-accessibility-testing.md) |
 | P087 | Visual Regression Testing with Playwright Snapshots | Reliability, Maintainability | [P087](proposals/done/P087_visual-regression-testing.md) |
 | P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/done/P090_feature-flag-system.md) |
+| P091 † | Room Roles and Permissions (member role visibility + management API — distinct proposal, shares the P091 number with Granular Share Links above; see that report's Implementation Notes) | Security, Collaboration, Accessibility | [P091](proposals/done/P091_room-roles-permissions.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |

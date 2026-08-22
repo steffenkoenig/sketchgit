@@ -85,6 +85,7 @@
     "branch": "Branch",
     "commit": "Commit",
     "share": "Teilen",
+    "members": "Mitglieder",
     "export": "Exportieren",
     "language": "Sprache",
     "signIn": "Anmelden",
@@ -165,6 +166,13 @@
       "existingLinks": "Aktive Links",
       "uses": "Aufrufe",
       "noLinks": "Noch keine aktiven Freigabe-Links."
+    },
+    "members": {
+      "title": "Raummitglieder",
+      "loading": "Mitglieder werden geladen…",
+      "empty": "Noch keine expliziten Mitglieder — jeder mit dem Link kann beitreten.",
+      "roleFor": "Rolle für {name}",
+      "close": "Schließen"
     }
   },
   "collab": {

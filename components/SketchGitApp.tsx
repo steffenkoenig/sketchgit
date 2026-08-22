@@ -31,6 +31,7 @@ import { LeftToolbar } from "./sketchgit/LeftToolbar";
 import { PropertiesPanel } from "./sketchgit/PropertiesPanel";
 import { ContextMenu } from "./sketchgit/ContextMenu";
 import { ShareModal } from "./sketchgit/ShareModal";
+import { MembersModal } from "./sketchgit/MembersModal";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
 export default function SketchGitApp() {
@@ -48,6 +49,10 @@ export default function SketchGitApp() {
   // always current even after the canvas engine calls history.replaceState().
   const [shareRoomId, setShareRoomId] = useState('default');
 
+  // ── Members modal state ──────────────────────────────────────────────────
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [membersRoomId, setMembersRoomId] = useState('default');
+
   // Listen for the canvas-side custom event that requests the share modal to open.
   useEffect(() => {
     function handleOpenShareModal(e: Event) {
@@ -58,6 +63,16 @@ export default function SketchGitApp() {
     }
     document.addEventListener('sketchgit:openShareModal', handleOpenShareModal);
     return () => document.removeEventListener('sketchgit:openShareModal', handleOpenShareModal);
+  }, []);
+
+  // Listen for the canvas-side custom event that requests the members modal to open.
+  useEffect(() => {
+    function handleOpenMembersModal() {
+      setMembersRoomId(new URLSearchParams(window.location.search).get('room') ?? 'default');
+      setMembersOpen(true);
+    }
+    document.addEventListener('sketchgit:openMembersModal', handleOpenMembersModal);
+    return () => document.removeEventListener('sketchgit:openMembersModal', handleOpenMembersModal);
   }, []);
 
   // P020: Return a cleanup function so the engine is destroyed on unmount,
@@ -364,6 +379,13 @@ export default function SketchGitApp() {
         onClose={() => setShareOpen(false)}
         roomId={shareRoomId}
         prefilledCommitSha={shareCommitSha}
+      />
+
+      {/* P091: Room members/roles modal – opened from topbar */}
+      <MembersModal
+        isOpen={membersOpen}
+        onClose={() => setMembersOpen(false)}
+        roomId={membersRoomId}
       />
     </>
   );

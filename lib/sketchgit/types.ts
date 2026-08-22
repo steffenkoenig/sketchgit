@@ -165,7 +165,9 @@ export type WsMessageType =
   | "follow-request"
   | "follow-accept"
   | "follow-stop"
-  | "view-sync";
+  | "view-sync"
+  // P091 – room member role changed
+  | "role-update";
 
 export interface WsMessage {
   type: WsMessageType;

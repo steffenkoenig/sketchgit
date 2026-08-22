@@ -41,6 +41,15 @@ export interface RoomBroadcasterHandlers {
   ) => void;
   /** Schedule a debounced presence broadcast for the room. */
   schedulePresence: (roomId: string) => void;
+  /**
+   * P091 – Update the in-memory role for every connected client belonging to
+   * `userId` in `roomId` (a user may have more than one open tab/connection),
+   * and send each of them a `role-update` message. Updating the in-memory
+   * role — not just notifying the client — matters: it's what the existing
+   * WS-level enforcement (P034) checks on every subsequent draw/commit
+   * attempt from that connection.
+   */
+  updateClientRole: (roomId: string, userId: string, role: string) => void;
 }
 
 // ─── Module-level registry ────────────────────────────────────────────────────
@@ -84,4 +93,9 @@ export function updateWsClientState(
 /** Schedule a debounced presence broadcast for a room. */
 export function schedulePresenceBroadcast(roomId: string): void {
   _handlers?.schedulePresence(roomId);
+}
+
+/** P091 – Update a user's in-memory role and notify their connected client(s). */
+export function updateClientRole(roomId: string, userId: string, role: string): void {
+  _handlers?.updateClientRole(roomId, userId, role);
 }

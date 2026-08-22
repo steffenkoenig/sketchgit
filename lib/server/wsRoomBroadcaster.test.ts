@@ -4,6 +4,7 @@ import {
   broadcastToRoom,
   updateWsClientState,
   schedulePresenceBroadcast,
+  updateClientRole,
   RoomBroadcasterHandlers,
   WsClientStateUpdate
 } from './wsRoomBroadcaster.js';
@@ -21,6 +22,7 @@ describe('wsRoomBroadcaster', () => {
       broadcast: vi.fn(),
       updateClient: vi.fn(),
       schedulePresence: vi.fn(),
+      updateClientRole: vi.fn(),
     };
   });
 
@@ -40,6 +42,12 @@ describe('wsRoomBroadcaster', () => {
     it('does not throw when calling schedulePresenceBroadcast', () => {
       expect(() => {
         schedulePresenceBroadcast('room1');
+      }).not.toThrow();
+    });
+
+    it('does not throw when calling updateClientRole', () => {
+      expect(() => {
+        updateClientRole('room1', 'user1', 'VIEWER');
       }).not.toThrow();
     });
   });
@@ -74,6 +82,12 @@ describe('wsRoomBroadcaster', () => {
       schedulePresenceBroadcast('room1');
 
       expect(mockHandlers.schedulePresence).toHaveBeenCalledWith('room1');
+    });
+
+    it('delegates updateClientRole to the updateClientRole handler', () => {
+      updateClientRole('room1', 'user1', 'VIEWER');
+
+      expect(mockHandlers.updateClientRole).toHaveBeenCalledWith('room1', 'user1', 'VIEWER');
     });
   });
 });

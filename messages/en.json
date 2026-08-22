@@ -85,6 +85,7 @@
     "branch": "Branch",
     "commit": "Commit",
     "share": "Share",
+    "members": "Members",
     "export": "Export",
     "language": "Language",
     "signIn": "Sign in",
@@ -165,6 +166,13 @@
       "existingLinks": "Active links",
       "uses": "uses",
       "noLinks": "No active share links yet."
+    },
+    "members": {
+      "title": "Room Members",
+      "loading": "Loading members…",
+      "empty": "No explicit members yet — anyone with the link can join.",
+      "roleFor": "Role for {name}",
+      "close": "Close"
     }
   },
   "collab": {

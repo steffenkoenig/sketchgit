@@ -85,6 +85,17 @@ function IconShare() {
   );
 }
 
+function IconMembers() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="6" cy="5" r="2.2"/>
+      <path d="M2 13c0-2.2 1.8-4 4-4s4 1.8 4 4"/>
+      <path d="M10.5 4.2a2.2 2.2 0 0 1 0 4.3"/>
+      <path d="M13 13c0-1.8-1.2-3.3-2.8-3.8"/>
+    </svg>
+  );
+}
+
 function IconExport() {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -418,12 +429,28 @@ function LocaleDropdown() {
  */
 function ThemeToggle() {
   const t = useTranslations();
-  const [isDark, setIsDark] = React.useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
+  // P091 – the initial value must be deterministic and match the
+  // server-rendered HTML exactly (server always assumes dark absent a
+  // cookie — see app/layout.tsx's `themeClass`), or React throws a
+  // hydration-mismatch error (#418) whenever a first-time visitor's
+  // browser/OS actually prefers light mode. Reading matchMedia here during
+  // the initial render — even via a lazy useState initializer — runs at
+  // hydration time and so must equal the server's blind guess, which it
+  // won't whenever the browser prefers light. Correct the state safely
+  // in a useEffect below, which runs only after hydration completes and
+  // is never compared against server output.
+  const [isDark, setIsDark] = React.useState<boolean>(true);
+
+  React.useEffect(() => {
     const cookie = document.cookie.match(/THEME=(\w+)/)?.[1];
-    if (cookie) return cookie !== "light";
-    return !window.matchMedia("(prefers-color-scheme: light)").matches;
-  });
+    if (cookie) {
+      setIsDark(cookie !== "light");
+    } else {
+      setIsDark(!window.matchMedia("(prefers-color-scheme: light)").matches);
+    }
+    // Only on mount — this effect exists to correct the client's initial
+    // guess after hydration, not to keep re-syncing on every render.
+  }, []);
 
   function toggle() {
     const nextDark = !isDark;
@@ -541,6 +568,17 @@ function BranchActions({ call, t, session }: { call: SketchGitCall; t: (key: str
         >
           <IconShare />
           {t("topbar.share")}
+        </button>
+      )}
+      {session?.user && (
+        <button
+          className="topbtn"
+          onClick={() => call("openMembersModal")}
+          aria-label="Open room members dialog"
+          aria-haspopup="dialog"
+        >
+          <IconMembers />
+          {t("topbar.members")}
         </button>
       )}
     </>

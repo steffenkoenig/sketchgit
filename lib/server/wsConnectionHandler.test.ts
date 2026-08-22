@@ -115,7 +115,8 @@ describe('wsConnectionHandler', () => {
 
       expect(deps.sendTo).toHaveBeenCalledWith(ws, expect.objectContaining({
         type: 'welcome',
-        roomId: 'test-room'
+        roomId: 'test-room',
+        role: 'EDITOR'
       }));
       expect(deps.schedulePushPresence).toHaveBeenCalledWith('test-room');
     });

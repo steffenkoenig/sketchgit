@@ -44,11 +44,19 @@ export interface CollabCallbacks {
   getViewport?: () => [number, number, number, number, number, number];
   /** Called once the welcome handshake confirms the room ID. Used to persist the last-visited room. */
   onRoomJoined?: (roomId: string) => void;
+  /**
+   * P091 – Called with the client's own room role on connect (welcome) and
+   * whenever it changes at runtime (role-update, e.g. an owner just changed
+   * it). Used to restrict the UI for VIEWER role (read-only mode).
+   */
+  onRoleChanged?: (role: string) => void;
 }
 
 export class CollaborationManager {
   wsClientId: string | null = null;
   currentRoomId = 'default';
+  /** P091 – this client's own role in the current room; null until the welcome handshake completes. */
+  myRole: string | null = null;
 
   private presenceClients: PresenceClient[] = [];
   private remoteCursors: Record<string, string> = {}; // clientId → element id
@@ -121,6 +129,10 @@ export class CollaborationManager {
       case 'welcome': {
         this.wsClientId = data.clientId as string;
         this.currentRoomId = (data.roomId as string) || this.currentRoomId;
+        if (typeof data.role === 'string') {
+          this.myRole = data.role;
+          this.cb.onRoleChanged?.(data.role);
+        }
 
         // Reflect room id in the URL bar.  Only inject `?branch=` when the
         // incoming URL carries no branch param – preserving a deep-link
@@ -237,6 +249,17 @@ export class CollaborationManager {
         }
         this.cb.renderTimeline();
         this.cb.updateUI();
+        break;
+      }
+
+      case 'role-update': {
+        // P091 – server pushed a new role for this connection (an owner
+        // just changed it). Targeted to this connection specifically —
+        // no userId check needed, unlike a room-wide broadcast.
+        if (typeof data.role === 'string') {
+          this.myRole = data.role;
+          this.cb.onRoleChanged?.(data.role);
+        }
         break;
       }
 

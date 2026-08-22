@@ -449,6 +449,15 @@ initRoomBroadcaster({
     if (updates.currentHeadSha !== undefined) client.currentHeadSha = updates.currentHeadSha;
   },
   schedulePresence: schedulePushPresence,
+  updateClientRole: (roomId, userId, role) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    for (const client of room.values()) {
+      if (client.userId !== userId) continue;
+      client.role = role as ClientRole;
+      sendTo(client, { type: "role-update", role } as unknown as WsMessage);
+    }
+  },
 });
 
 // ─── Session parsing ──────────────────────────────────────────────────────────

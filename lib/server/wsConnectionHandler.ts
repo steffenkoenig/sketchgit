@@ -139,7 +139,10 @@ async function finalizeConnection(client: ClientState, roomId: string, clientId:
   deps.logger.info({ clientId, roomId, userId: client.userId ?? null }, "ws: client connected");
   void appendRoomEvent(roomId, "MEMBER_JOIN", client.userId, { displayName: client.displayName }).catch((err: unknown) => deps.logger.warn({ err }, "events: failed to append MEMBER_JOIN"));
 
-  deps.sendTo(client, { type: "welcome", roomId, clientId } as unknown as WsMessage);
+  // P091 – include the client's own role so the UI can restrict itself
+  // (e.g. disable drawing tools for VIEWER) rather than relying solely on
+  // the server silently rejecting unauthorized draw/commit attempts.
+  deps.sendTo(client, { type: "welcome", roomId, clientId, role: client.role } as unknown as WsMessage);
   deps.schedulePushPresence(roomId);
 
   let snapshot: RoomSnapshot | undefined | null = deps.roomCache.get(roomId);

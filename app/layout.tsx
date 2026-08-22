@@ -46,7 +46,23 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang={locale} className={`${themeClass}`}>
       <head>
-        <script nonce={nonce}>{foucScript}</script>
+        {/*
+          dangerouslySetInnerHTML is safe here: foucScript is a static,
+          hardcoded string defined two lines above — no user input is ever
+          interpolated into it, so there is no XSS vector. A prior "security"
+          change replaced this with `<script>{foucScript}</script>` (JSX text
+          children) to avoid dangerouslySetInnerHTML on principle, but that
+          swapped a non-issue for a real bug: browsers parse <script> content
+          as raw/unescaped, while React's hydration for a <script> tag with a
+          plain string child expects standard HTML-entity-escaped text —
+          the mismatch triggers React error #418 (hydration failed) on every
+          page load, which aborts hydration for the whole tree and breaks
+          client-side interactivity site-wide (confirmed via a live app: the
+          WS connection, sign-in redirect, and canvas app all failed until
+          this was reverted). dangerouslySetInnerHTML is the correct,
+          Next.js-recommended pattern for injecting a static blocking script.
+        */}
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: foucScript }} />
       </head>
       <body>
         <NextIntlClientProvider messages={messages} locale={locale}>

@@ -31,6 +31,8 @@ vi.mock('@/lib/db/prisma', () => {
       roomMembership: {
         findMany: vi.fn(),
         findUnique: vi.fn(),
+        count: vi.fn(),
+        update: vi.fn(),
       },
       roomEvent: {
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -50,6 +52,8 @@ import {
   getUserRooms,
   pruneInactiveRooms,
   checkRoomAccess,
+  listRoomMembers,
+  setRoomMemberRole,
   COMMIT_PAGE_SIZE,
   type CommitRecord,
 } from './roomRepository';
@@ -438,5 +442,60 @@ describe('checkRoomAccess (P034)', () => {
     mock.membershipFindUnique.mockResolvedValue({ role: 'OWNER' });
     const result = await checkRoomAccess('priv-room', 'usr_owner');
     expect(result).toEqual({ allowed: true, role: 'OWNER' });
+  });
+});
+
+describe('listRoomMembers (P091)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('maps memberships to summaries, newest-joined first', async () => {
+    mock.membershipFindMany.mockResolvedValue([
+      { userId: 'usr_1', role: 'OWNER', joinedAt: new Date('2026-01-02'), user: { name: 'Alice', email: 'alice@example.com' } },
+    ]);
+    const result = await listRoomMembers('room_1');
+    expect(mock.membershipFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { roomId: 'room_1' }, orderBy: { joinedAt: 'desc' } }),
+    );
+    expect(result).toEqual([
+      { userId: 'usr_1', role: 'OWNER', joinedAt: new Date('2026-01-02'), name: 'Alice', email: 'alice@example.com' },
+    ]);
+  });
+});
+
+describe('setRoomMemberRole (P091)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns NOT_A_MEMBER when the user has no membership', async () => {
+    mock.membershipFindUnique.mockResolvedValue(null);
+    const result = await setRoomMemberRole('room_1', 'usr_1', 'VIEWER');
+    expect(result).toEqual({ ok: false, reason: 'NOT_A_MEMBER' });
+  });
+
+  it('refuses to demote the last remaining OWNER', async () => {
+    mock.membershipFindUnique.mockResolvedValue({ role: 'OWNER' });
+    (prisma.roomMembership.count as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    const result = await setRoomMemberRole('room_1', 'usr_1', 'EDITOR');
+    expect(result).toEqual({ ok: false, reason: 'LAST_OWNER' });
+    expect(prisma.roomMembership.update).not.toHaveBeenCalled();
+  });
+
+  it('allows demoting an OWNER when another OWNER remains', async () => {
+    mock.membershipFindUnique.mockResolvedValue({ role: 'OWNER' });
+    (prisma.roomMembership.count as ReturnType<typeof vi.fn>).mockResolvedValue(2);
+    (prisma.roomMembership.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    const result = await setRoomMemberRole('room_1', 'usr_1', 'EDITOR');
+    expect(result).toEqual({ ok: true });
+    expect(prisma.roomMembership.update).toHaveBeenCalledWith({
+      where: { roomId_userId: { roomId: 'room_1', userId: 'usr_1' } },
+      data: { role: 'EDITOR' },
+    });
+  });
+
+  it('updates a non-OWNER role without checking the owner count', async () => {
+    mock.membershipFindUnique.mockResolvedValue({ role: 'EDITOR' });
+    (prisma.roomMembership.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    const result = await setRoomMemberRole('room_1', 'usr_1', 'VIEWER');
+    expect(result).toEqual({ ok: true });
+    expect(prisma.roomMembership.count).not.toHaveBeenCalled();
   });
 });

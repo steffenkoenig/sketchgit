@@ -798,6 +798,64 @@ export async function addRoomMember(
   });
 }
 
+// ─── P091: Room member role management ─────────────────────────────────────
+
+export interface RoomMemberSummary {
+  userId: string;
+  role: MemberRole;
+  joinedAt: Date;
+  name: string | null;
+  email: string | null;
+}
+
+/** Lists all explicit memberships for a room, most-recently-joined first. */
+export async function listRoomMembers(roomId: string): Promise<RoomMemberSummary[]> {
+  const memberships = await prisma.roomMembership.findMany({
+    where: { roomId },
+    orderBy: { joinedAt: "desc" },
+    include: { user: { select: { name: true, email: true } } },
+  });
+  return memberships.map((m) => ({
+    userId: m.userId,
+    role: m.role,
+    joinedAt: m.joinedAt,
+    name: m.user.name,
+    email: m.user.email,
+  }));
+}
+
+export type SetMemberRoleResult =
+  | { ok: true }
+  | { ok: false; reason: "NOT_A_MEMBER" | "LAST_OWNER" };
+
+/**
+ * Updates an existing member's role. Refuses to demote the last remaining
+ * OWNER — a room with zero owners can never have its access managed again
+ * (P091 security requirement: prevent accidental self-lockout).
+ */
+export async function setRoomMemberRole(
+  roomId: string,
+  userId: string,
+  role: "OWNER" | "EDITOR" | "COMMITTER" | "VIEWER",
+): Promise<SetMemberRoleResult> {
+  const existing = await prisma.roomMembership.findUnique({
+    where: { roomId_userId: { roomId, userId } },
+    select: { role: true },
+  });
+  if (!existing) return { ok: false, reason: "NOT_A_MEMBER" };
+
+  if (existing.role === "OWNER" && role !== "OWNER") {
+    const ownerCount = await prisma.roomMembership.count({ where: { roomId, role: "OWNER" } });
+    if (ownerCount <= 1) return { ok: false, reason: "LAST_OWNER" };
+  }
+
+  await prisma.roomMembership.update({
+    where: { roomId_userId: { roomId, userId } },
+    data: { role },
+  });
+  return { ok: true };
+}
+
 /**
  * Check that a commit with the given SHA exists and belongs to `roomId`.
  * Returns the SHA when found, null otherwise.

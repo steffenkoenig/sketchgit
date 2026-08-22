@@ -9,8 +9,9 @@ test.describe('Canvas – draw and commit', () => {
     // Wait for the app to be ready (canvas visible)
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 10_000 });
 
-    // Select the pen tool
-    const penBtn = page.getByRole('button', { name: /pen/i });
+    // Select the pen tool. Match by id, not an aria-label substring — /pen/i
+    // also matches "Open merge branch dialog" ("O-pen" contains "pen").
+    const penBtn = page.locator('#tpen');
     await penBtn.click();
 
     // Draw a stroke on the canvas

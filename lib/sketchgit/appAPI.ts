@@ -107,6 +107,14 @@ export function createPublicAPI(
         new CustomEvent('sketchgit:openShareModal', { detail: {} }),
       );
     },
+    // P091 – opens the room member/role management modal (owner only; the
+    // modal itself fetches the member list, so a non-owner just sees the
+    // resulting 403 rather than needing a client-side role check here).
+    openMembersModal: () => {
+      document.dispatchEvent(
+        new CustomEvent('sketchgit:openMembersModal', { detail: {} }),
+      );
+    },
     destroy(): void {
       document.removeEventListener('click', outsideClickHandler);
       tl.destroyScrollListener();

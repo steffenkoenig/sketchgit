@@ -52,6 +52,17 @@ if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
 
+  // NextAuth v5 rejects every request with UntrustedHost unless the host is
+  // explicitly trusted. This app is self-hosted (Docker/Kubernetes, not
+  // Vercel/another platform NextAuth auto-detects), so without this every
+  // sign-in and session check fails outright in production. Safe here
+  // because proxy.ts and the reverse proxy/ingress in front of this app are
+  // the actual boundary that determines what Host header reaches Next.js —
+  // this flag only tells NextAuth to trust the Host header it's given, the
+  // same as every other framework's default assumption about its own
+  // reverse proxy.
+  trustHost: true,
+
   providers,
 
   session: {

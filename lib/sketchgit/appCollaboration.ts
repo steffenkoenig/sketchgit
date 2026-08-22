@@ -71,6 +71,26 @@ export function setupCollaborationManager(
     applyViewport: (vpt) => getCanvas().applyViewport(vpt),
     getViewport: () => getCanvas().getViewport(),
     onRoomJoined: (roomId) => savePreferences({ lastRoomId: roomId }),
+    // P091 – VIEWER role gets a visibly read-only canvas: drawing tools are
+    // dimmed and unclickable, and a persistent badge explains why. This is
+    // a UX affordance only — the actual enforcement is server-side (P034
+    // WS/REST checks); a VIEWER whose client somehow bypassed this couldn't
+    // draw anyway, their attempt would just be silently rejected.
+    onRoleChanged: (role) => {
+      document.body.classList.toggle('role-viewer', role === 'VIEWER');
+      let badge = document.getElementById('readOnlyBadge');
+      if (role === 'VIEWER') {
+        if (!badge) {
+          badge = document.createElement('div');
+          badge.id = 'readOnlyBadge';
+          badge.setAttribute('role', 'status');
+          badge.textContent = 'Read-only — you have viewer access to this room';
+          document.body.appendChild(badge);
+        }
+      } else {
+        badge?.remove();
+      }
+    },
   });
 
   return collab;
