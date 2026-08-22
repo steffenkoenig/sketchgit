@@ -219,3 +219,59 @@ is the admin API routes, tests, and seeding.
 - P074 ✅ (activity feed — room-scoped flag changes logged as RoomEvent)
 - P027 ✅ (env validation — ADMIN_API_SECRET added to EnvSchema)
 - P088 (read replica — first practical use of the `read-replica` flag)
+
+## Implementation Notes (2026-08-22)
+
+Implemented: `FeatureFlag` model + migration, `isEnabled()` evaluation with a
+30s-TTL LRU cache (`lib/server/featureFlags.ts`), the repository layer
+(`lib/db/featureFlagRepository.ts` — kept separate from `featureFlags.ts` per
+this repo's module-boundary convention: `lib/db/` holds Prisma access,
+`lib/server/` holds logic that calls into it, matching every other
+repository/service pair in the codebase), admin CRUD routes guarded by a
+constant-time `x-admin-secret` header check (`lib/server/adminAuth.ts`, same
+pattern as P054's credential comparison), `makeFeatureFlag()`, and
+`prisma/seed.ts` seeding the four flags the proposal named.
+
+**Found and fixed a real, unrelated, significant pre-existing bug** while
+generating this proposal's migration: `prisma migrate dev` diffs the current
+`schema.prisma` against migration history, and it turned out `User.
+twoFactorEnabled`/`twoFactorSecret` and the `TwoFactorToken` model — added to
+`schema.prisma` by an unrelated 2FA feature commit — had **no migration ever
+generated for them**. `prisma migrate deploy` (what CI and any real
+deployment runs) would never have created those columns/tables, meaning the
+2FA feature has been completely non-functional outside a local `migrate dev`
+environment since it was merged. Undetected because CI's unit tests mock
+Prisma (never touch a real migrated schema) and E2E tests were never wired
+into CI until this session's P082/P087 work. Verified the fix by applying
+the full migration chain to three independent fresh databases via Docker —
+`User.twoFactorEnabled`/`twoFactorSecret` and `TwoFactorToken` are now
+present after a clean `migrate deploy`, confirmed via `psql`. Kept in the
+same migration as `FeatureFlag` (Prisma generated them together as one diff;
+splitting them apart after the fact via manual SQL surgery would be riskier
+than shipping one honestly-named, honestly-described migration) — the
+migration directory is named accordingly
+(`20260822_p090_feature_flags_and_2fa_backfill`).
+
+**Deviated from the proposal's admin-auth design**: used a plain
+`x-admin-secret` header check exclusively, not "a new ADMIN role on
+RoomMembership OR a dedicated adminSecret header" — this app's RBAC
+(`RoomMembership.role`) is entirely per-room; there is no site-wide admin
+concept for a feature-flag admin role to attach to, so the header-secret
+option was the only one that actually fits the existing architecture.
+
+**Not implemented**: the `RoomEvent`-logging of room-scoped flag changes (no
+new `RoomEventType` enum value was added — flag changes aren't currently
+room-scoped in any consumer, so there's nothing to log yet; straightforward
+to add once a room-targeted flag actually ships) and wiring
+`read-replica` into `lib/db/prisma.ts` (the proposal's own suggested "first
+practical use" — P088, the read-replica proposal itself, hasn't been
+implemented yet in this session; wiring the flag in ahead of the feature it
+gates would be premature).
+
+Verified end-to-end against a live app, not just unit tests: ran the actual
+`prisma/seed.ts` against a real Postgres (idempotent — re-running left the
+row count unchanged), booted the real `npm run dev` server with
+`ADMIN_API_SECRET` set, and exercised every route over real HTTP — list
+(with/without/wrong secret → 200/403/403), create, PATCH-enable, duplicate
+create (409), and PATCH a nonexistent flag (404) — all against the live
+database, not mocks.

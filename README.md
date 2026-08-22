@@ -227,6 +227,7 @@ All variables are validated at startup via `lib/env.ts`. Copy `.env.example` for
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP collector endpoint; unset disables tracing/metrics entirely (default: disabled) |
 | `OTEL_SERVICE_NAME` | — | Service name reported to the OTLP collector (default: `sketchgit`) |
 | `OTEL_SAMPLE_RATE` | — | Fraction of traces sampled, 0-1 (default: 1) |
+| `ADMIN_API_SECRET` | — | Shared secret for `/api/admin/*` routes (default: admin routes disabled) |
 
 ## Development
 

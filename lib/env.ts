@@ -99,6 +99,14 @@ const EnvSchema = z.object({
   // not explicitly set. Must be at least 32 characters.
   INVITATION_SECRET: z.string().min(32).optional(),
 
+  // ── Feature flags admin API (P090) ────────────────────────────────────────
+  // Required to call POST/PATCH /api/admin/feature-flags — there's no
+  // site-wide admin role in this app's RBAC (RoomMembership roles are
+  // per-room), so a shared secret header is the simplest correct guard.
+  // Unset in non-production environments disables the admin routes entirely
+  // (they return 503) rather than defaulting to an insecure open state.
+  ADMIN_API_SECRET: z.string().min(32).optional(),
+
   // ── OpenTelemetry (P061) ──────────────────────────────────────────────────
   // Unset by default: telemetry is opt-in. When set, traces and metrics are
   // exported via OTLP/HTTP to this collector endpoint (e.g. Jaeger, Grafana

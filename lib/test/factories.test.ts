@@ -10,6 +10,7 @@ import {
   makeRoom,
   makeMembership,
   makeCommit,
+  makeFeatureFlag,
   resetFactorySequence,
 } from "./factories";
 import {
@@ -165,5 +166,28 @@ describe("wsFactories", () => {
     const msg = makeErrorMessage("ROOM_FULL");
     expect(msg.type).toBe("error");
     expect(msg.code).toBe("ROOM_FULL");
+  });
+});
+
+describe("makeFeatureFlag", () => {
+  it("returns an object with all required FeatureFlag fields", () => {
+    const flag = makeFeatureFlag();
+    expect(flag.id).toMatch(/^flag_\d+$/);
+    expect(flag.name).toMatch(/^flag-\d+$/);
+    expect(flag.enabled).toBe(false);
+    expect(flag.targetScope).toEqual({});
+  });
+
+  it("applies overrides", () => {
+    const flag = makeFeatureFlag({ name: "read-replica", enabled: true, targetScope: { roomIds: ["room_1"] } });
+    expect(flag.name).toBe("read-replica");
+    expect(flag.enabled).toBe(true);
+    expect(flag.targetScope).toEqual({ roomIds: ["room_1"] });
+  });
+
+  it("produces a unique name on each call", () => {
+    const a = makeFeatureFlag();
+    const b = makeFeatureFlag();
+    expect(a.name).not.toBe(b.name);
   });
 });

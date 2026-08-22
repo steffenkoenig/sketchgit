@@ -91,6 +91,7 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P085 | Canvas JSON Schema Versioning and Migration | Reliability, Maintainability, Performance | [P085](proposals/done/P085_canvas-json-schema-versioning.md) |
 | P082 | Automated Accessibility Testing with axe-core in CI | Reliability, Maintainability, Accessibility | [P082](proposals/done/P082_automated-accessibility-testing.md) |
 | P087 | Visual Regression Testing with Playwright Snapshots | Reliability, Maintainability | [P087](proposals/done/P087_visual-regression-testing.md) |
+| P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/done/P090_feature-flag-system.md) |
 | P066 | Replace Plain Room Share Links with Time-Limited Signed Invitation Tokens | Security, UX | [P066](proposals/done/P066_room-invitation-tokens.md) |
 | P074 | Persist a Per-Room Activity Feed and Audit Log | Reliability, Security, UX | [P074](proposals/done/P074_room-activity-feed-audit-log.md) |
 | P078 | Add Dark/Light Theme Toggle with `prefers-color-scheme` Support | UX, Accessibility | [P078](proposals/done/P078_dark-light-theme-toggle.md) |
@@ -122,7 +123,6 @@ Each proposal is focused on one of three quality dimensions: **Performance**, **
 | P084 | Production Error Tracking with Sentry | Reliability, Maintainability, Observability | [P084](proposals/P084_sentry-error-tracking.md) |
 | P088 | Database Read Replica and Connection Routing | Performance, Reliability, Scalability | [P088](proposals/P088_database-read-replica.md) |
 | P089 | Dependency License Compliance Scanning | Maintainability, Compliance, Security | [P089](proposals/P089_dependency-license-compliance.md) |
-| P090 | Feature Flag System for Safe Incremental Rollout | Reliability, Maintainability, Performance | [P090](proposals/P090_feature-flag-system.md) |
 | P091 | Granular Share Links: Room, Branch, and Commit Sharing with Role-Based Permissions | Security, Collaboration, Usability | [P091](proposals/done/P091_granular-share-links.md) |
 
 ---
@@ -331,7 +331,7 @@ tooling, and collaboration features.
 5. **P084** – Sentry error tracking (observability; complements P010/P061)
 6. ~~**P082** – Automated accessibility testing (extends P025/P038; CI gate for regressions)~~ ✅ **Done**
 7. ~~**P087** – Visual regression testing (extends P038; catches unintended UI changes)~~ ✅ **Done**
-8. **P090** – Feature flag system (safe incremental rollout; unblocks phased feature releases)
+8. ~~**P090** – Feature flag system (safe incremental rollout; unblocks phased feature releases)~~ ✅ **Done**
 9. **P091** – Granular share links (collaboration; supersedes P066; requires P003/P007/P066)
 10. **P088** – Database read replica (scalability; requires P090 flag for progressive rollout)
 11. **P083** – Load and stress testing (validates the system after P088 and P090 are deployed)

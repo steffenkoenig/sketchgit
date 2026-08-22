@@ -14,7 +14,7 @@
  * P077 – centralised test fixture library to eliminate per-test inline mock objects.
  */
 
-import type { User, Room, Commit, RoomMembership, ShareLink, ShareScope, SharePermission } from "@prisma/client";
+import type { User, Room, Commit, RoomMembership, ShareLink, ShareScope, SharePermission, FeatureFlag } from "@prisma/client";
 
 let _seq = 0;
 
@@ -132,6 +132,22 @@ export function makeShareLink(
     maxUses: null,
     useCount: 0,
     createdAt: new Date("2026-01-01T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+// ─── FeatureFlag (P090) ─────────────────────────────────────────────────────
+
+export function makeFeatureFlag(overrides: Partial<FeatureFlag> = {}): FeatureFlag {
+  const id = overrides.id ?? `flag_${seq()}`;
+  return {
+    id,
+    name: `flag-${seq()}`,
+    description: "",
+    enabled: false,
+    targetScope: {},
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
   };
 }
