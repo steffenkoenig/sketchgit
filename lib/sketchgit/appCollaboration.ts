@@ -5,6 +5,44 @@ import { CanvasEngine } from './canvas/canvasEngine';
 import { TimelineCoordinator } from './coordinators/timelineCoordinator';
 import { Commit } from './types';
 import { savePreferences, setBranchInUrl } from './userPreferences';
+import { getQueuedActions } from './offline/offlineDb';
+import { isOnline, onNetworkStatusChange } from './offline/networkStatus';
+
+/**
+ * P092 – Updates the offline-mode status badge based on current network
+ * status and the offline queue depth for `roomId`. Mirrors the
+ * `readOnlyBadge` pattern below: a single persistent DOM node, created
+ * lazily and removed when there's nothing to show. `role="status"` +
+ * `aria-live="polite"` so screen readers announce transitions without
+ * relying on the badge's color alone (P092's accessibility requirement).
+ */
+async function updateOfflineBadge(roomId: string): Promise<void> {
+  const online = isOnline();
+  const queued = online ? (await getQueuedActions(roomId)).length : 0;
+  let badge = document.getElementById('offlineBadge');
+
+  const show = !online || queued > 0;
+  if (!show) {
+    badge?.remove();
+    return;
+  }
+
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'offlineBadge';
+    badge.setAttribute('role', 'status');
+    badge.setAttribute('aria-live', 'polite');
+    document.body.appendChild(badge);
+  }
+
+  if (!online) {
+    badge.textContent = 'Offline — changes are saved locally and will sync when you reconnect';
+    badge.className = 'offline-badge offline';
+  } else {
+    badge.textContent = `Syncing ${queued} offline change${queued === 1 ? '' : 's'}…`;
+    badge.className = 'offline-badge syncing';
+  }
+}
 
 function applyGitStateToModels(
   state: { commits: Record<string, unknown>; branches: Record<string, string>; HEAD: string; detached: string | null },
@@ -91,7 +129,15 @@ export function setupCollaborationManager(
         badge?.remove();
       }
     },
+    // P092 – re-check offline queue depth whenever it changes (action
+    // queued, synced, or drain completes).
+    onOfflineQueueChanged: () => void updateOfflineBadge(collab.currentRoomId),
   });
+
+  // P092 – also react to raw browser online/offline transitions so the
+  // badge appears the instant connectivity drops, even before the user has
+  // made an edit that would otherwise trigger onOfflineQueueChanged.
+  onNetworkStatusChange(() => void updateOfflineBadge(collab.currentRoomId));
 
   return collab;
 }

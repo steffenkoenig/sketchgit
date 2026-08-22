@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
+import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CollaborationManager, CollabCallbacks } from './collaborationManager';
 import type { WsClient } from './wsClient';
 import type { WsMessage, ConnectionStatus } from '../types';
+import { getQueuedActions, clearAllActions } from '../offline/offlineDb';
 
 // ─── Mock fetch (REST events now go via HTTP, not WS) ────────────────────────
 
@@ -431,6 +433,137 @@ describe('CollaborationManager – broadcastDraw', () => {
     collab.broadcastDraw(true); // no changes
     const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
     expect(drawCalls).toHaveLength(0);
+  });
+});
+
+describe('CollaborationManager – P092 offline queueing', () => {
+  let ws: MockWs;
+  let cb: ReturnType<typeof makeCallbacks>;
+  let collab: CollaborationManager;
+  let onLineSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    await clearAllActions();
+    mockFetch.mockClear();
+    mockFetch.mockResolvedValue({ ok: true });
+    setupDom();
+    ws = makeMockWs();
+    cb = makeCallbacks();
+    collab = new CollaborationManager(ws as unknown as WsClient, cb);
+    collab.wsClientId = 'test-client';
+    onLineSpy = vi.spyOn(navigator, 'onLine', 'get');
+  });
+
+  afterEach(() => {
+    onLineSpy.mockRestore();
+  });
+
+  it('queues a draw broadcast to IndexedDB instead of fetching when offline', async () => {
+    onLineSpy.mockReturnValue(false);
+    const canvas = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect' }] });
+    cb.getCanvasData.mockReturnValue(canvas);
+    collab.broadcastDraw(true);
+    // Let the fire-and-forget enqueue microtask settle.
+    // Wait for the fire-and-forget enqueue to land — fake-indexeddb's async
+    // simulation spans multiple task-queue turns, so poll rather than
+    // assume a single setTimeout(0) tick is enough.
+    await vi.waitFor(async () => {
+      expect(await getQueuedActions('default')).not.toHaveLength(0);
+    });
+
+    const drawCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/draw'));
+    expect(drawCalls).toHaveLength(0);
+    const queued = await getQueuedActions('default');
+    expect(queued).toHaveLength(1);
+    expect(queued[0].path).toBe('draw');
+  });
+
+  it('queues a commit to IndexedDB instead of fetching when offline', async () => {
+    onLineSpy.mockReturnValue(false);
+    collab.sendCommit('sha1', { sha: 'sha1', message: 'test' });
+    // Wait for the fire-and-forget enqueue to land — fake-indexeddb's async
+    // simulation spans multiple task-queue turns, so poll rather than
+    // assume a single setTimeout(0) tick is enough.
+    await vi.waitFor(async () => {
+      expect(await getQueuedActions('default')).not.toHaveLength(0);
+    });
+
+    const commitCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/commits'));
+    expect(commitCalls).toHaveLength(0);
+    const queued = await getQueuedActions('default');
+    expect(queued).toHaveLength(1);
+    expect(queued[0].path).toBe('commits');
+    expect((queued[0].body as { sha: string }).sha).toBe('sha1');
+  });
+
+  it('does NOT queue non-draw/commit events (e.g. cursor) when offline — those stay fire-and-forget', async () => {
+    onLineSpy.mockReturnValue(false);
+    collab.broadcastCursor({ e: { clientX: 10, clientY: 20 } as MouseEvent });
+    // Nothing should ever be enqueued here, so there's no queue-state to
+    // poll for — just give any (erroneous) fire-and-forget enqueue a moment
+    // to have landed before asserting it didn't.
+    await new Promise((r) => setTimeout(r, 20));
+    const queued = await getQueuedActions('default');
+    expect(queued).toHaveLength(0);
+  });
+
+  it('queues as a fallback when online but the fetch itself fails (network flake)', async () => {
+    onLineSpy.mockReturnValue(true);
+    mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const canvas = JSON.stringify({ version: '5', objects: [{ _id: 'a', type: 'rect' }] });
+    cb.getCanvasData.mockReturnValue(canvas);
+    collab.broadcastDraw(true);
+    // Wait for the fire-and-forget enqueue to land — fake-indexeddb's async
+    // simulation spans multiple task-queue turns, so poll rather than
+    // assume a single setTimeout(0) tick is enough.
+    await vi.waitFor(async () => {
+      expect(await getQueuedActions('default')).not.toHaveLength(0);
+    });
+
+    const queued = await getQueuedActions('default');
+    expect(queued).toHaveLength(1);
+  });
+
+  it('calls onOfflineQueueChanged when an action is queued', async () => {
+    onLineSpy.mockReturnValue(false);
+    const onOfflineQueueChanged = vi.fn();
+    const cbWithOffline = { ...cb, onOfflineQueueChanged };
+    const collab2 = new CollaborationManager(ws as unknown as WsClient, cbWithOffline);
+    collab2.wsClientId = 'test-client';
+    collab2.sendCommit('sha1', { sha: 'sha1' });
+    // Wait for the enqueue to actually land (fake-indexeddb's IDB simulation
+    // spans multiple task-queue turns) rather than a fixed setTimeout, which
+    // raced the callback in CI-speed runs.
+    await vi.waitFor(async () => {
+      expect(await getQueuedActions('default')).toHaveLength(1);
+    });
+    expect(onOfflineQueueChanged).toHaveBeenCalled();
+  });
+
+  it('drains the offline queue and replays it once a welcome message confirms reconnection', async () => {
+    onLineSpy.mockReturnValue(false);
+    collab.sendCommit('sha1', { sha: 'sha1', message: 'offline commit' });
+    // Wait for the fire-and-forget enqueue to land — fake-indexeddb's async
+    // simulation spans multiple task-queue turns, so poll rather than
+    // assume a single setTimeout(0) tick is enough.
+    await vi.waitFor(async () => {
+      expect(await getQueuedActions('default')).not.toHaveLength(0);
+    });
+    expect(await getQueuedActions('default')).toHaveLength(1);
+
+    onLineSpy.mockReturnValue(true);
+    mockFetch.mockClear();
+    mockFetch.mockResolvedValue({ ok: true });
+    send(ws, { type: 'welcome', clientId: 'test-client', roomId: 'default' });
+    // Wait for the drain (triggered by the welcome message) to empty the
+    // queue, rather than assuming a fixed delay is enough.
+    await vi.waitFor(async () => {
+      expect(await getQueuedActions('default')).toHaveLength(0);
+    });
+
+    const commitCalls = mockFetch.mock.calls.filter((c: unknown[]) => (c[0] as string).includes('/commits'));
+    expect(commitCalls.length).toBeGreaterThan(0);
+    expect(await getQueuedActions('default')).toHaveLength(0);
   });
 });
 

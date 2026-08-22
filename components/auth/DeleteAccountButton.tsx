@@ -7,6 +7,7 @@
  */
 import { useState } from "react";
 import { signOut } from "next-auth/react";
+import { clearAllActions } from "@/lib/sketchgit/offline/offlineDb";
 
 interface DeleteAccountButtonProps {
   hasPassword: boolean;
@@ -34,6 +35,10 @@ export function DeleteAccountButton({ hasPassword }: DeleteAccountButtonProps) {
       setError(data.message ?? "Failed to delete account.");
       return;
     }
+    // P092 GDPR – clear any locally-queued offline actions; nothing should
+    // survive locally once the account (and the data those actions would
+    // have written) is gone.
+    await clearAllActions();
     await signOut({ callbackUrl: "/" });
   }
 

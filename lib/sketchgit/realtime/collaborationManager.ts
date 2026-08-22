@@ -7,6 +7,12 @@ import { WsMessage, PresenceClient } from '../types';
 import { WsClient } from './wsClient';
 import { showToast } from '../ui/toast';
 import { logger } from '../logger';
+import { enqueueAction, type OfflineActionPath } from '../offline/offlineDb';
+import { isOnline } from '../offline/networkStatus';
+import { drainOfflineQueue } from '../offline/offlineSync';
+
+/** REST event paths queued for offline replay (P092) when the client is offline. */
+const OFFLINE_QUEUEABLE_PATHS = new Set<OfflineActionPath>(['draw', 'commits']);
 
 // ─── Throttle constants (P006) ────────────────────────────────────────────────
 
@@ -50,6 +56,14 @@ export interface CollabCallbacks {
    * it). Used to restrict the UI for VIEWER role (read-only mode).
    */
   onRoleChanged?: (role: string) => void;
+  /**
+   * P092 – Called whenever the offline action queue changes (an action is
+   * queued, synced, or the drain completes). Used to update the offline
+   * status badge; the callback should re-check queue state itself (e.g. via
+   * getQueuedActions) rather than receiving a count here, since multiple
+   * queue mutations can coalesce before the UI re-renders.
+   */
+  onOfflineQueueChanged?: () => void;
 }
 
 export class CollaborationManager {
@@ -106,20 +120,69 @@ export class CollaborationManager {
    * requests.  The server validates, persists (where needed), and then
    * broadcasts a WebSocket message to all connected room members.
    *
-   * Errors are logged and silently swallowed – transient REST failures should
-   * not interrupt the UX.
+   * P092 – `draw` and `commits` are additionally queued to IndexedDB and
+   * retried on reconnect when offline (see offline/offlineDb.ts,
+   * offlineSync.ts). Other event types (cursor, profile, locks, follow,
+   * view-sync, branch) are inherently live/ephemeral or carry meaningfully
+   * different offline semantics (e.g. replaying a stale cursor position or a
+   * branch switch after reconnecting doesn't make sense the way replaying a
+   * commit does) and are intentionally NOT queued — same as before P092,
+   * errors there are logged and silently swallowed since transient REST
+   * failures for those event types should not interrupt the UX.
    */
   private _postEvent(path: string, body: Record<string, unknown>): void {
     // Guard: do not send REST events before the welcome handshake assigns a clientId.
     if (!this.wsClientId) return;
+    const fullBody = { clientId: this.wsClientId, ...body };
+    const queueable = OFFLINE_QUEUEABLE_PATHS.has(path as OfflineActionPath);
+
+    if (queueable && !isOnline()) {
+      void this._queueOfflineAction(path as OfflineActionPath, fullBody);
+      return;
+    }
+
     const url = `/api/rooms/${encodeURIComponent(this.currentRoomId)}/${path}`;
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: this.wsClientId, ...body }),
+      body: JSON.stringify(fullBody),
     }).catch((err: unknown) => {
       logger.warn(`[CollabManager] REST event failed (${path}): ${String(err)}`);
+      // P092 – navigator.onLine can false-negative (report online on a dead
+      // connection); a request that fails anyway is queued as a fallback so
+      // draw/commit data isn't silently dropped on a flaky connection.
+      if (queueable) void this._queueOfflineAction(path as OfflineActionPath, fullBody);
     });
+  }
+
+  /** P092 – persists a draw/commit action to the offline queue and updates the UI badge. */
+  private async _queueOfflineAction(path: OfflineActionPath, body: Record<string, unknown>): Promise<void> {
+    await enqueueAction({
+      id: crypto.randomUUID(),
+      roomId: this.currentRoomId,
+      path,
+      body,
+      ts: Date.now(),
+    });
+    this.cb.onOfflineQueueChanged?.();
+  }
+
+  /**
+   * P092 – Replays the offline queue for the current room. Called once the
+   * WS handshake confirms a live connection (the `welcome` case below) —
+   * a more reliable "we're really back online" signal than the browser's
+   * `online` event alone, since that can fire before the WebSocket itself
+   * has finished reconnecting.
+   */
+  private async _drainOfflineQueue(): Promise<void> {
+    const result = await drainOfflineQueue(this.currentRoomId, () => this.cb.onOfflineQueueChanged?.());
+    if (result.synced > 0) {
+      showToast(`✓ Synced ${result.synced} offline change${result.synced === 1 ? '' : 's'}`);
+    }
+    if (result.stoppedEarly) {
+      logger.warn(`[CollabManager] Offline queue drain stopped early; ${result.remaining} action(s) still queued`);
+    }
+    this.cb.onOfflineQueueChanged?.();
   }
 
   // ─── Message routing ──────────────────────────────────────────────────────
@@ -172,6 +235,11 @@ export class CollaborationManager {
         });
         // fullsync-request stays as WS (peer-to-peer canvas state sync)
         this.ws.send({ type: 'fullsync-request', senderId: this.wsClientId });
+
+        // P092 – a live WS connection means we're genuinely back online;
+        // replay anything queued while disconnected (including across a
+        // reload, since the queue is IndexedDB-backed).
+        void this._drainOfflineQueue();
         break;
       }
 

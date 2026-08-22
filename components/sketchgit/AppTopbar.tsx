@@ -19,6 +19,7 @@ import { signIn, signOut } from "next-auth/react";
 import { useTranslations, useLocale } from "next-intl";
 import type { SketchGitCall } from "@/components/sketchgit/types";
 import { showToast } from "@/lib/sketchgit/ui/toast";
+import { clearAllActions } from "@/lib/sketchgit/offline/offlineDb";
 // Note: native <button> elements with .topbtn CSS class are used throughout instead of the
 // shadcn/ui <Button> component because shadcn requires its own CSS variable definitions
 // (--primary, --border, etc.) which are not part of this app's CSS variable system.
@@ -608,7 +609,13 @@ function AuthSection({ session, sessionStatus, t }: { session: Session | null; s
         </Link>
         <button
           className="topbtn"
-          onClick={() => signOut({ callbackUrl: "/" })}
+          onClick={() => {
+            // P092 GDPR – clear locally-queued offline actions on sign-out
+            // (not just account deletion) so they don't persist for the
+            // next person to use this browser/device.
+            void clearAllActions();
+            void signOut({ callbackUrl: "/" });
+          }}
           aria-label="Sign out of SketchGit"
         >{t("topbar.signOut")}</button>
       </div>
