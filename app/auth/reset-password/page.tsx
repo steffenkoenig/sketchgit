@@ -67,7 +67,8 @@ function ResetPasswordForm() {
           <div>
             <label className="auth-label" htmlFor="new-password">
               {t("auth.resetPassword.newPasswordLabel")}{" "}
-              <span style={{ color: "var(--tx3)" }}>{t("auth.resetPassword.passwordHint")}</span>
+              {/* P082 – --tx3 fails WCAG AA contrast against the auth-card background; --tx2 passes. */}
+              <span style={{ color: "var(--tx2)" }}>{t("auth.resetPassword.passwordHint")}</span>
             </label>
             <input
               id="new-password"

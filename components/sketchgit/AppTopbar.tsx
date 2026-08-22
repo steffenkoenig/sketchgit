@@ -474,6 +474,7 @@ function BranchSelector({ call }: { call: SketchGitCall }) {
       <span
         style={{ fontSize: "10px", color: "var(--tx3)" }}
         id="headSHA"
+        role="status"
         aria-label="Current HEAD commit SHA"
         aria-live="polite"
       ></span>

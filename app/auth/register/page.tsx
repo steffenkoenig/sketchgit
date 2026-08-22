@@ -65,7 +65,8 @@ function RegisterFormFields({
       <div>
         <label className="auth-label" htmlFor="password">
           {t("auth.register.passwordLabel")}
-          <span style={{ marginLeft: "4px", color: "var(--tx3)" }}>{t("auth.register.passwordHint")}</span>
+          {/* P082 – --tx3 fails WCAG AA contrast against the auth-card background; --tx2 passes. */}
+          <span style={{ marginLeft: "4px", color: "var(--tx2)" }}>{t("auth.register.passwordHint")}</span>
         </label>
         <input
           id="password" type="password" autoComplete="new-password" required minLength={12}

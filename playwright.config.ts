@@ -12,7 +12,10 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: '**/a11y/**' },
+    // P082 – accessibility audits (axe-core), run separately in CI so a
+    // WCAG regression is reported distinctly from a functional E2E failure.
+    { name: 'a11y', use: { ...devices['Desktop Chrome'] }, testDir: 'e2e/a11y' },
   ],
   webServer: {
     command: 'npm run dev',

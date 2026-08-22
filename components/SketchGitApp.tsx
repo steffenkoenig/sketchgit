@@ -308,7 +308,7 @@ export default function SketchGitApp() {
             <span id="conflictSummary">{t("modal.conflict.summary")}</span>
           </div>
           <div className="conflict-list" id="conflictList" role="list" aria-label="Merge conflicts"></div>
-          <div className="conflict-stats" id="conflictStats" aria-live="polite" aria-label="Resolution progress"></div>
+          <div className="conflict-stats" id="conflictStats" role="status" aria-live="polite" aria-label="Resolution progress"></div>
           <div className="modal-actions">
             <button className="mbtn" onClick={() => call("resolveAllOurs")} aria-label="Resolve all conflicts by keeping our version">{t("modal.conflict.allOurs")}</button>
             <button className="mbtn" onClick={() => call("resolveAllTheirs")} aria-label="Resolve all conflicts by keeping their version">{t("modal.conflict.allTheirs")}</button>

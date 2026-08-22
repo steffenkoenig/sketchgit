@@ -8,7 +8,7 @@ test.describe('Authentication flow', () => {
     const email = `e2e+${Date.now()}@example.com`;
 
     await page.goto('/auth/register');
-    await expect(page.getByRole('heading', { name: /create account|register|sign up/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /create.*account|register|sign up/i })).toBeVisible({ timeout: 10_000 });
 
     await page.getByLabel(/name/i).fill('E2E User');
     await page.getByLabel(/email/i).fill(email);

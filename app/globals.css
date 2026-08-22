@@ -127,7 +127,8 @@ canvas{position:absolute;top:0;left:0}
    push the SVG height beyond the 200px timeline panel. */
 #timeline{height:var(--tlh);background:var(--s1);border-top:1px solid var(--bdr);flex-shrink:0;display:flex;flex-direction:column}
 #tlbar{height:36px;display:flex;align-items:center;padding:0 12px;gap:8px;border-bottom:1px solid var(--bdr);flex-shrink:0}
-.tl-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--tx3)}
+/* P082 – --tx3 fails WCAG AA contrast (2.34:1) against --s1 in the light theme; --tx2 passes. */
+.tl-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--tx2)}
 .tl-actions{display:flex;gap:5px;margin-left:auto}
 #tlscroll{flex:1;overflow-x:auto;overflow-y:auto;padding:8px 16px}
 #tlscroll::-webkit-scrollbar{height:4px;width:4px}
@@ -342,11 +343,14 @@ canvas{position:absolute;top:0;left:0}
 .auth-btn:disabled{opacity:.5;pointer-events:none}
 .auth-btn-secondary{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:9px 0;background:var(--s3);border:1px solid var(--bdr);border-radius:8px;color:var(--tx);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
 .auth-btn-secondary:hover{border-color:var(--bdr2);background:var(--s4)}
-.auth-divider{display:flex;align-items:center;gap:12px;color:var(--tx3);font-size:11px}
+/* P082 – --tx3 fails WCAG AA contrast against the auth-card background; --tx2 passes. */
+.auth-divider{display:flex;align-items:center;gap:12px;color:var(--tx2);font-size:11px}
 .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--bdr)}
 .auth-error{font-size:12px;color:var(--a2);background:rgba(255,95,126,.1);border:1px solid rgba(255,95,126,.3);border-radius:8px;padding:9px 12px;margin-bottom:4px}
-.auth-link{color:var(--a1);text-decoration:none}
-.auth-link:hover{text-decoration:underline}
-.auth-footer{font-size:12px;color:var(--tx3);text-align:center}
+/* P082 – underlined by default (not just on hover) so the link is distinguished
+   from surrounding text by more than color alone (WCAG 1.4.1 / axe link-in-text-block). */
+.auth-link{color:var(--a1);text-decoration:underline}
+/* P082 – --tx3 fails WCAG AA contrast against the auth-card background; --tx2 passes. */
+.auth-footer{font-size:12px;color:var(--tx2);text-align:center}
 .auth-logo{font-size:28px;text-align:center}
 .auth-logo-badge{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;background:var(--a1);color:white;border-radius:10px;font-size:18px;margin:0 auto 6px}
