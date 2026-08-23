@@ -55,6 +55,12 @@ function getCanvasAPI(canvas: CanvasEngine) {
     insertTemplate: (canvasJson: unknown) => {
       void canvas.instantiateTemplate(canvasJson as { objects: unknown[] });
     },
+    // P096 – minimap navigation. getMinimapData() has a return value, so
+    // MinimapPanel reads it through the dedicated stable getter in
+    // SketchGitApp.tsx (same pattern getCanvasJson uses) rather than call().
+    getMinimapData: () => canvas.getMinimapData(),
+    panToWorldPoint: (x: number, y: number) => canvas.panToWorldPoint(x, y),
+    panByScreenDelta: (dx: number, dy: number) => canvas.panByScreenDelta(dx, dy),
   };
 }
 

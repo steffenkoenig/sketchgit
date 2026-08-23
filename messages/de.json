@@ -190,6 +190,11 @@
   "timeline": {
     "title": "\u2325 Versions-Timeline"
   },
+  "minimap": {
+    "title": "\u00dcbersichtskarte",
+    "show": "\u00dcbersichtskarte anzeigen",
+    "hide": "\u00dcbersichtskarte ausblenden"
+  },
   "commitPopup": {
     "headBadge": "\u25c9 HEAD",
     "view": "\u2935 Diesen Commit ansehen",

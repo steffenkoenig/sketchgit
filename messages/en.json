@@ -190,6 +190,11 @@
   "timeline": {
     "title": "\u2325 Version Timeline"
   },
+  "minimap": {
+    "title": "Minimap",
+    "show": "Show minimap",
+    "hide": "Hide minimap"
+  },
   "commitPopup": {
     "headBadge": "\u25c9 HEAD",
     "view": "\u2935 View this commit",

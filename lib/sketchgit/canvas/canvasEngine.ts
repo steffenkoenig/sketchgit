@@ -1163,6 +1163,13 @@ export class CanvasEngine {
       this.deleteSelection();
       return true;
     }
+    // P096 – toggles the minimap; dispatched as a custom event (same pattern
+    // as the modal-opening shortcuts elsewhere) rather than a constructor
+    // callback, since the minimap is pure UI state the engine doesn't own.
+    if (k === 'n') {
+      document.dispatchEvent(new CustomEvent('sketchgit:toggleMinimap'));
+      return true;
+    }
     return false;
   }
 
@@ -1931,6 +1938,79 @@ export class CanvasEngine {
     this.canvas.setZoom(1);
     this.canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
     this.canvas.requestRenderAll(); // P022: batch via rAF
+  }
+
+  // ── P096: Minimap / radar view ────────────────────────────────────────────
+
+  /**
+   * Snapshot of the current world (scene-space) content bounds and visible
+   * viewport rectangle, both in world coordinates. Used by the minimap to
+   * draw a scaled-down overview and the viewport indicator.
+   *
+   * `getBoundingRect()` (no args, Fabric v7) already returns coordinates "in
+   * the scene plane" — i.e. unaffected by pan/zoom, same as used by
+   * renderShapeTemplateThumbnail() (P095) for template thumbnails.
+   * `canvas.vptCoords` is Fabric's own cached { tl, br } of the current
+   * viewport in that same scene plane, recomputed on every render.
+   *
+   * Returns null when the canvas isn't initialised yet.
+   */
+  getMinimapData(): {
+    worldBounds: { left: number; top: number; width: number; height: number } | null;
+    viewport: { left: number; top: number; width: number; height: number };
+  } | null {
+    if (!this.canvas) return null;
+
+    const objects = this.canvas.getObjects();
+    let worldBounds: { left: number; top: number; width: number; height: number } | null = null;
+    if (objects.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const obj of objects) {
+        const rect = obj.getBoundingRect();
+        minX = Math.min(minX, rect.left);
+        minY = Math.min(minY, rect.top);
+        maxX = Math.max(maxX, rect.left + rect.width);
+        maxY = Math.max(maxY, rect.top + rect.height);
+      }
+      // Guard against a single degenerate (zero-size) object producing a
+      // zero-width/height bounds box, which would make every scale factor
+      // downstream divide by zero.
+      worldBounds = {
+        left: minX, top: minY,
+        width: Math.max(maxX - minX, 1), height: Math.max(maxY - minY, 1),
+      };
+    }
+
+    const vpt = this.canvas.vptCoords;
+    const viewport = vpt
+      ? { left: vpt.tl.x, top: vpt.tl.y, width: vpt.br.x - vpt.tl.x, height: vpt.br.y - vpt.tl.y }
+      : { left: 0, top: 0, width: this.canvas.getWidth(), height: this.canvas.getHeight() };
+
+    return { worldBounds, viewport };
+  }
+
+  /** Re-centers the viewport on a world-space point, keeping the current zoom. */
+  panToWorldPoint(worldX: number, worldY: number): void {
+    if (!this.canvas) return;
+    const zoom = this.canvas.getZoom();
+    const vpt = this.canvas.viewportTransform;
+    if (!vpt) return;
+    const nextVpt = [...vpt] as [number, number, number, number, number, number];
+    nextVpt[4] = this.canvas.getWidth() / 2 - worldX * zoom;
+    nextVpt[5] = this.canvas.getHeight() / 2 - worldY * zoom;
+    this.canvas.setViewportTransform(nextVpt);
+    this.canvas.requestRenderAll();
+  }
+
+  /**
+   * Pans by a screen-pixel delta at the current zoom level. Used by the
+   * minimap's keyboard-accessible pan controls (arrow keys move the
+   * viewport in fixed increments rather than requiring a mouse drag).
+   */
+  panByScreenDelta(dx: number, dy: number): void {
+    if (!this.canvas) return;
+    this.canvas.relativePan(new Point(dx, dy));
+    this.canvas.requestRenderAll();
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────

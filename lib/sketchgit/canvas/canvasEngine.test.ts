@@ -82,6 +82,12 @@ const { mockCanvasInstance, canvasEventHandlers, makeFabricObject } = vi.hoisted
     bringObjectForward: vi.fn(),
     sendObjectBackwards: vi.fn(),
     sendObjectToBack: vi.fn(),
+    // P096 – minimap
+    getWidth: vi.fn().mockReturnValue(800),
+    getHeight: vi.fn().mockReturnValue(600),
+    relativePan: vi.fn(),
+    setViewportTransform: vi.fn(),
+    vptCoords: { tl: { x: 0, y: 0 }, br: { x: 800, y: 600 } },
   };
 
   return { mockCanvasInstance, canvasEventHandlers, makeFabricObject };
@@ -262,6 +268,11 @@ function resetMocks() {
   mockCanvasInstance.selection = true;
   mockCanvasInstance.defaultCursor = 'default';
   mockCanvasInstance.viewportTransform = [1, 0, 0, 1, 0, 0];
+  mockCanvasInstance.relativePan.mockClear();
+  mockCanvasInstance.setViewportTransform.mockClear();
+  mockCanvasInstance.getWidth.mockReturnValue(800);
+  mockCanvasInstance.getHeight.mockReturnValue(600);
+  mockCanvasInstance.vptCoords = { tl: { x: 0, y: 0 }, br: { x: 800, y: 600 } };
 
   Object.keys(canvasEventHandlers).forEach((k) => delete canvasEventHandlers[k]);
 }
@@ -3514,6 +3525,122 @@ describe('CanvasEngine – shape templates (P095)', () => {
       await engine.instantiateTemplate({ objects: [{ type: 'rect', _id: 'leaked_id', left: 0, top: 0 }] });
 
       expect(util.enlivenObjects).toHaveBeenCalledWith([{ type: 'rect', left: 24, top: 24 }]);
+    });
+  });
+});
+
+describe('CanvasEngine – minimap (P096)', () => {
+  beforeEach(() => { setupDom(); resetMocks(); });
+
+  describe('getMinimapData', () => {
+    it('returns null before the canvas is initialised', () => {
+      const { engine } = makeEngine();
+      expect(engine.getMinimapData()).toBeNull();
+    });
+
+    it('returns worldBounds: null for an empty canvas, without throwing', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      mockCanvasInstance.getObjects.mockReturnValue([]);
+      const data = engine.getMinimapData();
+      expect(data?.worldBounds).toBeNull();
+      expect(data?.viewport).toEqual({ left: 0, top: 0, width: 800, height: 600 });
+    });
+
+    it('computes the union bounding box of all objects', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      const a = makeFabricObject({ getBoundingRect: () => ({ left: 10, top: 20, width: 30, height: 40 }) });
+      const b = makeFabricObject({ getBoundingRect: () => ({ left: -50, top: 5, width: 10, height: 10 }) });
+      mockCanvasInstance.getObjects.mockReturnValue([a, b]);
+      const data = engine.getMinimapData();
+      expect(data?.worldBounds).toEqual({ left: -50, top: 5, width: 90, height: 55 });
+    });
+
+    it('reads the viewport rectangle from canvas.vptCoords', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      mockCanvasInstance.vptCoords = { tl: { x: 100, y: 200 }, br: { x: 500, y: 800 } };
+      const data = engine.getMinimapData();
+      expect(data?.viewport).toEqual({ left: 100, top: 200, width: 400, height: 600 });
+    });
+
+    it('never produces a zero-size worldBounds for a single degenerate object (guards downstream division by zero)', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      const zeroSize = makeFabricObject({ getBoundingRect: () => ({ left: 5, top: 5, width: 0, height: 0 }) });
+      mockCanvasInstance.getObjects.mockReturnValue([zeroSize]);
+      const data = engine.getMinimapData();
+      expect(data?.worldBounds?.width).toBeGreaterThan(0);
+      expect(data?.worldBounds?.height).toBeGreaterThan(0);
+    });
+  });
+
+  describe('panToWorldPoint', () => {
+    it('re-centers the viewport on the given world point at the current zoom', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      mockCanvasInstance.getZoom.mockReturnValue(2);
+      mockCanvasInstance.viewportTransform = [2, 0, 0, 2, 0, 0];
+
+      engine.panToWorldPoint(50, 25);
+
+      expect(mockCanvasInstance.setViewportTransform).toHaveBeenCalledWith([2, 0, 0, 2, 300, 250]);
+      expect(mockCanvasInstance.requestRenderAll).toHaveBeenCalled();
+    });
+
+    it('does nothing when the canvas has no viewportTransform', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      mockCanvasInstance.viewportTransform = undefined as unknown as number[];
+      engine.panToWorldPoint(1, 1);
+      expect(mockCanvasInstance.setViewportTransform).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('panByScreenDelta', () => {
+    it('delegates to canvas.relativePan with a Point built from the delta', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      engine.panByScreenDelta(15, -20);
+      expect(mockCanvasInstance.relativePan).toHaveBeenCalledTimes(1);
+      const arg = mockCanvasInstance.relativePan.mock.calls[0][0] as { x: number; y: number };
+      expect(arg.x).toBe(15);
+      expect(arg.y).toBe(-20);
+      expect(mockCanvasInstance.requestRenderAll).toHaveBeenCalled();
+    });
+  });
+
+  describe('"n" keyboard shortcut', () => {
+    it('dispatches sketchgit:toggleMinimap', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      // The engine attaches its keydown listener to window (boundKeydown),
+      // not the Fabric canvas — invoke it directly, as the other keyboard
+      // shortcut tests in this file do.
+      const listener = (engine as any).boundKeydown as (e: KeyboardEvent) => void;
+      const spy = vi.fn();
+      document.addEventListener('sketchgit:toggleMinimap', spy);
+      const event = new KeyboardEvent('keydown', { key: 'n' });
+      Object.defineProperty(event, 'target', { value: document.body });
+      listener(event);
+      expect(spy).toHaveBeenCalledTimes(1);
+      document.removeEventListener('sketchgit:toggleMinimap', spy);
+    });
+
+    it('does not fire while typing in an input field', () => {
+      const { engine } = makeEngine();
+      engine.init();
+      const listener = (engine as any).boundKeydown as (e: KeyboardEvent) => void;
+      const spy = vi.fn();
+      document.addEventListener('sketchgit:toggleMinimap', spy);
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      const event = new KeyboardEvent('keydown', { key: 'n' });
+      Object.defineProperty(event, 'target', { value: input });
+      listener(event);
+      expect(spy).not.toHaveBeenCalled();
+      document.removeEventListener('sketchgit:toggleMinimap', spy);
     });
   });
 });

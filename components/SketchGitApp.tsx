@@ -35,6 +35,7 @@ import { MembersModal } from "./sketchgit/MembersModal";
 import { RoomPasswordModal } from "./sketchgit/RoomPasswordModal";
 import { RoomSettingsModal } from "./sketchgit/RoomSettingsModal";
 import { ShapeLibraryModal } from "./sketchgit/ShapeLibraryModal";
+import { MinimapPanel } from "./sketchgit/MinimapPanel";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
 export default function SketchGitApp() {
@@ -160,6 +161,12 @@ export default function SketchGitApp() {
   // appRef is stable (useRef), so the empty dependency array is correct.
   const getCanvasJson = useCallback((): string | null => {
     return appRef.current?.getCanvasJson?.() ?? null;
+  }, []);
+
+  // P096 — stable getter for the minimap's poll loop, same reasoning as
+  // getCanvasJson above (call() is fire-and-forget and can't return a value).
+  const getMinimapData = useCallback(() => {
+    return appRef.current?.getMinimapData?.() ?? null;
   }, []);
 
   // P021: useMemo for session-derived display value so AppTopbar re-renders
@@ -458,6 +465,8 @@ export default function SketchGitApp() {
         pendingSave={shapeLibraryPendingSave}
         call={call}
       />
+
+      <MinimapPanel call={call} getMinimapData={getMinimapData} />
     </>
   );
 }
