@@ -36,6 +36,7 @@ import { RoomPasswordModal } from "./sketchgit/RoomPasswordModal";
 import { RoomSettingsModal } from "./sketchgit/RoomSettingsModal";
 import { ShapeLibraryModal } from "./sketchgit/ShapeLibraryModal";
 import { MinimapPanel } from "./sketchgit/MinimapPanel";
+import { CookieNotice } from "./sketchgit/CookieNotice";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
 export default function SketchGitApp() {
@@ -467,6 +468,8 @@ export default function SketchGitApp() {
       />
 
       <MinimapPanel call={call} getMinimapData={getMinimapData} />
+
+      <CookieNotice />
     </>
   );
 }

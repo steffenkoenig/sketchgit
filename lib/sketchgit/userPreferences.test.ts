@@ -7,7 +7,7 @@
 
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { loadPreferences, loadLastRoomId, savePreferences, setBranchInUrl } from './userPreferences';
+import { loadPreferences, loadLastRoomId, savePreferences, setBranchInUrl, clearPreferences } from './userPreferences';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -155,6 +155,30 @@ describe('userPreferences', () => {
       const prefs = loadPreferences();
       expect(prefs?.name).toBe('Frank');
       expect(prefs?.lastRoomId).toBe('room-abc');
+    });
+  });
+
+  // ── clearPreferences (GAP-003 §5.4) ──────────────────────────────────────
+
+  describe('clearPreferences()', () => {
+    it('removes stored preferences entirely', () => {
+      savePreferences({ name: 'Alice', color: '#fff', lastRoomId: 'r1', lastBranchName: 'main' });
+      expect(raw()).not.toBeNull();
+      clearPreferences();
+      expect(raw()).toBeNull();
+      expect(loadPreferences()).toBeNull();
+    });
+
+    it('does not throw when nothing is stored', () => {
+      expect(() => clearPreferences()).not.toThrow();
+    });
+
+    it('silently ignores errors when localStorage is unavailable', () => {
+      const spy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+        throw new Error('unavailable');
+      });
+      expect(() => clearPreferences()).not.toThrow();
+      spy.mockRestore();
     });
   });
 

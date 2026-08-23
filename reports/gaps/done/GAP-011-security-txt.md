@@ -132,3 +132,47 @@ For sensitive vulnerability reports involving potential data breaches, provide a
 3. `Contact` email is reachable and monitored.
 4. `Canonical` URL matches production domain.
 5. Validate with: [securitytxt.org](https://securitytxt.org/) or `curl -I https://[your-domain.com]/.well-known/security.txt`
+
+---
+
+## 6. Implementation Notes (2026-08-23)
+
+The static `public/.well-known/security.txt` (hardcoded `example.com`
+placeholders, a past `Expires` date) was replaced with a dynamic route,
+`app/.well-known/security.txt/route.ts`, generating the file per request:
+
+- **`Expires`** is always ~1 year out from the moment of the request — it
+  can never lapse, eliminating §4.4's "annual maintenance" requirement
+  entirely rather than just documenting it.
+- **`Canonical`** / **`Policy`** are derived from `NEXTAUTH_URL` (this
+  app's existing "canonical deployment URL" env var, already used the same
+  way by forgot-password emails and the digest job) — not hardcoded, so
+  there's nothing to forget to update before a deployment goes live.
+  (An initial version derived these from the incoming request's own URL
+  instead, matching the sibling `/.well-known/change-password` route's
+  `new URL(path, request.url)` pattern — but a real curl request with a
+  spoofed `Host` header showed this custom server, `server.ts`, doesn't
+  reflect the client-facing Host header in `NextRequest.url` the way a
+  standard Next.js deployment would; the sibling route has the same
+  characteristic. Switched to `NEXTAUTH_URL` instead, which is more robust
+  here anyway and had already been validated against exactly this kind of
+  Host-header spoofing risk.)
+- **`Contact`** is the real address from `SECURITY.md`
+  (`sketchgit-security@skonig.de`), not a placeholder.
+- Added `app/security-policy/page.tsx` for the `Policy` field to point to,
+  content mirrored from `SECURITY.md` (single source of truth, not a
+  second copy that can drift).
+
+Verified against a real build + `npm start` (not just unit tests):
+`GET /.well-known/security.txt` returns the correct `Contact`/`Expires`/
+`Canonical`/`Policy` fields derived from a real `NEXTAUTH_URL`, and a
+spoofed `Host` header has no effect on the output. 5 new unit tests in
+`app/.well-known/security.txt/route.test.ts`.
+
+**Status:** the RFC 9116 / technical portion of this gap (§4.1, §4.2,
+§4.5) is done. §4.5 (PGP key for encrypted reports) was not added — no PGP
+key exists for this deployment yet, and generating one isn't a decision
+this session can make unilaterally. The `Acknowledgments` field was
+likewise left out (RFC 9116 optional; there's nothing to list yet). This
+gap can move to `done/` once a PGP key decision is made, or be considered
+adequately resolved without one — RFC 9116 doesn't require it.

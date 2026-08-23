@@ -13,6 +13,7 @@ import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import { prisma } from "@/lib/db/prisma";
 import { verifyCredentials } from "@/lib/db/userRepository";
+import { withEncryptedAccountTokens } from "@/lib/server/encryptedAuthAdapter";
 
 // Build the provider list conditionally so that missing GitHub credentials
 // don't cause a silent failure or confusing error at OAuth callback time.
@@ -50,7 +51,10 @@ if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  // GAP-014 – encrypts Account.access_token/refresh_token/id_token at rest
+  // (AES-256-GCM) so a database dump alone doesn't hand out usable GitHub
+  // credentials. See lib/server/encryptedAuthAdapter.ts.
+  adapter: PrismaAdapter(withEncryptedAccountTokens(prisma)),
 
   // NextAuth v5 rejects every request with UntrustedHost unless the host is
   // explicitly trusted. This app is self-hosted (Docker/Kubernetes, not

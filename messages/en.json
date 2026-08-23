@@ -195,6 +195,10 @@
     "show": "Show minimap",
     "hide": "Hide minimap"
   },
+  "cookieNotice": {
+    "message": "This site uses only technically necessary cookies. No consent is required.",
+    "dismiss": "Got it"
+  },
   "commitPopup": {
     "headBadge": "\u25c9 HEAD",
     "view": "\u2935 View this commit",

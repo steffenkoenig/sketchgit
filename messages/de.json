@@ -195,6 +195,10 @@
     "show": "\u00dcbersichtskarte anzeigen",
     "hide": "\u00dcbersichtskarte ausblenden"
   },
+  "cookieNotice": {
+    "message": "Diese Website verwendet ausschlie\u00dflich technisch notwendige Cookies. Eine Einwilligung ist nicht erforderlich.",
+    "dismiss": "Verstanden"
+  },
   "commitPopup": {
     "headBadge": "\u25c9 HEAD",
     "view": "\u2935 Diesen Commit ansehen",

@@ -12,8 +12,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { verifyCredentials, getUserForAccountDeletion, deleteUser } from "@/lib/db/userRepository";
+import { verifyCredentials, getUserForAccountDeletion, getGitHubAccountToken, deleteUser } from "@/lib/db/userRepository";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
+import { revokeGitHubToken } from "@/lib/server/oauthTokenRevocation";
 
 const DeleteAccountSchema = z.object({
   password: z.string().min(1).max(128).optional(),
@@ -48,6 +49,20 @@ export async function DELETE(req: NextRequest) {
     if (!verified) {
       return apiError(ApiErrorCode.INVALID_CREDENTIALS, "Incorrect password.", 403);
     }
+  }
+
+  // GAP-014 §4.4 – revoke any linked GitHub OAuth token before the Account
+  // row is cascaded away, so it's invalid immediately rather than merely
+  // orphaned until its natural expiry. Best-effort: right-to-erasure must
+  // never be blocked by GitHub's API being unreachable, so this is guarded
+  // independently of revokeGitHubToken()'s own internal try/catch.
+  try {
+    const githubToken = await getGitHubAccountToken(userId);
+    if (githubToken) {
+      await revokeGitHubToken(githubToken);
+    }
+  } catch (err) {
+    console.warn("[account.DELETE] GitHub token revocation step failed, continuing with deletion", err);
   }
 
   // Delete the user — cascade handles Account and RoomMembership rows;

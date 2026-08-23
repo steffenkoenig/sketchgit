@@ -17,6 +17,9 @@ vi.mock('@/lib/db/prisma', () => {
       findFirst: vi.fn(),
       deleteMany: vi.fn(),
     },
+    account: {
+      findFirst: vi.fn(),
+    },
   };
   // P088 – prismaRead/prismaWrite alias the same mock client.
   return { prisma: client, prismaRead: client, prismaWrite: client };
@@ -38,10 +41,12 @@ vi.mock('bcryptjs', () => ({
   },
 }));
 
-import { createUser, verifyCredentials, createPasswordResetToken, resetPassword } from './userRepository';
+import { createUser, verifyCredentials, createPasswordResetToken, resetPassword, getGitHubAccountToken } from './userRepository';
 import { prisma } from '@/lib/db/prisma';
 import argon2 from 'argon2';
 import bcrypt from 'bcryptjs';
+import { encryptToken } from '@/lib/tokenEncryption';
+import { randomBytes } from 'crypto';
 
 const mockPrismaUser = {
   findUnique: prisma.user.findUnique as ReturnType<typeof vi.fn>,
@@ -309,5 +314,35 @@ describe('deleteUser', () => {
     prisma.user.delete = mockDelete as any;
     await deleteUser('usr_1');
     expect(mockDelete).toHaveBeenCalledWith({ where: { id: 'usr_1' } });
+  });
+});
+
+describe('getGitHubAccountToken (GAP-014)', () => {
+  const mockAccountFindFirst = prisma.account.findFirst as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    process.env.OAUTH_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64');
+  });
+
+  it('queries for a github account by userId and returns the decrypted token', async () => {
+    mockAccountFindFirst.mockResolvedValue({ access_token: encryptToken('gho_realToken') });
+    const result = await getGitHubAccountToken('usr_1');
+    expect(mockAccountFindFirst).toHaveBeenCalledWith({
+      where: { userId: 'usr_1', provider: 'github' },
+      select: { access_token: true },
+    });
+    expect(result).toBe('gho_realToken');
+  });
+
+  it('returns null when the user never linked a github account', async () => {
+    mockAccountFindFirst.mockResolvedValue(null);
+    const result = await getGitHubAccountToken('usr_1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the linked account has no access_token', async () => {
+    mockAccountFindFirst.mockResolvedValue({ access_token: null });
+    const result = await getGitHubAccountToken('usr_1');
+    expect(result).toBeNull();
   });
 });

@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { clearAllActions } from "@/lib/sketchgit/offline/offlineDb";
+import { clearPreferences } from "@/lib/sketchgit/userPreferences";
 
 interface DeleteAccountButtonProps {
   hasPassword: boolean;
@@ -39,6 +40,8 @@ export function DeleteAccountButton({ hasPassword }: DeleteAccountButtonProps) {
     // survive locally once the account (and the data those actions would
     // have written) is gone.
     await clearAllActions();
+    // GAP-003 §5.4 – clear the locally-stored name/colour/last-room prefs too.
+    clearPreferences();
     await signOut({ callbackUrl: "/" });
   }
 

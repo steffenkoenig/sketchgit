@@ -186,3 +186,51 @@ Add a new processing activity row to the Verarbeitungsverzeichnis:
 2. Server logs: IP addresses are pseudonymised (last octet masked).
 3. Log retention policy configured in server log rotation or aggregation service.
 4. Privacy policy contains IP address logging disclosure with retention period.
+
+---
+
+## 6. Implementation Notes (2026-08-23)
+
+- **§4.1 (decrement `connectionsPerIp` on WebSocket close)** — re-verified
+  still present: `lib/server/wsConnectionHandler.ts` decrements/deletes the
+  entry on close (confirmed by the 2026-08-22 changelog entry below; this
+  session re-confirmed it directly in the current code, not just trusting
+  the prior note).
+- **§4.3 (pseudonymise IPs in logs)** — implemented. The single call site
+  that logged a raw IP (`server.ts`'s "ws: connection limit reached"
+  warning) now logs through `lib/server/ipPseudonymization.ts`'s
+  `pseudonymizeIp()` (masks the last IPv4 octet or the low 64 bits of an
+  IPv6 address), matching the report's own suggested approach. Per the
+  report's own caveat, the `connectionsPerIp` Map itself still uses the
+  **full** IP internally — only the logged value is masked; pseudonymising
+  the rate-limiting key itself would let an entire /24 network share one
+  connection-count bucket, breaking the feature. A repo-wide grep
+  confirmed this was the *only* place a raw IP reaches `logger.*` anywhere
+  in the codebase — `proxy.ts`'s Redis rate-limit key uses the IP too, but
+  never logs it, and Redis entries auto-expire (already noted as
+  acceptable in §3.2).
+- Extracted as a real, importable, unit-tested function
+  (`lib/server/ipPseudonymization.ts`, 6 tests) rather than defined inline
+  in `server.ts` — `server.ts` isn't importable in this repo's unit tests
+  (see `lib/server/sanitizers.test.ts`'s own note about needing to inline
+  a copy of its helpers for exactly that reason), and inlining a second
+  copy just to test it felt worse than the small extraction.
+
+**Real-infrastructure verification:** started the real server (not
+mocked), opened 21 real WebSocket connections from the same source IP
+(one past `MAX_CONNECTIONS_PER_IP = 20`) via the `ws` package, and
+confirmed the resulting server log line reads `ip: "127.0.0.0"` — the real
+loopback IP with its last octet masked, not the raw `127.0.0.1`.
+
+- **§4.2 (log retention policy)** — not implemented. This is reverse-proxy
+  / log-aggregation-service configuration (e.g. `logrotate` settings, or a
+  SaaS retention setting) outside this application's own codebase — there
+  is no in-repo file to change for it, only ops documentation to write.
+- **§4.4, §4.5 (privacy policy disclosure, VVT entry)** — not implemented;
+  blocked on GAP-002/GAP-008, which require real business information not
+  available in this session.
+
+**Status:** the code-level portion of this gap (§4.1, §4.3) is done. The
+gap remains **⚠️ Partial** overall — §4.2 is ops configuration and §4.4/§4.5
+are business-info-blocked legal-document content, both out of this
+session's scope.

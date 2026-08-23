@@ -169,3 +169,72 @@ However, implement before production launch if GitHub OAuth is enabled for users
 2. GitHub API call using a token read directly from the database returns 401 (token encrypted, unusable as-is).
 3. After account deletion, GitHub API confirms token is revoked.
 4. `OAUTH_TOKEN_ENCRYPTION_KEY` is documented in `.env.example`.
+
+---
+
+## 8. Implementation Notes (2026-08-23)
+
+Implemented §4.1 (application-level AES-256-GCM encryption), §4.5 (env
+var), and §4.4 (revocation on deletion), largely as proposed:
+
+- `lib/tokenEncryption.ts` — `encryptToken`/`decryptToken`/
+  `isEncryptedToken`/`decryptTokenSafe`, `iv:ciphertext:authTag` format as
+  suggested. Lives at `lib/` root (not `lib/server/`) — like the existing
+  `lib/passwordHashing.ts` — because both `lib/db/userRepository.ts` and
+  `lib/server/encryptedAuthAdapter.ts` need it, and `lib/db/` may never
+  import from `lib/server/` (this repo's module-boundary convention).
+- **Key resolution deviates from the report's `KEY = Buffer.from(process.env.OAUTH_TOKEN_ENCRYPTION_KEY!, 'base64')`
+  suggestion**: rather than requiring a new required env var (which would
+  make GitHub OAuth — already optional — suddenly need extra setup, or
+  silently ship unencrypted if an operator upgrading this app doesn't
+  notice), the key falls back to a SHA-256 hash of `AUTH_SECRET` when
+  `OAUTH_TOKEN_ENCRYPTION_KEY` isn't set. Tokens are encrypted by default
+  for every existing deployment with zero configuration changes required.
+  Setting `OAUTH_TOKEN_ENCRYPTION_KEY` explicitly rotates the key
+  independently of `AUTH_SECRET`.
+- **Integration is a Prisma Client Extension** (`lib/server/encryptedAuthAdapter.ts`,
+  `withEncryptedAccountTokens()`), applied only to a separate extended view
+  of the client passed to `PrismaAdapter()` in `lib/auth.ts` — not to the
+  shared `prismaWrite`/`prismaRead` singletons every repository depends on.
+  This was a deliberate choice: `prismaRead` already carries P088's
+  read-replica-fallback `Proxy` wrapper, and layering a `$extends()` call
+  on top of (or under) that Proxy machinery was judged too risky for what
+  should be a narrowly-scoped fix — the extension only ever needs to touch
+  `Account` model operations, which only the adapter performs.
+  Decrypt-on-read gracefully passes through legacy plaintext rows (a
+  pre-encryption row, or a value the current key can no longer decrypt)
+  rather than throwing.
+- §4.4 (revocation on account deletion) — `lib/server/oauthTokenRevocation.ts`'s
+  `revokeGitHubToken()`, wired into `DELETE /api/auth/account` before
+  `deleteUser()` cascades away the `Account` row. Best-effort: guarded both
+  internally (never throws) and again at the call site (defense in depth)
+  — GDPR right-to-erasure must never be blocked by GitHub's API being
+  unreachable.
+- §4.3 (minimal OAuth scopes) — verified already satisfied: `lib/auth.ts`'s
+  `GitHub()` provider doesn't override `authorization.params.scope`, so it
+  uses NextAuth's built-in GitHub default (`read:user user:email`) already;
+  no `repo` scope is requested. No code change needed.
+- §4.2 (database/disk-level encryption) — not implemented; the report
+  itself frames this as an alternative/complement to §4.1, and full-disk
+  encryption is infrastructure-provider configuration outside this
+  codebase, not an app-code change.
+
+**Real-infrastructure verification** (Docker Postgres, not just mocked unit
+tests): created an Account row through the real extended client exactly as
+NextAuth's adapter would, then confirmed via a **direct raw-SQL query**
+(bypassing Prisma/the extension entirely) that the stored `access_token`
+is genuine ciphertext (`iv:ciphertext:authTag`, all base64) — not the
+original plaintext — and that reading it back through the extended client
+correctly decrypts to the original token. Also ran a full real
+register → sign-in → `DELETE /api/auth/account` flow against a real build
+to confirm the new revocation step doesn't break credentials-account
+deletion (its no-op path, since that test user had no linked GitHub
+account).
+
+26 new unit tests across `lib/tokenEncryption.test.ts`,
+`lib/server/encryptedAuthAdapter.test.ts`,
+`lib/server/oauthTokenRevocation.test.ts`, and additions to
+`lib/db/userRepository.test.ts` / `app/api/auth/account/route.test.ts`.
+
+**Status:** the code-level portion of this gap (§4.1, §4.3, §4.4, §4.5) is
+done.

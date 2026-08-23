@@ -98,3 +98,19 @@ export function savePreferences(update: Partial<UserPreferences>): void {
     // quota exceeded, or non-browser environment).
   }
 }
+
+/**
+ * GAP-003 §5.4 – Clears the locally-stored name/colour/last-room/last-branch
+ * preferences. Not a legal requirement (these are strictly-necessary,
+ * user-initiated localStorage entries, not consent-gated cookies) but a
+ * data-minimisation measure: nothing should linger client-side once the
+ * account it was remembering things for is gone. Called from the
+ * account-deletion flow alongside clearAllActions() (P092's offline queue).
+ */
+export function clearPreferences(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Silently ignore – same environments savePreferences() already guards.
+  }
+}

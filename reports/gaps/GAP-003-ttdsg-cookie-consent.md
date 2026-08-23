@@ -144,3 +144,50 @@ If the following features are **ever added**, a full CMP must be implemented bef
 2. Open DevTools → Application → Local Storage: only `sketchgit_*` keys present.
 3. Privacy policy contains accurate cookie table.
 4. No Google Fonts CDN requests or third-party script loads in network tab.
+
+---
+
+## 8. Implementation Notes (2026-08-23)
+
+The report's own legal analysis (§5.1) concludes **no consent banner is
+legally required** — every cookie and localStorage entry this app sets is
+strictly necessary and only ever written in direct response to an explicit
+user action. Only the report's two concrete, non-legal-document action
+items were in scope this session:
+
+- **§5.4 (clear localStorage on account deletion)** — implemented.
+  `lib/sketchgit/userPreferences.ts` gained `clearPreferences()`, wired
+  into `components/auth/DeleteAccountButton.tsx` alongside the existing
+  `clearAllActions()` call (P092's offline-queue clearing) — nothing
+  client-side should linger once the account it was remembering things for
+  is gone. Note the report's own inventory of four separate
+  `sketchgit_name`/`sketchgit_color`/`sketchgit_lastRoom`/`sketchgit_lastBranch`
+  keys was already stale relative to the current code, which consolidates
+  all of it into a single `sketchgit_prefs` key
+  (`lib/sketchgit/userPreferences.ts`) — `clearPreferences()` removes that
+  one key.
+- **§5.3 (informational notice, best-practice not required)** — added,
+  per explicit user confirmation that the optional notice was wanted.
+  `components/sketchgit/CookieNotice.tsx`: a small, dismissible,
+  bottom-left corner notice using the report's own exact suggested German
+  text (and an English translation), shown once and remembered via a
+  `localStorage` dismissal flag (a UI preference, not a consent record —
+  nothing is gated on whether it's been seen). Verified via a real
+  production build that the SSR output contains the correct message text
+  in both locales.
+- **§5.2 (cookie table in privacy policy)** — not implemented; blocked on
+  GAP-002, which requires real business information not available in this
+  session.
+
+10 new/updated unit tests in `lib/sketchgit/userPreferences.test.ts`. No
+E2E test was written for `CookieNotice.tsx`'s dismiss interaction — this
+session separately confirmed (during P096) that genuine client-side
+interactivity cannot currently be verified via Playwright in this sandbox
+(see the sandbox limitation noted in that proposal's report); relying on
+unit tests and a real SSR build check here follows the same adapted
+verification approach.
+
+**Status:** the code-level portion of this gap (§5.3, §5.4) is done. The
+gap remains **⚠️ Partial** overall — §5.2 (privacy policy cookie table) is
+business-info-blocked, out of this session's scope. §5.1's conclusion
+itself (no consent banner required) stands unchanged.

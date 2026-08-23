@@ -31,6 +31,8 @@ export default [
       "prisma.config.ts",
       "lib/env.ts",
       "lib/auth.ts",
+      "lib/passwordHashing.ts",
+      "lib/tokenEncryption.ts",
       "lib/db/**/*.ts",
       "lib/api/**/*.ts",
       "lib/export/**/*.ts",
@@ -39,6 +41,7 @@ export default [
       "lib/server/**/*.ts",
       "lib/test/**/*.ts",
       "app/api/**/*.ts",
+      "app/.well-known/**/*.ts",
     ],
     languageOptions: {
       globals: {

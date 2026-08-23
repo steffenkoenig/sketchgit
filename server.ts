@@ -37,6 +37,7 @@ import { getGlobalPresence } from "./lib/server/presence.js";
 import { initRoomBroadcaster } from "./lib/server/wsRoomBroadcaster.js";
 import { shutdownTelemetry } from "./lib/telemetry.js";
 import { wsConnectionGauge } from "./lib/server/metrics.js";
+import { pseudonymizeIp } from "./lib/server/ipPseudonymization.js";
 
 // ─── Startup env validation ───────────────────────────────────────────────────
 const env = validateEnv();
@@ -741,7 +742,9 @@ void app.prepare()
         const ip = (req.socket.remoteAddress ?? "unknown").replace(/^::ffff:/, "");
         const currentCount = connectionsPerIp.get(ip) ?? 0;
         if (currentCount >= MAX_CONNECTIONS_PER_IP) {
-          logger.warn({ ip }, "ws: connection limit reached, rejecting upgrade");
+          // GAP-017 §4.3 – the connection-limiting logic above still uses the
+          // full `ip`; only the logged value is pseudonymised.
+          logger.warn({ ip: pseudonymizeIp(ip) }, "ws: connection limit reached, rejecting upgrade");
           socket.write("HTTP/1.1 429 Too Many Connections\r\n\r\n");
           socket.destroy();
           return;

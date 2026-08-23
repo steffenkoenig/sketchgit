@@ -1,6 +1,6 @@
 # SketchGit – Compliance Gap Summary (German / EU Law)
 
-**Last Updated:** 2026-03-13 (Revision 2 – GAP-016 through GAP-022 added)  
+**Last Updated:** 2026-08-23 (GAP-011, GAP-014 resolved; GAP-003, GAP-017 code-level items completed)  
 **Scope:** German and European legal requirements applicable to a web application hosted and operated in Germany  
 **Application Version:** Based on current codebase analysis (March 2026)  
 **Operator Jurisdiction:** Federal Republic of Germany
@@ -12,10 +12,10 @@
 | Risk Level | Count | Gaps |
 |---|---|---|
 | 🔴 Critical | 5 | GAP-001, GAP-002, GAP-004, GAP-005, GAP-018 |
-| 🟠 High | 11 | GAP-003, GAP-006, GAP-007, GAP-008, GAP-009, GAP-010, GAP-011, GAP-012, GAP-013, GAP-017, GAP-021 |
-| 🟡 Medium | 4 | GAP-014, GAP-015, GAP-020, GAP-022 |
+| 🟠 High | 10 | GAP-003, GAP-006, GAP-007, GAP-008, GAP-009, GAP-010, GAP-012, GAP-013, GAP-017, GAP-021 |
+| 🟡 Medium | 3 | GAP-015, GAP-020, GAP-022 |
 | 🟢 Low | 1 | GAP-019 |
-| ✅ Resolved | 1 | GAP-016 |
+| ✅ Resolved | 3 | GAP-011, GAP-014, GAP-016 |
 
 ---
 
@@ -25,7 +25,7 @@
 |---|---|---|---|---|---|
 | [GAP-001](GAP-001-impressumspflicht.md) | Impressumspflicht (Legal Notice) | DDG § 5 | 🔴 Critical | ❌ Open | 2–4 h |
 | [GAP-002](GAP-002-datenschutzerklaerung.md) | Datenschutzerklärung (Privacy Policy) | DSGVO Art. 13/14 | 🔴 Critical | ❌ Open | 4–8 h |
-| [GAP-003](GAP-003-ttdsg-cookie-consent.md) | TTDSG § 25 – Cookie/localStorage Consent | TTDSG § 25 | 🟠 High | ⚠️ Partial | 2–4 h |
+| [GAP-003](GAP-003-ttdsg-cookie-consent.md) | TTDSG § 25 – Cookie/localStorage Consent | TTDSG § 25 | 🟠 High | ⚠️ Partial (code done; policy text blocked) | 2–4 h |
 | [GAP-004](GAP-004-betroffenenrechte.md) | DSGVO Betroffenenrechte (Data Subject Rights) | DSGVO Art. 15–22 | 🔴 Critical | ⚠️ Partial | 8–16 h |
 | [GAP-005](GAP-005-auftragsverarbeitungsvertraege.md) | Auftragsverarbeitungsverträge (DPAs) | DSGVO Art. 28 | 🔴 Critical | ❌ Open | 2–4 h |
 | [GAP-006](GAP-006-drittstaatentransfer.md) | Drittstaatentransfer (Third-Country Transfers) | DSGVO Art. 44–49 | 🟠 High | ❌ Open | 2–4 h |
@@ -33,13 +33,13 @@
 | [GAP-008](GAP-008-verarbeitungsverzeichnis.md) | Verarbeitungsverzeichnis (Records of Processing) | DSGVO Art. 30 | 🟠 High | ❌ Open | 2–4 h |
 | [GAP-009](GAP-009-bfsg-barrierefreiheit.md) | BFSG – Barrierefreiheit (Accessibility) | BFSG / EU 2019/882 | 🟠 High | ⚠️ Partial | 16–40 h |
 | [GAP-010](GAP-010-agb-nutzungsbedingungen.md) | AGB / Nutzungsbedingungen (Terms of Service) | BGB § 305 ff. | 🟠 High | ❌ Open | 4–8 h |
-| [GAP-011](GAP-011-security-txt.md) | security.txt Platzhalter | RFC 9116 | 🟠 High | ⚠️ Partial | 0.5 h |
+| [GAP-011](done/GAP-011-security-txt.md) | security.txt Platzhalter | RFC 9116 | 🟠 High | ✅ Resolved | 0.5 h |
 | [GAP-012](GAP-012-datenlöschkonzept.md) | Datenlöschkonzept (Data Retention Policy) | DSGVO Art. 5 lit. e | 🟠 High | ⚠️ Partial | 4–8 h |
 | [GAP-013](GAP-013-it-sicherheit.md) | IT-Sicherheit (IT Security / NIS2) | DSGVO Art. 32 | 🟠 High | ⚠️ Partial | 8–16 h |
-| [GAP-014](GAP-014-oauth-token-speicherung.md) | OAuth-Token-Speicherung | DSGVO Art. 32 | 🟡 Medium | ❌ Open | 8–16 h |
+| [GAP-014](done/GAP-014-oauth-token-speicherung.md) | OAuth-Token-Speicherung | DSGVO Art. 32 | 🟡 Medium | ✅ Resolved | 8–16 h |
 | [GAP-015](GAP-015-dsa-digital-services-act.md) | DSA – Digital Services Act | DSA (EU) 2022/2065 | 🟡 Medium | ⚠️ Partial | 2–4 h |
 | [GAP-016](done/GAP-016-google-fonts-cdn.md) | Google Fonts CDN (IP Transfer to Google) | DSGVO Art. 6 / TTDSG § 25 | 🔴 Critical | ✅ Resolved | 1–2 h |
-| [GAP-017](GAP-017-ip-adressen-protokollierung.md) | IP-Adressen-Protokollierung | DDG § 19 / DSGVO Art. 5 lit. e | 🟠 High | ⚠️ Partial | 2–4 h |
+| [GAP-017](GAP-017-ip-adressen-protokollierung.md) | IP-Adressen-Protokollierung | DDG § 19 / DSGVO Art. 5 lit. e | 🟠 High | ⚠️ Partial (code done; ops config + policy text blocked) | 2–4 h |
 | [GAP-018](GAP-018-minderjaerigenschutz.md) | Minderjährigenschutz (Age Verification) | DSGVO Art. 8 / BDSG § 7 | 🔴 Critical | ❌ Open | 4–8 h |
 | [GAP-019](GAP-019-fernmeldegeheimnis.md) | Fernmeldegeheimnis (TTDSG § 3) | TTDSG § 3 / TKG | 🟢 Low | ✅ Classification confirmed | 1–2 h |
 | [GAP-020](GAP-020-datenschutzbeauftragter.md) | Datenschutzbeauftragter – DPO Assessment | DSGVO Art. 37 | 🟡 Medium | ❌ Open | 2–4 h |
@@ -63,13 +63,14 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-005** – Conclude AVV with application hosting provider
 - [ ] **GAP-005** – Conclude AVV with Resend (if `RESEND_API_KEY` is set)
 - [ ] **GAP-010** – Create `/terms` page with basic ToS
-- [ ] **GAP-011** – Replace all `example.com` placeholders in `security.txt`
+- [x] **GAP-011** – Replace all `example.com` placeholders in `security.txt` — ✅ Done (`app/.well-known/security.txt/route.ts` now generates it dynamically from `NEXTAUTH_URL`, `Expires` never lapses)
 - [x] **GAP-016** – Self-host Google Fonts (remove `@import url('https://fonts.googleapis.com/...')` from `app/globals.css`; use `next/font/google` or local WOFF2 files) — ✅ Done (`app/layout.tsx` uses `next/font/google`)
 - [ ] **GAP-018** – Add age confirmation checkbox (16+) to registration form and `ageConfirmed` field to User model
 
 ### Phase 2 – High (Complete within 30 days of launch)
 
-- [ ] **GAP-003** – Document all cookies and localStorage in privacy policy
+- [ ] **GAP-003** – Document all cookies and localStorage in privacy policy (blocked on GAP-002 business info)
+- [x] **GAP-003** – Clear `sketchgit_*` localStorage on account deletion; add best-practice informational cookie notice — ✅ Done (`lib/sketchgit/userPreferences.ts`'s `clearPreferences()`, `components/sketchgit/CookieNotice.tsx`)
 - [ ] **GAP-004** – Implement `GET /api/auth/dsar` endpoint (Art. 15 + Art. 20)
 - [ ] **GAP-004** – Implement email-change flow (Art. 16)
 - [ ] **GAP-006** – Confirm all infrastructure uses EU regions (or document SCCs)
@@ -83,9 +84,10 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-013** – Add `npm audit --audit-level=high` to CI pipeline
 - [ ] **GAP-015** – Add DSA contact email to Impressum
 - [ ] **GAP-015** – Add illegal content reporting channel to footer/ToS
-- [ ] **GAP-017** – Fix `connectionsPerIp` Map: decrement/delete entry on WebSocket close (no unbounded IP accumulation)
-- [ ] **GAP-017** – Configure server log retention (7–14 days) and pseudonymise IPs in log output
-- [ ] **GAP-017** – Disclose IP logging and retention period in privacy policy
+- [x] **GAP-017** – Fix `connectionsPerIp` Map: decrement/delete entry on WebSocket close (no unbounded IP accumulation) — ✅ Done (`lib/server/wsConnectionHandler.ts`)
+- [x] **GAP-017** – Pseudonymise IPs in log output — ✅ Done (`lib/server/ipPseudonymization.ts`, wired into the one call site that logged a raw IP)
+- [ ] **GAP-017** – Configure server log retention (7–14 days) — ops/log-aggregation config, not app code; out of session scope
+- [ ] **GAP-017** – Disclose IP logging and retention period in privacy policy (blocked on GAP-002 business info)
 - [ ] **GAP-021** – Designate an `abuse@` / `copyright@` email and publish it in footer and ToS
 - [ ] **GAP-021** – Document internal copyright complaint handling procedure
 
@@ -97,8 +99,8 @@ Use the checkboxes below to track progress. Update this file as gaps are resolve
 - [ ] **GAP-012** – Define and implement inactive account policy
 - [ ] **GAP-013** – Enable CSP violation reporting endpoint
 - [ ] **GAP-013** – Conduct initial penetration test / security review
-- [ ] **GAP-014** – Implement OAuth token encryption at rest (AES-256-GCM)
-- [ ] **GAP-014** – Implement GitHub OAuth token revocation on account deletion
+- [x] **GAP-014** – Implement OAuth token encryption at rest (AES-256-GCM) — ✅ Done (`lib/tokenEncryption.ts`, `lib/server/encryptedAuthAdapter.ts`)
+- [x] **GAP-014** – Implement GitHub OAuth token revocation on account deletion — ✅ Done (`lib/server/oauthTokenRevocation.ts`)
 - [ ] **GAP-019** – Record TTDSG § 3 classification statement in VVT (SketchGit is not a telecom service; drawing data is application state)
 - [ ] **GAP-019** – Add "Echtzeit-Zusammenarbeit" WebSocket processing disclosure to privacy policy
 - [ ] **GAP-020** – Write and date DPO threshold assessment (Art. 37 + BDSG § 38); add DPO status statement to privacy policy
@@ -186,3 +188,4 @@ The following areas are already correctly implemented and require no remediation
 | 2026-03-13 | Initial gap analysis created (GAP-001 through GAP-015) | Copilot Agent |
 | 2026-03-13 | Revision 2: Added GAP-016 (Google Fonts CDN), GAP-017 (IP logging), GAP-018 (Minors), GAP-019 (Fernmeldegeheimnis – classification confirmed: not a telecom service), GAP-020 (DPO), GAP-021 (Copyright takedown), GAP-022 (Special categories). Updated risk counts and implementation checklists. | Copilot Agent |
 | 2026-08-22 | GAP-016 verified resolved in code (`app/layout.tsx` now uses `next/font/google`, no CDN import remains) and archived to `done/`. GAP-017's code-level fix (`connectionsPerIp` decrement on WS close) also verified present, though the gap remains open pending the non-code log-retention/privacy-policy items. | Claude |
+| 2026-08-23 | Implemented the technical (non-business-info) sub-tasks of GAP-003, GAP-011, GAP-014, GAP-017 per user approval. GAP-011 (dynamic `security.txt` generated from `NEXTAUTH_URL`, real contact, self-refreshing `Expires`, new `/security-policy` page) and GAP-014 (AES-256-GCM OAuth token encryption at rest, GitHub token revocation on account deletion) fully resolved and archived to `done/`. GAP-003 (localStorage clearing on account deletion, optional informational cookie notice) and GAP-017 (IP pseudonymisation in the one log call site that had it) had their code-level items completed but remain ⚠️ Partial — each still has a privacy-policy-disclosure item blocked on GAP-002's missing business information, and GAP-017 also has an ops-level log-retention config item outside this codebase. | Claude |

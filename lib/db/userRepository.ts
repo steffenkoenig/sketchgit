@@ -18,6 +18,7 @@ import bcrypt from "bcryptjs";
 // P088 – prismaRead routes to the read replica when configured; prismaWrite
 // always targets the primary. See the per-function routing decisions below.
 import { prismaRead, prismaWrite } from "@/lib/db/prisma";
+import { decryptTokenSafe } from "@/lib/tokenEncryption";
 // P093 – shared with room-password hashing (app/api/rooms/[roomId]/unlock)
 // so both use identical, already-audited Argon2id parameters.
 import { ARGON2_OPTIONS } from "@/lib/passwordHashing";
@@ -290,6 +291,24 @@ export async function getUserForAccountDeletion(
     where: { id: userId },
     select: { id: true, email: true, passwordHash: true },
   });
+}
+
+/**
+ * GAP-014 – Returns the user's decrypted GitHub OAuth access token, or null
+ * when the user never linked a GitHub account. Used by the account-deletion
+ * flow to revoke the token with GitHub before the Account row is cascaded
+ * away. Queries the plain (unextended) `prismaRead` client directly, so the
+ * value read back is still encrypted-at-rest ciphertext — decrypted here via
+ * decryptTokenSafe() rather than through
+ * lib/server/encryptedAuthAdapter.ts's Prisma extension, which only wraps
+ * the separate client instance passed to PrismaAdapter().
+ */
+export async function getGitHubAccountToken(userId: string): Promise<string | null> {
+  const account = await prismaRead.account.findFirst({
+    where: { userId, provider: "github" },
+    select: { access_token: true },
+  });
+  return decryptTokenSafe(account?.access_token ?? null);
 }
 
 /**
