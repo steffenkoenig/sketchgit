@@ -911,7 +911,9 @@ export class CollaborationManager {
     }
     // BUG-008 – cancel all per-peer lock-expire timers so they don't fire
     // after the manager has been destroyed.
-    this.lockExpireTimers.forEach((timer) => clearTimeout(timer));
+    for (const timer of this.lockExpireTimers.values()) {
+      clearTimeout(timer);
+    }
     this.lockExpireTimers.clear();
     // BUG-008 / P080 – stop presenter mode (clears view-sync interval and UI state).
     this._stopPresenting();
