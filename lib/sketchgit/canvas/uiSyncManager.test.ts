@@ -267,7 +267,10 @@ describe('UISyncManager', () => {
     });
 
     it('handles object fill as Pattern', () => {
-      const patternMock = new Pattern({ source: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' });
+      // Mocking an Image element since Node.js/jsdom might lack full canvas Image implementation
+      const imgMock = new Image();
+      imgMock.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      const patternMock = new Pattern({ source: imgMock });
       const mockObj = createMockFabricObject({
         fill: patternMock,
         _fillColor: '#888888',
