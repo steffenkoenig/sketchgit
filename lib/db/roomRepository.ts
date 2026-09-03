@@ -352,26 +352,25 @@ export interface RoomSummary {
  * Return all rooms accessible to a given user (owned + membership).
  */
 export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
-  const memberships = await prismaRead.roomMembership.findMany({
-    where: { userId },
-    include: {
-      room: {
-        include: { _count: { select: { commits: true } } },
+  const [memberships, ownedRooms] = await Promise.all([
+    prismaRead.roomMembership.findMany({
+      where: { userId },
+      include: {
+        room: {
+          include: { _count: { select: { commits: true } } },
+        },
       },
-    },
-    orderBy: { room: { updatedAt: "desc" } },
-  });
+      orderBy: { room: { updatedAt: "desc" } },
+    }),
+    prismaRead.room.findMany({
+      where: { ownerId: userId, memberships: { none: { userId } } },
+      include: { _count: { select: { commits: true } } },
+      orderBy: { updatedAt: "desc" },
+    }),
+  ]);
 
-  const ownedRooms = await prismaRead.room.findMany({
-    where: { ownerId: userId, memberships: { none: { userId } } },
-    include: { _count: { select: { commits: true } } },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  const results: RoomSummary[] = [];
-
-  for (const m of memberships) {
-    results.push({
+  return [
+    ...memberships.map((m) => ({
       id: m.room.id,
       slug: m.room.slug,
       isPublic: m.room.isPublic,
@@ -379,22 +378,17 @@ export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
       updatedAt: m.room.updatedAt,
       commitCount: m.room._count.commits,
       role: m.role,
-    });
-  }
-
-  for (const r of ownedRooms) {
-    results.push({
+    })),
+    ...ownedRooms.map((r) => ({
       id: r.id,
       slug: r.slug,
       isPublic: r.isPublic,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       commitCount: r._count.commits,
-      role: "OWNER",
-    });
-  }
-
-  return results;
+      role: "OWNER" as const,
+    })),
+  ];
 }
 
 // ─── Cleanup ──────────────────────────────────────────────────────────────────
