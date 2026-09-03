@@ -29,11 +29,21 @@ vi.mock('@/lib/server/csp', () => ({
   buildCsp: vi.fn(() => 'csp-header'),
 }));
 
-vi.mock('node:crypto', () => ({
-  randomBytes: vi.fn(() => ({
-    toString: vi.fn(() => 'mocked-nonce'),
-  })),
-}));
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:crypto')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      randomBytes: vi.fn(() => ({
+        toString: vi.fn(() => 'mocked-nonce'),
+      })),
+    },
+    randomBytes: vi.fn(() => ({
+      toString: vi.fn(() => 'mocked-nonce'),
+    })),
+  };
+});
 
 describe('proxy.ts', () => {
   beforeEach(() => {

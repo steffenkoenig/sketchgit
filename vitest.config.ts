@@ -8,12 +8,12 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'node',
+    environment: 'jsdom',
     setupFiles: ['lib/test/setup.ts'],
-    include: ['lib/**/*.test.ts', 'app/**/*.test.ts', '*.test.ts'],
+    include: ['lib/**/*.test.ts', 'app/**/*.test.ts', 'hooks/**/*.test.ts', '*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['lib/**/*.ts', 'app/api/**/*.ts', 'proxy.ts'],
+      include: ['lib/**/*.ts', 'app/api/**/*.ts', 'hooks/**/*.ts', 'proxy.ts'],
       exclude: ['lib/**/*.test.ts', 'app/**/*.test.ts', 'lib/db/prisma.ts', 'lib/auth.ts', 'lib/sketchgit/createSketchGitApp.ts', 'lib/server/wsConnectionHandler.ts'],
       thresholds: {
         lines: 70,
