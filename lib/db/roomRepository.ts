@@ -262,31 +262,66 @@ export async function loadRoomSnapshot(
 
   async function resolveCanvas(sha: string): Promise<string> {
     if (canvasCache.has(sha)) return canvasCache.get(sha)!;
-    // Ancestor not in the current page – fetch it directly.
-    const ancestor = await prismaRead.commit.findFirst({
-      where: { roomId, sha },
-      select: { sha: true, parentSha: true, canvasJson: true, storageType: true },
-    });
-    if (!ancestor) return '{"objects":[]}';
-    let canvasStr: string;
-    if (ancestor.storageType === CommitStorageType.SNAPSHOT || !ancestor.parentSha) {
-      try { canvasStr = JSON.stringify(ancestor.canvasJson); }
-      catch { canvasStr = '{"objects":[]}'; }
-    } else {
-      const parentCanvas = await resolveCanvas(ancestor.parentSha);
-      try {
-        canvasStr = replayCanvasDelta(parentCanvas, ancestor.canvasJson as unknown as CanvasDelta);
-      } catch {
-        try { canvasStr = JSON.stringify(ancestor.canvasJson); }
-        catch { canvasStr = '{"objects":[]}'; }
-      }
+    // Ancestor not in the current page – fetch chain via CTE to avoid N+1.
+    type CommitRow = {
+      sha: string;
+      parentSha: string | null;
+      canvasJson: Prisma.JsonValue;
+      storageType: CommitStorageType;
+    };
+    const maxDepth = 10000;
+    const rows = await prismaRead.$queryRaw<CommitRow[]>`
+      WITH RECURSIVE commit_chain AS (
+        SELECT sha, "parentSha", "canvasJson", "storageType", 1 as depth
+        FROM "Commit"
+        WHERE "roomId" = ${roomId} AND sha = ${sha}
+
+        UNION ALL
+
+        SELECT c.sha, c."parentSha", c."canvasJson", c."storageType", cc.depth + 1
+        FROM "Commit" c
+        INNER JOIN commit_chain cc ON c.sha = cc."parentSha"
+        WHERE c."roomId" = ${roomId} AND cc."storageType" != 'SNAPSHOT' AND cc.depth < ${maxDepth}
+      )
+      SELECT sha, "parentSha", "canvasJson", "storageType" FROM commit_chain ORDER BY depth ASC;
+    `;
+
+    if (!rows || rows.length === 0) {
+      canvasCache.set(sha, '{"objects":[]}');
+      return '{"objects":[]}';
     }
-    canvasCache.set(sha, canvasStr);
-    return canvasStr;
+
+    const chain: CommitRow[] = [];
+    for (const row of rows) {
+      chain.push(row);
+    }
+    chain.reverse(); // Process oldest (snapshot) to newest
+
+    for (const c of chain) {
+      if (canvasCache.has(c.sha)) continue;
+      let canvasStr: string;
+      if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
+        try { canvasStr = JSON.stringify(c.canvasJson); }
+        catch { canvasStr = '{"objects":[]}'; }
+      } else {
+        const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
+        try {
+          canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
+        } catch {
+          try { canvasStr = JSON.stringify(c.canvasJson); }
+          catch { canvasStr = '{"objects":[]}'; }
+        }
+      }
+      canvasCache.set(c.sha, canvasStr);
+    }
+
+    return canvasCache.get(sha) ?? '{"objects":[]}';
   }
 
   const commitsMap: Record<string, CommitRecord> = {};
+  let i = 0;
   for (const c of commits) {
+    if (++i % 10 === 0) await new Promise((r) => setImmediate(r));
     let canvasStr: string;
     if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
       try { canvasStr = JSON.stringify(c.canvasJson); }
@@ -352,26 +387,25 @@ export interface RoomSummary {
  * Return all rooms accessible to a given user (owned + membership).
  */
 export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
-  const memberships = await prismaRead.roomMembership.findMany({
-    where: { userId },
-    include: {
-      room: {
-        include: { _count: { select: { commits: true } } },
+  const [memberships, ownedRooms] = await Promise.all([
+    prismaRead.roomMembership.findMany({
+      where: { userId },
+      include: {
+        room: {
+          include: { _count: { select: { commits: true } } },
+        },
       },
-    },
-    orderBy: { room: { updatedAt: "desc" } },
-  });
+      orderBy: { room: { updatedAt: "desc" } },
+    }),
+    prismaRead.room.findMany({
+      where: { ownerId: userId, memberships: { none: { userId } } },
+      include: { _count: { select: { commits: true } } },
+      orderBy: { updatedAt: "desc" },
+    }),
+  ]);
 
-  const ownedRooms = await prismaRead.room.findMany({
-    where: { ownerId: userId, memberships: { none: { userId } } },
-    include: { _count: { select: { commits: true } } },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  const results: RoomSummary[] = [];
-
-  for (const m of memberships) {
-    results.push({
+  return [
+    ...memberships.map((m) => ({
       id: m.room.id,
       slug: m.room.slug,
       isPublic: m.room.isPublic,
@@ -379,22 +413,17 @@ export async function getUserRooms(userId: string): Promise<RoomSummary[]> {
       updatedAt: m.room.updatedAt,
       commitCount: m.room._count.commits,
       role: m.role,
-    });
-  }
-
-  for (const r of ownedRooms) {
-    results.push({
+    })),
+    ...ownedRooms.map((r) => ({
       id: r.id,
       slug: r.slug,
       isPublic: r.isPublic,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       commitCount: r._count.commits,
-      role: "OWNER",
-    });
-  }
-
-  return results;
+      role: "OWNER" as const,
+    })),
+  ];
 }
 
 // ─── Cleanup ──────────────────────────────────────────────────────────────────
