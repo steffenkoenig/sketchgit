@@ -237,8 +237,6 @@ const presenceDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // P044 – configurable debounce window; expose via env: PRESENCE_DEBOUNCE_MS (default: 80).
 const PRESENCE_DEBOUNCE_MS = env.PRESENCE_DEBOUNCE_MS;
 
-
-// Test exports
 // P015 – per-IP WebSocket connection counter
 const connectionsPerIp = new Map<string, number>();
 const MAX_CONNECTIONS_PER_IP = 20;

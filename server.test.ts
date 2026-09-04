@@ -29,7 +29,7 @@ describe('server write draining', () => {
 
   it('should resolve waitForDrain immediately if no in-flight writes', async () => {
     let resolved = false;
-    _test_waitForDrain(1000).then(() => { resolved = true; });
+    void _test_waitForDrain(1000).then(() => { resolved = true; });
     await vi.runAllTimersAsync();
     expect(resolved).toBe(true);
   });
@@ -57,7 +57,7 @@ describe('server write draining', () => {
     let resolved = false;
 
     const p = _test_waitForDrain(1000);
-    p.then(() => { resolved = true; });
+    void p.then(() => { resolved = true; });
 
     expect(_test_getDrainWaiters().length).toBe(1);
 
