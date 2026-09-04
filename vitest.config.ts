@@ -11,10 +11,6 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['lib/test/setup.ts'],
     include: ['lib/**/*.test.ts', 'app/**/*.test.ts', 'components/**/*.test.tsx', '*.test.ts'],
-    environmentMatchGlobs: [
-      ['components/**/*.test.tsx', 'jsdom'],
-      ['**/*.test.ts', 'node'],
-    ],
     coverage: {
       provider: 'v8',
       include: ['lib/**/*.ts', 'app/api/**/*.ts', 'proxy.ts'],
