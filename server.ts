@@ -269,17 +269,23 @@ export function endWrite(): void {
 function waitForDrain(timeoutMs: number): Promise<void> {
   if (inFlightWrites === 0) return Promise.resolve();
   return new Promise<void>((resolve) => {
+    const drainFn = () => {
+      clearTimeout(timer);
+      resolve();
+    };
     const timer = setTimeout(() => {
-      const idx = drainWaiters.indexOf(resolve);
+      const idx = drainWaiters.indexOf(drainFn);
       if (idx !== -1) drainWaiters.splice(idx, 1);
       resolve();
     }, timeoutMs);
-    drainWaiters.push(() => {
-      clearTimeout(timer);
-      resolve();
-    });
+    drainWaiters.push(drainFn);
   });
 }
+
+// Test exports
+export const _test_waitForDrain = waitForDrain;
+export const _test_getInFlightWrites = () => inFlightWrites;
+export const _test_getDrainWaiters = () => drainWaiters;
 
 // Server-side heartbeat: broadcast a ping to all clients every 25 s.
 const PING_INTERVAL_MS = 25_000;

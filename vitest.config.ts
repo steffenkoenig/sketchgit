@@ -10,7 +10,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['lib/test/setup.ts'],
-    include: ['lib/**/*.test.ts', 'app/**/*.test.ts', 'hooks/**/*.test.ts', '*.test.ts'],
+    include: ['lib/**/*.test.ts', 'app/**/*.test.ts', 'components/**/*.test.tsx', 'hooks/**/*.test.ts', '*.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['lib/**/*.ts', 'app/api/**/*.ts', 'hooks/**/*.ts', 'proxy.ts'],
