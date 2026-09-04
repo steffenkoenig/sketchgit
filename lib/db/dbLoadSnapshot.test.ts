@@ -300,4 +300,84 @@ describe("dbLoadSnapshot", () => {
     expect(result?.HEAD).toBe("main");
     expect(result?.detached).toBeNull();
   });
+
+  it("should handle DELTA commit when parent canvas is missing from cache", async () => {
+    const date1 = new Date();
+
+    // Simulate finding only the DELTA commit without its SNAPSHOT parent in the database
+    // This could happen if a limit (take: 100) causes the parent to not be fetched
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha2",
+        parentSha: "sha1",
+        parents: ["sha1"],
+        message: "second",
+        createdAt: date1,
+        storageType: "DELTA",
+        canvasJson: { added: [], modified: [], removed: [] },
+        branch: "main",
+        isMerge: false,
+      }
+    ]);
+
+    vi.mocked(replayCanvasDelta).mockImplementation(() => {
+        return '{"objects":[{"type":"rect"}]}';
+    });
+
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+
+    expect(result).toBeDefined();
+    expect(result?.commits["sha2"].canvas).toBe('{"objects":[{"type":"rect"}]}');
+
+    // Ensure replayCanvasDelta was called with the default fallback parent canvas
+    expect(replayCanvasDelta).toHaveBeenCalledWith(
+        '{"objects":[]}',
+        { added: [], modified: [], removed: [] }
+    );
+  });
+
+  it("should return null and log error if branch.findMany query throws", async () => {
+    const error = new Error("DB Error Branch");
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: new Date(),
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [{ type: "rect" }] },
+        branch: "main",
+        isMerge: false,
+      }
+    ]);
+    prismaMock.branch.findMany.mockRejectedValue(error);
+
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+    expect(result).toBeNull();
+    expect(loggerMock.error).toHaveBeenCalledWith({ roomId: "room1", err: error }, "db.loadSnapshot failed");
+  });
+
+  it("should return null and log error if roomState.findUnique query throws", async () => {
+    const error = new Error("DB Error RoomState");
+    prismaMock.commit.findMany.mockResolvedValue([
+      {
+        sha: "sha1",
+        parentSha: null,
+        parents: [],
+        message: "init",
+        createdAt: new Date(),
+        storageType: "SNAPSHOT",
+        canvasJson: { objects: [{ type: "rect" }] },
+        branch: "main",
+        isMerge: false,
+      }
+    ]);
+    prismaMock.roomState.findUnique.mockRejectedValue(error);
+
+    const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
+    expect(result).toBeNull();
+    expect(loggerMock.error).toHaveBeenCalledWith({ roomId: "room1", err: error }, "db.loadSnapshot failed");
+  });
+
 });

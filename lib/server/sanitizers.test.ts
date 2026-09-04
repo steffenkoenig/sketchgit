@@ -49,6 +49,9 @@ describe('safeBranchName (P047)', () => {
   it('returns "main" for whitespace-only string', () => {
     expect(safeBranchName('   ')).toBe('main');
   });
+  it('returns "main" for undefined', () => {
+    expect(safeBranchName(undefined)).toBe('main');
+  });
 
   it('allows dots in branch names', () => {
     expect(safeBranchName('release-1.2.3')).toBe('release-1.2.3');
@@ -79,5 +82,8 @@ describe('safeCommitMessage (P047)', () => {
 
   it('returns "(no message)" for whitespace-only string', () => {
     expect(safeCommitMessage('   ')).toBe('(no message)');
+  });
+  it('returns "(no message)" for undefined', () => {
+    expect(safeCommitMessage(undefined)).toBe('(no message)');
   });
 });

@@ -6,6 +6,45 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.11.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.2...sketchgit-next-v0.11.0) (2026-09-04)
+
+
+### Features
+
+* implement approved GAP technical sub-tasks (GAP-003/011/014/017) ([e8a42c2](https://github.com/steffenkoenig/sketchgit/commit/e8a42c208c9344b00b4c490d48c508d2bba606ae))
+* implement P060 PgBouncer transaction-mode connection pooling ([1c092e5](https://github.com/steffenkoenig/sketchgit/commit/1c092e556e443610a5faebba05cae72647410fa5))
+* implement P061 OpenTelemetry distributed tracing and metrics ([404ed72](https://github.com/steffenkoenig/sketchgit/commit/404ed721164f20ea53c2070b441330e3a1af8a51))
+* implement P082 automated accessibility testing with axe-core ([811140f](https://github.com/steffenkoenig/sketchgit/commit/811140fae24d869d4ebd62520599b7e9f9073242))
+* implement P083 load and stress testing with k6 ([a6eeebd](https://github.com/steffenkoenig/sketchgit/commit/a6eeebdbf42dc3ef88e0b752d1362aa3d9ee365b))
+* implement P085 canvas JSON schema versioning and migration ([490d95b](https://github.com/steffenkoenig/sketchgit/commit/490d95b89e142cd11216bc7754d62fb1421b733f))
+* implement P086 GitHub Copilot custom skills for scaffolding ([c875c9e](https://github.com/steffenkoenig/sketchgit/commit/c875c9e182a72defe1492e1cedbc905c73d3e9dc))
+* implement P087 visual regression testing with Playwright snapshots ([7f81dd0](https://github.com/steffenkoenig/sketchgit/commit/7f81dd0760aecbca5bc01ec8020c798f1bf684ef))
+* implement P088 database read replica and connection routing ([41edbad](https://github.com/steffenkoenig/sketchgit/commit/41edbadc7dcc35477a1b6cc5467ed31995e9b402))
+* implement P090 feature flag system; fix missing 2FA migration ([0fb28c0](https://github.com/steffenkoenig/sketchgit/commit/0fb28c09a0920f3565b2bc794ac1c5a65a590384))
+* implement P091 room roles and permissions; fix 3 severe production bugs ([ab03c87](https://github.com/steffenkoenig/sketchgit/commit/ab03c872b906e20d96034f73f5f04c91195fdfbf))
+* implement P092 offline mode and background sync ([e944165](https://github.com/steffenkoenig/sketchgit/commit/e9441650270cac0f848d9fdcd4a2f590e99afaf7))
+* implement P093 room password protection ([f55220d](https://github.com/steffenkoenig/sketchgit/commit/f55220d008c38e1664f9c06c4a8bed6ed7ca3b29))
+* implement P094 email notifications for room activity ([901318e](https://github.com/steffenkoenig/sketchgit/commit/901318edaaf1b3844d5b7093640b97990f1c59db))
+* implement P095 custom shape templates and shape library ([179e03d](https://github.com/steffenkoenig/sketchgit/commit/179e03dab8a1396179898ab0b7ce4b7c3be226ad))
+* implement P096 canvas minimap / radar view ([b2ff375](https://github.com/steffenkoenig/sketchgit/commit/b2ff3754a86286f52f84a85ed8e77f57fa7f9a98))
+
+
+### Bug Fixes
+
+* properly clear all peer lock-expire timers in destroy ([#356](https://github.com/steffenkoenig/sketchgit/issues/356)) ([e74c1d7](https://github.com/steffenkoenig/sketchgit/commit/e74c1d79ddba2746426e51cca6c3194e95251c41))
+
+
+### Performance Improvements
+
+* **db:** optimize resolveCanvas with recursive CTE ([#365](https://github.com/steffenkoenig/sketchgit/issues/365)) ([2f74206](https://github.com/steffenkoenig/sketchgit/commit/2f74206d17b85951aecc2feb8f4a3ab67e7e040a))
+* optimize getUserRooms by parallelizing DB queries and array mapping ([#358](https://github.com/steffenkoenig/sketchgit/issues/358)) ([4054b11](https://github.com/steffenkoenig/sketchgit/commit/4054b116a979c360654b6f8f0f1537b02e0083aa))
+* yield to event loop during bulk canvas serialization to avoid blocking ([#371](https://github.com/steffenkoenig/sketchgit/issues/371)) ([4a69790](https://github.com/steffenkoenig/sketchgit/commit/4a6979018f228ec0d7fe7169c5abd2e004c97b57))
+
+
+### Documentation
+
+* reject P084 (Sentry error tracking) per product decision ([d9bd6a0](https://github.com/steffenkoenig/sketchgit/commit/d9bd6a014a8c3adda71c887def43b2ebd7f1a56d))
+
 ## [0.10.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.1...sketchgit-next-v0.10.2) (2026-08-21)
 
 
