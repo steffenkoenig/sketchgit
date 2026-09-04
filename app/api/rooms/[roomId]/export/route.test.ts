@@ -324,4 +324,13 @@ describe('POST /api/rooms/[roomId]/export', () => {
     const res = await POST(req, { params });
     expect(res.headers.get('content-disposition')).toContain(`canvas-${ROOM_ID}`);
   });
+
+  it('returns 500 EXPORT_FAILED when the canvas renderer throws an error', async () => {
+    vi.mocked(renderToPNG).mockRejectedValueOnce(new Error('Canvas rendering failed'));
+    const req = makePostRequest(ROOM_ID, { canvasJson: CANVAS_JSON, format: 'png' });
+    const res = await POST(req, { params });
+    expect(res.status).toBe(500);
+    const json = await res.json() as { code: string };
+    expect(json.code).toBe('EXPORT_FAILED');
+  });
 });

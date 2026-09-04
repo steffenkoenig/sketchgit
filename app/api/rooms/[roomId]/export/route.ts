@@ -196,34 +196,38 @@ export async function POST(
 
   const filename = `canvas-${roomId}`;
 
-  if (format === "svg") {
-    const svg = await renderToSVG(canvasJson, theme);
-    return new NextResponse(svg, {
+  try {
+    if (format === "svg") {
+      const svg = await renderToSVG(canvasJson, theme);
+      return new NextResponse(svg, {
+        headers: {
+          "Content-Type": "image/svg+xml",
+          "Content-Disposition": `attachment; filename="${filename}.svg"`,
+          ...mutableHeaders(),
+        },
+      });
+    }
+
+    if (format === "pdf") {
+      const pdf = await renderToPDF(canvasJson, theme);
+      return new NextResponse(Buffer.from(pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${filename}.pdf"`,
+          ...mutableHeaders(),
+        },
+      });
+    }
+
+    const png = await renderToPNG(canvasJson, theme);
+    return new NextResponse(new Uint8Array(png), {
       headers: {
-        "Content-Type": "image/svg+xml",
-        "Content-Disposition": `attachment; filename="${filename}.svg"`,
+        "Content-Type": "image/png",
+        "Content-Disposition": `attachment; filename="${filename}.png"`,
         ...mutableHeaders(),
       },
     });
+  } catch (error) {
+    return apiError(ApiErrorCode.EXPORT_FAILED, "Export failed", 500);
   }
-
-  if (format === "pdf") {
-    const pdf = await renderToPDF(canvasJson, theme);
-    return new NextResponse(Buffer.from(pdf), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}.pdf"`,
-        ...mutableHeaders(),
-      },
-    });
-  }
-
-  const png = await renderToPNG(canvasJson, theme);
-  return new NextResponse(new Uint8Array(png), {
-    headers: {
-      "Content-Type": "image/png",
-      "Content-Disposition": `attachment; filename="${filename}.png"`,
-      ...mutableHeaders(),
-    },
-  });
 }
