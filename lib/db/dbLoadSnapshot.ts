@@ -27,7 +27,9 @@ export async function dbLoadSnapshot(
 
     const canvasCache = new Map<string, string>();
     const commitsMap: Record<string, CommitRecord> = {};
+    let i = 0;
     for (const c of commits) {
+      if (++i % 10 === 0) await new Promise((r) => setImmediate(r));
       let canvasStr: string;
       if (c.storageType === "SNAPSHOT" || !c.parentSha) {
         try { canvasStr = JSON.stringify(c.canvasJson); } catch { canvasStr = '{"objects":[]}'; }

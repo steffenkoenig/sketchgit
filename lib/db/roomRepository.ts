@@ -286,7 +286,9 @@ export async function loadRoomSnapshot(
   }
 
   const commitsMap: Record<string, CommitRecord> = {};
+  let i = 0;
   for (const c of commits) {
+    if (++i % 10 === 0) await new Promise((r) => setImmediate(r));
     let canvasStr: string;
     if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
       try { canvasStr = JSON.stringify(c.canvasJson); }
