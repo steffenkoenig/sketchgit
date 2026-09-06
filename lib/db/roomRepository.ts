@@ -1,5 +1,3 @@
-import { LRUCache } from "lru-cache";
-
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.
  * All functions are async and interact with PostgreSQL via the Prisma client.
@@ -652,22 +650,30 @@ export async function getRoomMembership(
  * Return the room owner id and whether `userId` has an OWNER membership.
  * Returns null when the room does not exist.
  */
-const roomOwnershipCache = new LRUCache<string, { ownerId: string | null; isOwner: boolean } | null>({
+type RoomOwnership = { ownerId: string | null; isOwner: boolean };
+
+// lru-cache's value type must extend `{}`, so a `null` result (room not
+// found) is wrapped in a `{ result }` box rather than cached directly.
+const roomOwnershipCache = new LRUCache<string, { result: RoomOwnership | null }>({
   max: 1000,
   ttl: 1000 * 60 * 5, // 5 minutes
 });
 
+// Exposed for tests: this module-level cache otherwise persists across test
+// cases within the same file (they don't mock roomRepository itself, only
+// the underlying Prisma client), so a stale entry from an earlier test can
+// leak into a later one that expects a different result for the same
+// roomId/userId pair.
+export const _test_clearRoomOwnershipCache = (): void => roomOwnershipCache.clear();
+
 export async function getRoomOwnership(
   roomId: string,
   userId: string,
-): Promise<{ ownerId: string | null; isOwner: boolean } | null> {
-  const isTest = process.env.NODE_ENV === 'test';
+): Promise<RoomOwnership | null> {
   const cacheKey = `${roomId}:${userId}`;
 
-  if (!isTest) {
-    const cached = roomOwnershipCache.get(cacheKey);
-    if (cached !== undefined) return cached;
-  }
+  const cached = roomOwnershipCache.get(cacheKey);
+  if (cached !== undefined) return cached.result;
 
   const room = await prismaRead.room.findUnique({
     where: { id: roomId },
@@ -680,14 +686,14 @@ export async function getRoomOwnership(
     },
   });
   if (!room) {
-    if (!isTest) roomOwnershipCache.set(cacheKey, null);
+    roomOwnershipCache.set(cacheKey, { result: null });
     return null;
   }
-  const result = {
+  const result: RoomOwnership = {
     ownerId: room.ownerId,
     isOwner: room.ownerId === userId || room.memberships.length > 0,
   };
-  if (!isTest) roomOwnershipCache.set(cacheKey, result);
+  roomOwnershipCache.set(cacheKey, { result });
   return result;
 }
 
@@ -951,6 +957,9 @@ export async function addRoomMember(
     update: {},
     create: { roomId, userId, role },
   });
+  // A brand-new membership (in particular OWNER) can change this user's
+  // getRoomOwnership() result if it was already cached as non-owner.
+  roomOwnershipCache.delete(`${roomId}:${userId}`);
 }
 
 // ─── P091: Room member role management ─────────────────────────────────────
@@ -1008,6 +1017,10 @@ export async function setRoomMemberRole(
     where: { roomId_userId: { roomId, userId } },
     data: { role },
   });
+  // A role change involving OWNER (either direction) can change this
+  // member's getRoomOwnership() result, so drop the now-possibly-stale
+  // cache entry rather than waiting out its TTL.
+  roomOwnershipCache.delete(`${roomId}:${userId}`);
   return { ok: true };
 }
 
