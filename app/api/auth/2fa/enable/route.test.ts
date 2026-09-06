@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { POST } from "./route";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
@@ -33,12 +32,12 @@ describe("POST /api/auth/2fa/enable", () => {
 
   it("returns 401 if unauthorized", async () => {
     mockAuth.mockResolvedValueOnce(null);
-    const req = new NextRequest("http://localhost:3000/api/auth/2fa/enable", {
+    const req = new Request("http://localhost:3000/api/auth/2fa/enable", {
       method: "POST",
       body: JSON.stringify({ enable: true }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as any);
     expect(res.status).toBe(401);
   });
 
@@ -46,12 +45,12 @@ describe("POST /api/auth/2fa/enable", () => {
     mockAuth.mockResolvedValueOnce({
       user: { id: "usr_1", email: "test@example.com" },
     });
-    const req = new NextRequest("http://localhost:3000/api/auth/2fa/enable", {
+    const req = new Request("http://localhost:3000/api/auth/2fa/enable", {
       method: "POST",
       body: JSON.stringify({ enable: false }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as any);
     expect(res.status).toBe(200);
     expect(mockSetTwoFactorEnabled).toHaveBeenCalledWith("usr_1", false);
   });
@@ -64,12 +63,12 @@ describe("POST /api/auth/2fa/enable", () => {
     });
     mockCreateTwoFactorToken.mockResolvedValueOnce("123456");
 
-    const req = new NextRequest("http://localhost:3000/api/auth/2fa/enable", {
+    const req = new Request("http://localhost:3000/api/auth/2fa/enable", {
       method: "POST",
       body: JSON.stringify({ enable: true }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as any);
     expect(res.status).toBe(200);
     expect(mockCreateTwoFactorToken).toHaveBeenCalledWith("test@example.com");
     expect(mockResend).toHaveBeenCalled();

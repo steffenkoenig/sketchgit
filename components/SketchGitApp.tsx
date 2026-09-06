@@ -37,6 +37,13 @@ import { RoomSettingsModal } from "./sketchgit/RoomSettingsModal";
 import { ShapeLibraryModal } from "./sketchgit/ShapeLibraryModal";
 import { MinimapPanel } from "./sketchgit/MinimapPanel";
 import { CookieNotice } from "./sketchgit/CookieNotice";
+import { CommitModal } from "./sketchgit/modals/CommitModal";
+import { BranchModal } from "./sketchgit/modals/BranchModal";
+import { BranchCreateModal } from "./sketchgit/modals/BranchCreateModal";
+import { MergeModal } from "./sketchgit/modals/MergeModal";
+import { ConflictModal } from "./sketchgit/modals/ConflictModal";
+import { NameModal } from "./sketchgit/modals/NameModal";
+import { ConfirmModal } from "./sketchgit/modals/ConfirmModal";
 import type { SketchGitAppApi } from "./sketchgit/types";
 
 export default function SketchGitApp() {
@@ -315,119 +322,34 @@ export default function SketchGitApp() {
 
       {/* P025: All modals use role="dialog", aria-modal, aria-labelledby */}
       <ModalErrorBoundary>
-      <div className="overlay" id="commitModal" role="dialog" aria-modal="true" aria-labelledby="commitModalTitle">
-        <div className="modal">
-          <h2 id="commitModalTitle">{t("modal.commit.title")}</h2>
-          <label htmlFor="commitMsg">{t("modal.commit.label")}</label>
-          <input id="commitMsg" type="text" placeholder={t("modal.commit.placeholder")} />
-          <div className="modal-actions">
-            <button className="mbtn" onClick={() => call("closeModal", "commitModal")} aria-label="Cancel and close the commit dialog">{t("modal.commit.cancel")}</button>
-            <button className="mbtn ok" onClick={() => call("doCommit")} aria-label="Save a new commit with the entered message">{t("modal.commit.confirm")}</button>
-          </div>
-        </div>
-      </div>
+        <CommitModal call={call} />
       </ModalErrorBoundary>
 
       <ModalErrorBoundary>
-      <div className="overlay" id="branchModal" role="dialog" aria-modal="true" aria-labelledby="branchModalTitle">
-        <div className="modal">
-          <h2 id="branchModalTitle">{t("modal.branch.title")}</h2>
-          <div id="branchListEl" className="branch-list" role="list" aria-label="Available branches"></div>
-          <div className="modal-actions">
-            <button className="mbtn" onClick={() => call("closeModal", "branchModal")} aria-label="Close the branches dialog">{t("modal.branch.close")}</button>
-            <button className="mbtn ok" onClick={() => call("openBranchCreate")} aria-label="Create a new branch" aria-haspopup="dialog">{t("modal.branch.newBranch")}</button>
-          </div>
-        </div>
-      </div>
+        <BranchModal call={call} />
       </ModalErrorBoundary>
 
       <ModalErrorBoundary>
-      <div className="overlay" id="branchCreateModal" role="dialog" aria-modal="true" aria-labelledby="branchCreateModalTitle">
-        <div className="modal">
-          <h2 id="branchCreateModalTitle">{t("modal.branchCreate.title")}</h2>
-          <div className="info-box" id="branchFromInfo" aria-live="polite"></div>
-          <label htmlFor="newBranchName">{t("modal.branchCreate.label")}</label>
-          <input id="newBranchName" type="text" placeholder={t("modal.branchCreate.placeholder")} />
-          <div className="modal-actions">
-            <button className="mbtn" onClick={() => call("closeModal", "branchCreateModal")} aria-label="Cancel creating a new branch">{t("modal.branchCreate.cancel")}</button>
-            <button className="mbtn ok" onClick={() => call("doCreateBranch")} aria-label="Create the new branch">{t("modal.branchCreate.confirm")}</button>
-          </div>
-        </div>
-      </div>
+        <BranchCreateModal call={call} />
       </ModalErrorBoundary>
 
       <ModalErrorBoundary>
-      <div className="overlay" id="mergeModal" role="dialog" aria-modal="true" aria-labelledby="mergeModalTitle">
-        <div className="modal">
-          <h2 id="mergeModalTitle">{t("modal.merge.title")}</h2>
-          <div className="info-box">Merge another branch <b>into</b> <span id="mergeTargetName" aria-live="polite"></span>. Objects are tracked by UUID — duplicates are detected and conflicts resolved.</div>
-          <label htmlFor="mergeSourceSelect">{t("modal.merge.label")}</label>
-          <select id="mergeSourceSelect" aria-label="Select source branch to merge from"></select>
-          <div className="modal-actions">
-            <button className="mbtn" onClick={() => call("closeModal", "mergeModal")} aria-label="Cancel the merge">{t("modal.merge.cancel")}</button>
-            <button className="mbtn warn" onClick={() => call("doMerge")} aria-label="Perform the merge">{t("modal.merge.confirm")}</button>
-          </div>
-        </div>
-      </div>
+        <MergeModal call={call} />
       </ModalErrorBoundary>
 
       <ModalErrorBoundary>
-      <div className="overlay" id="conflictModal" role="dialog" aria-modal="true" aria-labelledby="conflictModalTitle">
-        <div className="modal" style={{ maxWidth: "640px" }}>
-          <h2 id="conflictModalTitle">{t("modal.conflict.title")}</h2>
-          <div className="conflict-header" role="alert">
-            <span aria-hidden="true">⚠</span>
-            <span id="conflictSummary">{t("modal.conflict.summary")}</span>
-          </div>
-          <div className="conflict-list" id="conflictList" role="list" aria-label="Merge conflicts"></div>
-          <div className="conflict-stats" id="conflictStats" role="status" aria-live="polite" aria-label="Resolution progress"></div>
-          <div className="modal-actions">
-            <button className="mbtn" onClick={() => call("resolveAllOurs")} aria-label="Resolve all conflicts by keeping our version">{t("modal.conflict.allOurs")}</button>
-            <button className="mbtn" onClick={() => call("resolveAllTheirs")} aria-label="Resolve all conflicts by keeping their version">{t("modal.conflict.allTheirs")}</button>
-            <div style={{ flex: 1 }} aria-hidden="true"></div>
-            <button className="mbtn" onClick={() => call("closeModal", "conflictModal")} aria-label="Cancel the merge and close the conflict dialog">{t("modal.conflict.cancel")}</button>
-            <button className="mbtn ok" id="applyMergeBtn" onClick={() => call("applyMergeResolution")} aria-label="Apply the selected conflict resolutions and complete the merge">{t("modal.conflict.apply")}</button>
-          </div>
-        </div>
-      </div>
+        <ConflictModal call={call} />
       </ModalErrorBoundary>
 
       <ModalErrorBoundary>
-      <div className="overlay" id="nameModal" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
-        <div className="modal">
-          <h2 id="nameModalTitle">{t("modal.name.title")}</h2>
-          <label htmlFor="nameInput">{t("modal.name.label")}</label>
-          <input id="nameInput" type="text" placeholder={t("modal.name.placeholder")} autoFocus />
-          <div className="modal-actions">
-            <button className="mbtn ok" onClick={() => call("setName")} aria-label="Set your display name and start drawing">{t("modal.name.confirm")}</button>
-          </div>
-        </div>
-      </div>
+        <NameModal call={call} />
       </ModalErrorBoundary>
 
       <div id="toast" role="status" aria-live="assertive" aria-atomic="true"></div>
 
       {/* P025: Accessible confirmation modal – replaces window.confirm() for destructive actions */}
       <ModalErrorBoundary>
-      <div className="overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
-        <div className="modal">
-          <h2 id="confirmModalTitle">⚠ Confirm Action</h2>
-          <p id="confirmModalMessage" className="info-box"></p>
-          <div className="modal-actions">
-            <button
-              className="mbtn"
-              onClick={() => call("cancelConfirm")}
-              aria-label="Cancel and close"
-            >Cancel</button>
-            <button
-              className="mbtn warn"
-              id="confirmModalOkBtn"
-              onClick={() => call("acceptConfirm")}
-              aria-label="Confirm destructive action"
-            >Confirm</button>
-          </div>
-        </div>
-      </div>
+        <ConfirmModal call={call} />
       </ModalErrorBoundary>
 
       {/* P091: Share links modal – opened from topbar or commit popup */}
