@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setupCollaborationManager } from './appCollaboration';
 import { CollaborationManager } from './realtime/collaborationManager';
 import { WsClient } from './realtime/wsClient';
@@ -11,7 +11,15 @@ import { getQueuedActions } from './offline/offlineDb';
 import { isOnline, onNetworkStatusChange } from './offline/networkStatus';
 
 vi.mock('./realtime/collaborationManager', () => {
-  const CollaborationManager = vi.fn(function(ws, options) {
+  type MockCollaborationManager = {
+    ws: unknown;
+    options: unknown;
+    currentRoomId: string;
+    getBranchFromUrl: ReturnType<typeof vi.fn>;
+    sendProfile: ReturnType<typeof vi.fn>;
+    broadcastDraw: ReturnType<typeof vi.fn>;
+  };
+  const CollaborationManager = vi.fn(function (this: MockCollaborationManager, ws: unknown, options: unknown) {
     this.ws = ws;
     this.options = options;
     this.currentRoomId = 'test-room';
