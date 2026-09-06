@@ -10,6 +10,16 @@ vi.mock('../server/metrics', () => ({
 }));
 
 // Mock Prisma before importing the module under test
+
+vi.mock('@/lib/sketchgit/git/canvasSchemaMigrations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/sketchgit/git/canvasSchemaMigrations')>();
+  return {
+    ...actual,
+    migrateCanvasJson: vi.fn(actual.migrateCanvasJson),
+  };
+});
+import { migrateCanvasJson } from '@/lib/sketchgit/git/canvasSchemaMigrations';
+
 vi.mock('@/lib/db/prisma', () => {
   const $transaction = vi.fn();
   const $queryRaw = vi.fn();
@@ -180,6 +190,21 @@ describe('saveCommit', () => {
     await expect(saveCommit('room-1', badCommit)).rejects.toThrow('Invalid canvas JSON');
   });
 
+  it('throws wrapped error when migrateCanvasJson throws a generic error', async () => {
+    // Mock migrateCanvasJson to throw a generic error
+    const genericError = new Error('Some generic migration error');
+
+    (migrateCanvasJson as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw genericError;
+    });
+
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+
+    await expect(saveCommit('room-1', sampleCommit)).rejects.toThrow('Invalid canvas JSON for commit abc123');
+  });
+
   it('P085: stamps schemaVersion on a legacy (unversioned) canvas payload', async () => {
     mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
       await Promise.all(ops);
@@ -239,6 +264,15 @@ describe('saveCommitWithDelta (P033/P085)', () => {
     await expect(saveCommitWithDelta('room-1', futureCommit)).rejects.toThrow('schemaVersion');
     // Should fail before ever attempting the transaction.
     expect(mock.transaction).not.toHaveBeenCalled();
+  });
+
+  it('throws wrapped error when migrateCanvasJson throws a generic error', async () => {
+    const genericError = new Error('Some generic migration error');
+    (migrateCanvasJson as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw genericError;
+    });
+
+    await expect(saveCommitWithDelta('room-1', sampleCommit)).rejects.toThrow('Invalid canvas JSON for commit abc123');
   });
 
   it('falls back to SNAPSHOT storage if looking up the parent commit throws an error', async () => {
