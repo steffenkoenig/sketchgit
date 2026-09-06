@@ -90,5 +90,10 @@ describe("tokenEncryption (GAP-014)", () => {
       process.env.OAUTH_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString("base64");
       expect(decryptTokenSafe(encrypted)).toBe(encrypted);
     });
+
+    it("returns the original value unchanged when an exception is thrown during decryption", () => {
+      const invalidEncryptedToken = "YmFk:c3RyaW5n:aGVyZQ==";
+      expect(decryptTokenSafe(invalidEncryptedToken)).toBe(invalidEncryptedToken);
+    });
   });
 });
