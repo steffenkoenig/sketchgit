@@ -47,6 +47,7 @@ export async function POST(
     // Not an error condition worth hiding behind a generic 403 — a client
     // showing the unlock prompt for a room that turns out to be unprotected
     // is a UX bug to surface, not a security-sensitive detail to mask.
+    console.error(`[rooms/unlock] UX bug: unlock prompt submitted for unprotected room ${roomId}`);
     return apiError(ApiErrorCode.ROOM_NOT_PASSWORD_PROTECTED, "This room is not password-protected", 400);
   }
 
