@@ -1,3 +1,4 @@
+import { LRUCache } from "lru-cache";
 
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.
@@ -598,13 +599,28 @@ export async function checkRoomAccess(
  * Resolve a room identifier that may be either a room ID or a slug.
  * Returns the canonical room ID, or null if no room matches.
  */
+
+const resolveRoomIdCache = new LRUCache<string, string | null>({
+  max: 1000,
+  ttl: 1000 * 60 * 5, // 5 minutes
+});
+
 export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
   if (!idOrSlug) return null;
+
+  const cached = resolveRoomIdCache.get(idOrSlug);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const room = await prismaRead.room.findFirst({
     where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
     select: { id: true },
   });
-  return room?.id ?? null;
+
+  const result = room?.id ?? null;
+  resolveRoomIdCache.set(idOrSlug, result);
+  return result;
 }
 
 // ─── Room lookup helpers (BUG-001) ────────────────────────────────────────────
