@@ -1,4 +1,3 @@
-/* eslint-disable max-lines-per-function */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { dbLoadSnapshot } from "./dbLoadSnapshot.js";
 import type { PrismaClient } from "@prisma/client";
@@ -13,9 +12,8 @@ vi.mock("../sketchgit/git/canvasDelta.js", async (importOriginal) => {
   };
 });
 
-describe("dbLoadSnapshot", () => {
-  let prismaMock: any;
-  let loggerMock: any;
+  let prismaMock: Record<string, any>;
+  let loggerMock: Record<string, any>;
 
   beforeEach(() => {
     prismaMock = {
@@ -37,6 +35,7 @@ describe("dbLoadSnapshot", () => {
     vi.clearAllMocks();
   });
 
+describe("dbLoadSnapshot - basic tests", () => {
   it("should return null if no commits are found", async () => {
     const result = await dbLoadSnapshot("room1", prismaMock as PrismaClient, loggerMock as pino.Logger);
     expect(result).toBeNull();
@@ -252,6 +251,9 @@ describe("dbLoadSnapshot", () => {
     expect(result?.commits["sha1"].canvas).toBe('{"objects":[]}');
   });
 
+});
+
+describe("dbLoadSnapshot - edge cases & errors", () => {
   it("should handle detached HEAD state", async () => {
     const date = new Date();
     prismaMock.commit.findMany.mockResolvedValue([

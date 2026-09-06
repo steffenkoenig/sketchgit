@@ -12,23 +12,21 @@
  * revocation) and lib/server/encryptedAuthAdapter.ts need it, and lib/db/
  * may never import from lib/server/.
  */
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
 
 /**
- * Resolves the 32-byte AES-256 key. Prefers an explicit
- * `OAUTH_TOKEN_ENCRYPTION_KEY` (validated to decode to exactly 32 bytes by
- * lib/env.ts); falls back to a key derived from `AUTH_SECRET` via SHA-256 so
- * tokens are encrypted by default without requiring a new required env var —
- * the same "derive, don't force a new secret" pattern
- * lib/server/subscriptionTokens.ts's AUTH_SECRET fallback uses.
+ * Resolves the 32-byte AES-256 key from OAUTH_TOKEN_ENCRYPTION_KEY.
+ * Must be configured securely (separation of duties).
  */
 function resolveKey(): Buffer {
   const explicit = process.env.OAUTH_TOKEN_ENCRYPTION_KEY;
-  if (explicit) return Buffer.from(explicit, "base64");
-  return createHash("sha256").update(process.env.AUTH_SECRET ?? "").digest();
+  if (!explicit) {
+    throw new Error("OAUTH_TOKEN_ENCRYPTION_KEY is required for token encryption");
+  }
+  return Buffer.from(explicit, "base64");
 }
 
 export function encryptToken(plaintext: string): string {

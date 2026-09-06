@@ -146,6 +146,16 @@ describe('verifyCredentials (P065)', () => {
     expect(result).toBeNull();
   });
 
+  it('returns null when argon2.verify throws an error', async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({
+      id: 'u1',
+      passwordHash: '$argon2id$v=19$m=65536$hash',
+    });
+    mockArgon2.verify.mockRejectedValue(new Error('verify error'));
+    const result = await verifyCredentials('u1@example.com', 'pass');
+    expect(result).toBeNull();
+  });
+
   it('returns public user when Argon2id credentials are valid', async () => {
     const now = new Date();
     mockPrismaUser.findUnique.mockResolvedValue({

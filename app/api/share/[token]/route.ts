@@ -20,6 +20,7 @@
  * Returns 400 for invalid/tampered URLs.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getSafeCallbackUrl } from "@/lib/server/redirects";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
@@ -41,6 +42,7 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+  const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
   const url = new URL(req.url);
   const roomId = url.searchParams.get("roomId") ?? "";
   const scope = url.searchParams.get("scope") ?? "";
@@ -85,17 +87,19 @@ export async function GET(
   if (requiresAuth && !authSession) {
     // Redirect to sign-in with callbackUrl pointing back here
     const rawPath = url.pathname + url.search;
-    const safePath = rawPath.replace(/^[/\\]+/, "/");
+
+      const safePath = getSafeCallbackUrl(rawPath, baseUrl);
     const callbackUrl = encodeURIComponent(safePath);
-    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+
     return NextResponse.redirect(`${baseUrl}/auth/signin?callbackUrl=${callbackUrl}`);
   }
 
   if (!link.room.isPublic && !authSession) {
     const rawPath = url.pathname + url.search;
-    const safePath = rawPath.replace(/^[/\\]+/, "/");
+
+      const safePath = getSafeCallbackUrl(rawPath, baseUrl);
     const callbackUrl = encodeURIComponent(safePath);
-    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+
     return NextResponse.redirect(`${baseUrl}/auth/signin?callbackUrl=${callbackUrl}`);
   }
 
@@ -128,7 +132,7 @@ export async function GET(
   });
 
   // 6. Build redirect URL based on scope
-  const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+
   let redirectTarget: string;
   if (link.scope === "COMMIT" && link.commitSha) {
     redirectTarget = `${baseUrl}/?room=${encodeURIComponent(roomId)}&commit=${encodeURIComponent(link.commitSha)}&readonly=1`;
