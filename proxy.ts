@@ -162,7 +162,7 @@ function applyRateLimit(req: NextRequest): NextResponse | null | Promise<NextRes
   // In Next.js 15+, req.ip is removed from NextRequest.
   // When hosting on Vercel, the IP is provided via the x-forwarded-for header.
   // Because req.ip is not available, we must fallback to headers.
-  let ip: string | undefined = (req as any).ip;
+  let ip: string | undefined = (req as NextRequest & { ip?: string }).ip;
 
   if (!ip) {
     if (process.env.TRUST_PROXY === "true") {

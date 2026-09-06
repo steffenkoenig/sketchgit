@@ -6,7 +6,7 @@
  * slow-query logic in isolation by extracting it to a helper.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resolveReadConnectionString, isReplicaConnectionError } from "./prisma";
+import { resolveReadConnectionString, isReplicaConnectionError, wrapWithReadFallback } from "./prisma";
 
 /** Mirrors the relevant part of Prisma's QueryEvent type */
 interface QueryEvent {
@@ -139,5 +139,108 @@ describe("isReplicaConnectionError (P088 – read-fallback trigger)", () => {
     expect(isReplicaConnectionError(null)).toBe(false);
     expect(isReplicaConnectionError(undefined)).toBe(false);
     expect(isReplicaConnectionError("some string")).toBe(false);
+  });
+});
+
+describe("wrapWithReadFallback (P088)", () => {
+  // Use "any" cast equivalent since we mock only specific parts of PrismaClient
+  type MockPrisma = any;
+
+  it("returns original client if readClient === writeClient", () => {
+    const client = {} as MockPrisma;
+    expect(wrapWithReadFallback(client, client)).toBe(client);
+  });
+
+  it("transparently falls back to writeClient on replica connection error", async () => {
+    // Simulate PrismaPromise duck-typing by returning an object with a catch method
+    const mockCatch = vi.fn().mockImplementation((onRejected) => {
+       return Promise.reject({ code: "ECONNREFUSED" }).catch(onRejected);
+    });
+
+    const readClient = {
+      user: {
+        findUnique: vi.fn().mockReturnValue({ catch: mockCatch }),
+      }
+    } as MockPrisma;
+
+    const writeClient = {
+      user: {
+        findUnique: vi.fn().mockReturnValue(Promise.resolve("primary_user")),
+      }
+    } as MockPrisma;
+
+    const wrapped = wrapWithReadFallback(readClient, writeClient);
+
+    const result = await wrapped.user.findUnique({ where: { id: "1" } });
+    expect(result).toBe("primary_user");
+    expect(readClient.user.findUnique).toHaveBeenCalledOnce();
+    expect(writeClient.user.findUnique).toHaveBeenCalledOnce();
+    expect(writeClient.user.findUnique).toHaveBeenCalledWith({ where: { id: "1" } });
+  });
+
+  it("does not fallback on unrelated error (e.g., query logic error)", async () => {
+    const error = new Error("Unique constraint failed");
+
+    const mockCatch = vi.fn().mockImplementation((onRejected) => {
+       return Promise.reject(error).catch(onRejected);
+    });
+
+    const readClient = {
+      user: {
+        findUnique: vi.fn().mockReturnValue({ catch: mockCatch }),
+      }
+    } as MockPrisma;
+
+    const writeClient = {
+      user: {
+        findUnique: vi.fn().mockReturnValue(Promise.resolve("primary_user")),
+      }
+    } as MockPrisma;
+
+    const wrapped = wrapWithReadFallback(readClient, writeClient);
+
+    await expect(wrapped.user.findUnique({ where: { id: "1" } })).rejects.toThrow(error);
+
+    expect(readClient.user.findUnique).toHaveBeenCalledOnce();
+    expect(writeClient.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("wraps top-level queries (e.g. $queryRaw)", async () => {
+    const mockCatch = vi.fn().mockImplementation((onRejected) => {
+       return Promise.reject({ code: "ECONNREFUSED" }).catch(onRejected);
+    });
+
+    const readClient = {
+      $queryRaw: vi.fn().mockReturnValue({ catch: mockCatch }),
+    } as MockPrisma;
+
+    const writeClient = {
+      $queryRaw: vi.fn().mockReturnValue(Promise.resolve("primary_raw")),
+    } as MockPrisma;
+
+    const wrapped = wrapWithReadFallback(readClient, writeClient);
+
+    // Call top-level method
+    const result = await wrapped.$queryRaw`SELECT 1`;
+    expect(result).toBe("primary_raw");
+    expect(readClient.$queryRaw).toHaveBeenCalledOnce();
+    expect(writeClient.$queryRaw).toHaveBeenCalledOnce();
+  });
+
+  it("does not fallback non-fallback methods like $connect", () => {
+    const readClient = {
+      $connect: vi.fn().mockReturnValue(Promise.resolve()),
+    } as MockPrisma;
+
+    const writeClient = {
+      $connect: vi.fn().mockReturnValue(Promise.resolve()),
+    } as MockPrisma;
+
+    const wrapped = wrapWithReadFallback(readClient, writeClient);
+
+    // Non-fallback methods should be bound to the original readClient without retry wrapper
+    void wrapped.$connect();
+    expect(readClient.$connect).toHaveBeenCalledOnce();
+    expect(writeClient.$connect).not.toHaveBeenCalled();
   });
 });
