@@ -22,7 +22,7 @@
 import {
   getDueSubscriptions,
   claimSubscriptionForDigest,
-  revertDigestClaim,
+  revertDigestClaims,
   getRoomEventsSince,
   type RoomEventType,
 } from "@/lib/db/roomRepository";
@@ -110,6 +110,7 @@ export async function runDigestTier(frequency: DigestFrequency, now: Date = new 
   const due = await getDueSubscriptions(frequency, windowStart);
 
   const result: DigestRunResult = { sent: 0, quiet: 0, skipped: 0 };
+  const reverts: Array<{ id: string; previousLastSentAt: Date | null }> = [];
 
   for (const sub of due) {
     const claimed = await claimSubscriptionForDigest(sub.id, windowStart, now);
@@ -144,8 +145,12 @@ export async function runDigestTier(frequency: DigestFrequency, now: Date = new 
       // silently losing the digest until the next full window (an
       // hour/day later). Not true exponential backoff — retried at the
       // job's own fixed interval — but a real retry rather than a drop.
-      await revertDigestClaim(sub.id, now, sub.lastSentAt);
+      reverts.push({ id: sub.id, previousLastSentAt: sub.lastSentAt });
     }
+  }
+
+  if (reverts.length > 0) {
+    await revertDigestClaims(reverts, now);
   }
 
   return result;

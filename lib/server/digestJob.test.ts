@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/db/roomRepository", () => ({
   getDueSubscriptions: vi.fn(),
   claimSubscriptionForDigest: vi.fn(),
-  revertDigestClaim: vi.fn(),
+  revertDigestClaims: vi.fn(),
   getRoomEventsSince: vi.fn(),
 }));
 vi.mock("@/lib/server/email", () => ({
@@ -20,14 +20,14 @@ import { runDigestTier, runDigestJob } from "./digestJob";
 import {
   getDueSubscriptions,
   claimSubscriptionForDigest,
-  revertDigestClaim,
+  revertDigestClaims,
   getRoomEventsSince,
 } from "@/lib/db/roomRepository";
 import { sendEmail } from "@/lib/server/email";
 
 const mockGetDue = getDueSubscriptions as ReturnType<typeof vi.fn>;
 const mockClaim = claimSubscriptionForDigest as ReturnType<typeof vi.fn>;
-const mockRevert = revertDigestClaim as ReturnType<typeof vi.fn>;
+const mockRevert = revertDigestClaims as ReturnType<typeof vi.fn>;
 const mockGetEvents = getRoomEventsSince as ReturnType<typeof vi.fn>;
 const mockSendEmail = sendEmail as ReturnType<typeof vi.fn>;
 
@@ -113,7 +113,7 @@ describe("runDigestTier", () => {
     const result = await runDigestTier("DAILY", now);
 
     expect(result.sent).toBe(0);
-    expect(mockRevert).toHaveBeenCalledWith("sub_1", now, new Date("2026-01-01T00:00:00Z"));
+    expect(mockRevert).toHaveBeenCalledWith([{ id: "sub_1", previousLastSentAt: new Date("2026-01-01T00:00:00Z") }], now);
   });
 
   it("reverts to null when the subscription had never been sent before", async () => {
@@ -125,7 +125,7 @@ describe("runDigestTier", () => {
     const now = new Date("2026-01-02T00:00:00Z");
     await runDigestTier("DAILY", now);
 
-    expect(mockRevert).toHaveBeenCalledWith("sub_1", now, null);
+    expect(mockRevert).toHaveBeenCalledWith([{ id: "sub_1", previousLastSentAt: null }], now);
   });
 
   it("does not revert when the send succeeds", async () => {

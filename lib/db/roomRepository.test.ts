@@ -69,7 +69,7 @@ import {
   getRoomSubscription,
   getUserSubscriptions,
   claimSubscriptionForDigest,
-  revertDigestClaim,
+  revertDigestClaims,
   getDueSubscriptions,
   getRoomEventsSince,
   type CommitRecord,
@@ -648,14 +648,14 @@ describe('Room email subscriptions (P094)', () => {
     });
   });
 
-  describe('revertDigestClaim', () => {
+  describe('revertDigestClaims', () => {
     it('restores the previous lastSentAt, guarded on the exact sentAt this call set', async () => {
       (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
       const sentAt = new Date('2026-01-02T00:00:00Z');
       const previous = new Date('2026-01-01T00:00:00Z');
-      await revertDigestClaim('sub_1', sentAt, previous);
+      await revertDigestClaims([{ id: 'sub_1', previousLastSentAt: previous }], sentAt);
       expect(prisma.roomSubscription.updateMany).toHaveBeenCalledWith({
-        where: { id: 'sub_1', lastSentAt: sentAt },
+        where: { id: { in: ['sub_1'] }, lastSentAt: sentAt },
         data: { lastSentAt: previous },
       });
     });
@@ -663,9 +663,9 @@ describe('Room email subscriptions (P094)', () => {
     it('reverts to null when there was no previous send', async () => {
       (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
       const sentAt = new Date('2026-01-02T00:00:00Z');
-      await revertDigestClaim('sub_1', sentAt, null);
+      await revertDigestClaims([{ id: 'sub_1', previousLastSentAt: null }], sentAt);
       expect(prisma.roomSubscription.updateMany).toHaveBeenCalledWith({
-        where: { id: 'sub_1', lastSentAt: sentAt },
+        where: { id: { in: ['sub_1'] }, lastSentAt: sentAt },
         data: { lastSentAt: null },
       });
     });
