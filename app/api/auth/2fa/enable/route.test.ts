@@ -37,7 +37,7 @@ describe("POST /api/auth/2fa/enable", () => {
       body: JSON.stringify({ enable: true }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as any);
     expect(res.status).toBe(401);
   });
 
@@ -50,7 +50,7 @@ describe("POST /api/auth/2fa/enable", () => {
       body: JSON.stringify({ enable: false }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as any);
     expect(res.status).toBe(200);
     expect(mockSetTwoFactorEnabled).toHaveBeenCalledWith("usr_1", false);
   });
@@ -68,7 +68,7 @@ describe("POST /api/auth/2fa/enable", () => {
       body: JSON.stringify({ enable: true }),
     });
 
-    const res = await POST(req);
+    const res = await POST(req as any);
     expect(res.status).toBe(200);
     expect(mockCreateTwoFactorToken).toHaveBeenCalledWith("test@example.com");
     expect(mockResend).toHaveBeenCalled();
