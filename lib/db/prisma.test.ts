@@ -239,7 +239,7 @@ describe("wrapWithReadFallback (P088)", () => {
     const wrapped = wrapWithReadFallback(readClient, writeClient);
 
     // Non-fallback methods should be bound to the original readClient without retry wrapper
-    wrapped.$connect();
+    void wrapped.$connect();
     expect(readClient.$connect).toHaveBeenCalledOnce();
     expect(writeClient.$connect).not.toHaveBeenCalled();
   });
