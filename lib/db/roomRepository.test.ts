@@ -2,6 +2,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock Prisma before importing the module under test
+
+vi.mock('@/lib/sketchgit/git/canvasSchemaMigrations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/sketchgit/git/canvasSchemaMigrations')>();
+  return {
+    ...actual,
+    migrateCanvasJson: vi.fn(actual.migrateCanvasJson),
+  };
+});
+import { migrateCanvasJson } from '@/lib/sketchgit/git/canvasSchemaMigrations';
+
 vi.mock('@/lib/db/prisma', () => {
   const $transaction = vi.fn();
   const $queryRaw = vi.fn();
@@ -11,7 +21,9 @@ vi.mock('@/lib/db/prisma', () => {
     room: {
       upsert: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
       deleteMany: vi.fn(),
     },
     commit: {
@@ -69,13 +81,26 @@ import {
   getRoomSubscription,
   getUserSubscriptions,
   claimSubscriptionForDigest,
-  revertDigestClaim,
+  revertDigestClaims,
   getDueSubscriptions,
   getRoomEventsSince,
+  resolveRoomId,
+  updateRoomSlug,
   type CommitRecord,
 } from './roomRepository';
+import { saveCommitHistogram } from '../server/metrics';
 import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
 import { prisma } from '@/lib/db/prisma';
+
+vi.mock('../server/metrics', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../server/metrics')>();
+  return {
+    ...actual,
+    saveCommitHistogram: {
+      record: vi.fn(),
+    },
+  };
+});
 
 const mock = {
   transaction: prisma.$transaction as ReturnType<typeof vi.fn>,
@@ -90,6 +115,8 @@ const mock = {
   membershipFindUnique: prisma.roomMembership.findUnique as ReturnType<typeof vi.fn>,
   roomFindMany: prisma.room.findMany as ReturnType<typeof vi.fn>,
   roomDeleteMany: prisma.room.deleteMany as ReturnType<typeof vi.fn>,
+  roomFindFirst: prisma.room.findFirst as ReturnType<typeof vi.fn>,
+  roomUpdate: prisma.room.update as ReturnType<typeof vi.fn>,
 };
 
 const sampleCommit: CommitRecord = {
@@ -128,6 +155,18 @@ describe('ensureRoom', () => {
 describe('saveCommit', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('records metrics even when transaction fails', async () => {
+    mock.transaction.mockRejectedValueOnce(new Error('Transaction failed'));
+
+    await expect(saveCommit('room-1', sampleCommit, 'user-1')).rejects.toThrow('Transaction failed');
+
+    expect(saveCommitHistogram.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      { storage: 'snapshot' }
+    );
+  });
+
+
   it('executes a transaction with commit, branch, and roomState upserts', async () => {
     // $transaction receives an array of promises; we resolve it immediately
     mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
@@ -157,6 +196,21 @@ describe('saveCommit', () => {
     });
 
     await expect(saveCommit('room-1', badCommit)).rejects.toThrow('Invalid canvas JSON');
+  });
+
+  it('throws wrapped error when migrateCanvasJson throws a generic error', async () => {
+    // Mock migrateCanvasJson to throw a generic error
+    const genericError = new Error('Some generic migration error');
+
+    (migrateCanvasJson as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw genericError;
+    });
+
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+
+    await expect(saveCommit('room-1', sampleCommit)).rejects.toThrow('Invalid canvas JSON for commit abc123');
   });
 
   it('P085: stamps schemaVersion on a legacy (unversioned) canvas payload', async () => {
@@ -218,6 +272,54 @@ describe('saveCommitWithDelta (P033/P085)', () => {
     await expect(saveCommitWithDelta('room-1', futureCommit)).rejects.toThrow('schemaVersion');
     // Should fail before ever attempting the transaction.
     expect(mock.transaction).not.toHaveBeenCalled();
+  });
+
+  it('records the storage metric as snapshot even if the transaction throws', async () => {
+    mock.transaction.mockRejectedValueOnce(new Error('Transaction failed'));
+
+    await expect(saveCommitWithDelta('room-1', sampleCommit, 'user-1')).rejects.toThrow('Transaction failed');
+
+    expect(saveCommitHistogram.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ storage: 'snapshot' })
+    );
+  });
+
+  it('throws wrapped error when migrateCanvasJson throws a generic error', async () => {
+    const genericError = new Error('Some generic migration error');
+    (migrateCanvasJson as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw genericError;
+    });
+
+    await expect(saveCommitWithDelta('room-1', sampleCommit)).rejects.toThrow('Invalid canvas JSON for commit abc123');
+  });
+
+  it('falls back to SNAPSHOT storage if looking up the parent commit throws an error', async () => {
+    const commitWithParent: CommitRecord = {
+      ...sampleCommit,
+      parent: 'parent123',
+    };
+
+    // Mock findUnique to throw an error, which should trigger the fallback to SNAPSHOT
+    (prisma.commit.findUnique as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Database read failed')
+    );
+
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+
+    let storedStorageType: string | undefined;
+    (prisma.commit.upsert as ReturnType<typeof vi.fn>).mockImplementation(({ create }: { create: { storageType: string } }) => {
+      storedStorageType = create.storageType;
+      return Promise.resolve({});
+    });
+
+    // Pass the commit with a parent to trigger the delta calculation block
+    await saveCommitWithDelta('room-1', commitWithParent, 'user-1');
+
+    // We expect it to have caught the error and fallen back to SNAPSHOT storage
+    expect(storedStorageType).toBe('SNAPSHOT');
   });
 });
 
@@ -648,14 +750,14 @@ describe('Room email subscriptions (P094)', () => {
     });
   });
 
-  describe('revertDigestClaim', () => {
+  describe('revertDigestClaims', () => {
     it('restores the previous lastSentAt, guarded on the exact sentAt this call set', async () => {
       (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
       const sentAt = new Date('2026-01-02T00:00:00Z');
       const previous = new Date('2026-01-01T00:00:00Z');
-      await revertDigestClaim('sub_1', sentAt, previous);
+      await revertDigestClaims([{ id: 'sub_1', previousLastSentAt: previous }], sentAt);
       expect(prisma.roomSubscription.updateMany).toHaveBeenCalledWith({
-        where: { id: 'sub_1', lastSentAt: sentAt },
+        where: { id: { in: ['sub_1'] }, lastSentAt: sentAt },
         data: { lastSentAt: previous },
       });
     });
@@ -663,9 +765,9 @@ describe('Room email subscriptions (P094)', () => {
     it('reverts to null when there was no previous send', async () => {
       (prisma.roomSubscription.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
       const sentAt = new Date('2026-01-02T00:00:00Z');
-      await revertDigestClaim('sub_1', sentAt, null);
+      await revertDigestClaims([{ id: 'sub_1', previousLastSentAt: null }], sentAt);
       expect(prisma.roomSubscription.updateMany).toHaveBeenCalledWith({
-        where: { id: 'sub_1', lastSentAt: sentAt },
+        where: { id: { in: ['sub_1'] }, lastSentAt: sentAt },
         data: { lastSentAt: null },
       });
     });
@@ -714,5 +816,61 @@ describe('Room email subscriptions (P094)', () => {
         select: { id: true, eventType: true, actorId: true, payload: true, createdAt: true },
       });
     });
+  });
+});
+
+describe('resolveRoomId caching', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('caches a resolved id so a second lookup skips the DB', async () => {
+    mock.roomFindFirst.mockResolvedValue({ id: 'room_1' });
+
+    expect(await resolveRoomId('my-slug')).toBe('room_1');
+    expect(await resolveRoomId('my-slug')).toBe('room_1');
+
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('negative-caches a not-found lookup so a repeat miss also skips the DB', async () => {
+    mock.roomFindFirst.mockResolvedValue(null);
+
+    expect(await resolveRoomId('ghost-slug')).toBeNull();
+    expect(await resolveRoomId('ghost-slug')).toBeNull();
+
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates the old slug, the new slug, and the room id when updateRoomSlug renames a room', async () => {
+    mock.roomFindFirst.mockResolvedValue({ id: 'room_1' });
+    expect(await resolveRoomId('old-slug')).toBe('room_1');
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+
+    mock.roomFindUnique.mockResolvedValue({ slug: 'old-slug' });
+    mock.roomUpdate.mockResolvedValue({ id: 'room_1', slug: 'new-slug' });
+    await updateRoomSlug('room_1', 'new-slug');
+
+    // The old slug must no longer resolve from a stale cache entry — it
+    // should fall through to the DB again (and this room no longer matches
+    // "old-slug", so a real resolver would return null; here we just assert
+    // the cache didn't short-circuit the lookup).
+    mock.roomFindFirst.mockResolvedValue(null);
+    expect(await resolveRoomId('old-slug')).toBeNull();
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates a negative-cached new slug once a room claims it', async () => {
+    mock.roomFindFirst.mockResolvedValue(null);
+    expect(await resolveRoomId('claimed-slug')).toBeNull();
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+
+    mock.roomFindUnique.mockResolvedValue({ slug: null });
+    mock.roomUpdate.mockResolvedValue({ id: 'room_2', slug: 'claimed-slug' });
+    await updateRoomSlug('room_2', 'claimed-slug');
+
+    // Without invalidation this would still resolve to the stale `null`
+    // cached above, even though "claimed-slug" now belongs to room_2.
+    mock.roomFindFirst.mockResolvedValue({ id: 'room_2' });
+    expect(await resolveRoomId('claimed-slug')).toBe('room_2');
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(2);
   });
 });

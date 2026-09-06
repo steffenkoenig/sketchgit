@@ -1,3 +1,4 @@
+import { LRUCache } from "lru-cache";
 
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.
@@ -467,8 +468,7 @@ export async function appendRoomEvent(
   actorId: string | null,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await prismaWrite.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as any } });
+  await prismaWrite.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as Prisma.InputJsonObject } });
 }
 
 /**
@@ -598,13 +598,28 @@ export async function checkRoomAccess(
  * Resolve a room identifier that may be either a room ID or a slug.
  * Returns the canonical room ID, or null if no room matches.
  */
+
+const resolveRoomIdCache = new LRUCache<string, string>({
+  max: 1000,
+  ttl: 1000 * 60 * 5, // 5 minutes
+});
+
 export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
   if (!idOrSlug) return null;
+
+  const cached = resolveRoomIdCache.get(idOrSlug);
+  if (cached !== undefined) {
+    return cached === "" ? null : cached;
+  }
+
   const room = await prismaRead.room.findFirst({
     where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
     select: { id: true },
   });
-  return room?.id ?? null;
+
+  const result = room?.id ?? null;
+  resolveRoomIdCache.set(idOrSlug, result ?? "");
+  return result;
 }
 
 // ─── Room lookup helpers (BUG-001) ────────────────────────────────────────────
@@ -665,11 +680,25 @@ export async function updateRoomSlug(
   roomId: string,
   slug: string | null,
 ): Promise<{ id: string; slug: string | null }> {
-  return prismaWrite.room.update({
+  const previous = await prismaWrite.room.findUnique({
+    where: { id: roomId },
+    select: { slug: true },
+  });
+
+  const updated = await prismaWrite.room.update({
     where: { id: roomId },
     data: { slug },
     select: { id: true, slug: true },
   });
+
+  // Invalidate resolveRoomId()'s cache: the old slug now points nowhere, and
+  // the new slug may have been negative-cached ("not found") by an earlier
+  // lookup before this room claimed it.
+  resolveRoomIdCache.delete(roomId);
+  if (previous?.slug) resolveRoomIdCache.delete(previous.slug);
+  if (slug) resolveRoomIdCache.delete(slug);
+
+  return updated;
 }
 
 /**
@@ -1224,6 +1253,29 @@ export async function getUserSubscriptions(userId: string): Promise<RoomSubscrip
  * false means another instance already claimed (or is claiming) it this
  * cycle.
  */
+
+/**
+ * P094 – Atomically claims multiple due subscriptions for digest dispatch in a single query.
+ *
+ * Like claimSubscriptionForDigest, but operates on a batch to resolve N+1 querying.
+ * Returns the array of subscription IDs that were successfully claimed by this process.
+ */
+export async function claimSubscriptionsForDigestBatch(
+  ids: string[],
+  windowStart: Date,
+  sentAt: Date,
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await prismaWrite.$queryRaw<{ id: string }[]>`
+    UPDATE "RoomSubscription"
+    SET "lastSentAt" = ${sentAt}
+    WHERE id IN (${Prisma.join(ids)})
+      AND ("lastSentAt" IS NULL OR "lastSentAt" < ${windowStart})
+    RETURNING id;
+  `;
+  return rows.map((r) => r.id);
+}
+
 export async function claimSubscriptionForDigest(
   id: string,
   windowStart: Date,
@@ -1251,15 +1303,34 @@ export async function claimSubscriptionForDigest(
  * one was slow and another instance's tick already retried it), this
  * no-ops rather than clobbering that newer claim.
  */
-export async function revertDigestClaim(
-  id: string,
+export async function revertDigestClaims(
+  claims: Array<{ id: string; previousLastSentAt: Date | null }>,
   sentAt: Date,
-  previousLastSentAt: Date | null,
 ): Promise<void> {
-  await prismaWrite.roomSubscription.updateMany({
-    where: { id, lastSentAt: sentAt },
-    data: { lastSentAt: previousLastSentAt },
-  });
+  const byPrevious = new Map<number | null, string[]>();
+  for (const c of claims) {
+    const key = c.previousLastSentAt ? c.previousLastSentAt.getTime() : null;
+    let list = byPrevious.get(key);
+    if (!list) {
+      list = [];
+      byPrevious.set(key, list);
+    }
+    list.push(c.id);
+  }
+
+  const ops = [];
+  for (const [timeKey, ids] of byPrevious.entries()) {
+    ops.push(
+      prismaWrite.roomSubscription.updateMany({
+        where: { id: { in: ids }, lastSentAt: sentAt },
+        data: { lastSentAt: timeKey !== null ? new Date(timeKey) : null },
+      })
+    );
+  }
+
+  if (ops.length > 0) {
+    await prismaWrite.$transaction(ops);
+  }
 }
 
 /**
