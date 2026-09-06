@@ -84,16 +84,14 @@ export async function GET(
 
   if (requiresAuth && !authSession) {
     // Redirect to sign-in with callbackUrl pointing back here
-    const rawPath = url.pathname + url.search;
-    const safePath = rawPath.replace(/^[/\\]+/, "/");
+    const safePath = `/api/share/${encodeURIComponent(token)}${url.search}`;
     const callbackUrl = encodeURIComponent(safePath);
     const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/auth/signin?callbackUrl=${callbackUrl}`);
   }
 
   if (!link.room.isPublic && !authSession) {
-    const rawPath = url.pathname + url.search;
-    const safePath = rawPath.replace(/^[/\\]+/, "/");
+    const safePath = `/api/share/${encodeURIComponent(token)}${url.search}`;
     const callbackUrl = encodeURIComponent(safePath);
     const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/auth/signin?callbackUrl=${callbackUrl}`);
