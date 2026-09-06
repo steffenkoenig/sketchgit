@@ -1,6 +1,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+
+// Mock metrics
+vi.mock('../server/metrics', () => ({
+  saveCommitHistogram: {
+    record: vi.fn(),
+  },
+}));
+
 // Mock Prisma before importing the module under test
 vi.mock('@/lib/db/prisma', () => {
   const $transaction = vi.fn();
@@ -74,6 +82,7 @@ import {
   getRoomEventsSince,
   type CommitRecord,
 } from './roomRepository';
+import { saveCommitHistogram } from '../server/metrics';
 import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
 import { prisma } from '@/lib/db/prisma';
 
@@ -127,6 +136,18 @@ describe('ensureRoom', () => {
 
 describe('saveCommit', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('records metrics even when transaction fails', async () => {
+    mock.transaction.mockRejectedValueOnce(new Error('Transaction failed'));
+
+    await expect(saveCommit('room-1', sampleCommit, 'user-1')).rejects.toThrow('Transaction failed');
+
+    expect(saveCommitHistogram.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      { storage: 'snapshot' }
+    );
+  });
+
 
   it('executes a transaction with commit, branch, and roomState upserts', async () => {
     // $transaction receives an array of promises; we resolve it immediately
