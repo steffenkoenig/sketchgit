@@ -7,6 +7,7 @@
 // set (falls back to the primary otherwise); prismaWrite always targets the
 // primary. See the per-function routing decisions below.
 import { prismaRead, prismaWrite } from "@/lib/db/prisma";
+import { LRUCache } from "lru-cache";
 import { Prisma, CommitStorageType, MemberRole, RoomEventType, ShareScope, SharePermission, DigestFrequency } from "@prisma/client";
 import { computeCanvasDelta, replayCanvasDelta, type CanvasDelta } from "../sketchgit/git/canvasDelta";
 import { migrateCanvasJson } from "../sketchgit/git/canvasSchemaMigrations";
@@ -636,10 +637,23 @@ export async function getRoomMembership(
  * Return the room owner id and whether `userId` has an OWNER membership.
  * Returns null when the room does not exist.
  */
+const roomOwnershipCache = new LRUCache<string, { ownerId: string | null; isOwner: boolean } | null>({
+  max: 1000,
+  ttl: 1000 * 60 * 5, // 5 minutes
+});
+
 export async function getRoomOwnership(
   roomId: string,
   userId: string,
 ): Promise<{ ownerId: string | null; isOwner: boolean } | null> {
+  const isTest = process.env.NODE_ENV === 'test';
+  const cacheKey = `${roomId}:${userId}`;
+
+  if (!isTest) {
+    const cached = roomOwnershipCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+  }
+
   const room = await prismaRead.room.findUnique({
     where: { id: roomId },
     select: {
@@ -650,11 +664,16 @@ export async function getRoomOwnership(
       },
     },
   });
-  if (!room) return null;
-  return {
+  if (!room) {
+    if (!isTest) roomOwnershipCache.set(cacheKey, null);
+    return null;
+  }
+  const result = {
     ownerId: room.ownerId,
     isOwner: room.ownerId === userId || room.memberships.length > 0,
   };
+  if (!isTest) roomOwnershipCache.set(cacheKey, result);
+  return result;
 }
 
 /**
