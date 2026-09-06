@@ -34,22 +34,10 @@ describe("tokenEncryption (GAP-014)", () => {
     });
   });
 
-  describe("round-trip with the AUTH_SECRET-derived fallback key", () => {
-    it("decrypts to the original plaintext when OAUTH_TOKEN_ENCRYPTION_KEY is unset", () => {
+  describe("without an explicit key", () => {
+    it("throws an error when OAUTH_TOKEN_ENCRYPTION_KEY is missing", () => {
       delete process.env.OAUTH_TOKEN_ENCRYPTION_KEY;
-      process.env.AUTH_SECRET = "a-test-auth-secret-that-is-long-enough-32";
-      const token = "gho_fallbackKeyToken";
-      const encrypted = encryptToken(token);
-      expect(decryptToken(encrypted)).toBe(token);
-    });
-
-    it("a different AUTH_SECRET cannot decrypt tokens encrypted under another", () => {
-      delete process.env.OAUTH_TOKEN_ENCRYPTION_KEY;
-      process.env.AUTH_SECRET = "first-secret-padded-to-32-characters-abc";
-      const encrypted = encryptToken("gho_x");
-
-      process.env.AUTH_SECRET = "second-secret-padded-to-32-characters-xyz";
-      expect(() => decryptToken(encrypted)).toThrow();
+      expect(() => encryptToken("gho_x")).toThrow("OAUTH_TOKEN_ENCRYPTION_KEY is required for token encryption");
     });
   });
 
@@ -89,6 +77,11 @@ describe("tokenEncryption (GAP-014)", () => {
       const encrypted = encryptToken("gho_x");
       process.env.OAUTH_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString("base64");
       expect(decryptTokenSafe(encrypted)).toBe(encrypted);
+    });
+
+    it("returns the original value unchanged when an exception is thrown during decryption", () => {
+      const invalidEncryptedToken = "YmFk:c3RyaW5n:aGVyZQ==";
+      expect(decryptTokenSafe(invalidEncryptedToken)).toBe(invalidEncryptedToken);
     });
   });
 });

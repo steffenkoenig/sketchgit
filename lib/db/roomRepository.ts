@@ -467,8 +467,7 @@ export async function appendRoomEvent(
   actorId: string | null,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await prismaWrite.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as any } });
+  await prismaWrite.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as Prisma.InputJsonObject } });
 }
 
 /**
@@ -1224,6 +1223,29 @@ export async function getUserSubscriptions(userId: string): Promise<RoomSubscrip
  * false means another instance already claimed (or is claiming) it this
  * cycle.
  */
+
+/**
+ * P094 – Atomically claims multiple due subscriptions for digest dispatch in a single query.
+ *
+ * Like claimSubscriptionForDigest, but operates on a batch to resolve N+1 querying.
+ * Returns the array of subscription IDs that were successfully claimed by this process.
+ */
+export async function claimSubscriptionsForDigestBatch(
+  ids: string[],
+  windowStart: Date,
+  sentAt: Date,
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await prismaWrite.$queryRaw<{ id: string }[]>`
+    UPDATE "RoomSubscription"
+    SET "lastSentAt" = ${sentAt}
+    WHERE id IN (${Prisma.join(ids)})
+      AND ("lastSentAt" IS NULL OR "lastSentAt" < ${windowStart})
+    RETURNING id;
+  `;
+  return rows.map((r) => r.id);
+}
+
 export async function claimSubscriptionForDigest(
   id: string,
   windowStart: Date,
