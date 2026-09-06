@@ -1,3 +1,4 @@
+import { LRUCache } from "lru-cache";
 
 /**
  * roomRepository – server-side data access for rooms, commits, and branches.
@@ -597,13 +598,28 @@ export async function checkRoomAccess(
  * Resolve a room identifier that may be either a room ID or a slug.
  * Returns the canonical room ID, or null if no room matches.
  */
+
+const resolveRoomIdCache = new LRUCache<string, string>({
+  max: 1000,
+  ttl: 1000 * 60 * 5, // 5 minutes
+});
+
 export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
   if (!idOrSlug) return null;
+
+  const cached = resolveRoomIdCache.get(idOrSlug);
+  if (cached !== undefined) {
+    return cached === "" ? null : cached;
+  }
+
   const room = await prismaRead.room.findFirst({
     where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
     select: { id: true },
   });
-  return room?.id ?? null;
+
+  const result = room?.id ?? null;
+  resolveRoomIdCache.set(idOrSlug, result ?? "");
+  return result;
 }
 
 // ─── Room lookup helpers (BUG-001) ────────────────────────────────────────────
@@ -664,11 +680,25 @@ export async function updateRoomSlug(
   roomId: string,
   slug: string | null,
 ): Promise<{ id: string; slug: string | null }> {
-  return prismaWrite.room.update({
+  const previous = await prismaWrite.room.findUnique({
+    where: { id: roomId },
+    select: { slug: true },
+  });
+
+  const updated = await prismaWrite.room.update({
     where: { id: roomId },
     data: { slug },
     select: { id: true, slug: true },
   });
+
+  // Invalidate resolveRoomId()'s cache: the old slug now points nowhere, and
+  // the new slug may have been negative-cached ("not found") by an earlier
+  // lookup before this room claimed it.
+  resolveRoomIdCache.delete(roomId);
+  if (previous?.slug) resolveRoomIdCache.delete(previous.slug);
+  if (slug) resolveRoomIdCache.delete(slug);
+
+  return updated;
 }
 
 /**
