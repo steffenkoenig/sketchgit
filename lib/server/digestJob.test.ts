@@ -11,9 +11,8 @@ vi.mock("@/lib/server/email", () => ({ sendEmail: vi.fn() }));
 vi.mock("@/lib/db/roomRepository", () => ({
   getDueSubscriptions: vi.fn(),
   claimSubscriptionsForDigestBatch: vi.fn(),
-  revertDigestClaim: vi.fn(),
+  revertDigestClaims: vi.fn(),
   getRoomEventsSince: vi.fn(),
-  claimSubscriptionForDigest: vi.fn(),
 }));
 
 describe("runDigestJob", () => {
@@ -33,7 +32,7 @@ describe("runDigestJob", () => {
     const mockClaimBatch = vi.mocked(db.claimSubscriptionsForDigestBatch);
     const mockGetEvents = vi.mocked(db.getRoomEventsSince);
     const mockSendEmail = vi.mocked(sendEmail);
-    const mockRevert = vi.mocked(db.revertDigestClaim);
+    const mockRevert = vi.mocked(db.revertDigestClaims);
 
     const now = new Date("2024-03-01T12:00:00Z");
 
@@ -102,7 +101,10 @@ describe("runDigestJob", () => {
       const result = await runDigestTier("DAILY", now);
 
       expect(result.sent).toBe(0);
-      expect(mockRevert).toHaveBeenCalledWith("sub_1", now, new Date("2024-02-29T12:00:00Z"));
+      expect(mockRevert).toHaveBeenCalledWith(
+        [{ id: "sub_1", previousLastSentAt: new Date("2024-02-29T12:00:00Z") }],
+        now,
+      );
     });
 
     it("reverts to null when the subscription had never been sent before", async () => {
@@ -112,7 +114,10 @@ describe("runDigestJob", () => {
       mockSendEmail.mockResolvedValue({ sent: false, reason: "error" });
       await runDigestTier("DAILY", now);
 
-      expect(mockRevert).toHaveBeenCalledWith("sub_1", now, null);
+      expect(mockRevert).toHaveBeenCalledWith(
+        [{ id: "sub_1", previousLastSentAt: null }],
+        now,
+      );
     });
 
     it("does not revert when the send succeeds", async () => {

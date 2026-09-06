@@ -1273,15 +1273,34 @@ export async function claimSubscriptionForDigest(
  * one was slow and another instance's tick already retried it), this
  * no-ops rather than clobbering that newer claim.
  */
-export async function revertDigestClaim(
-  id: string,
+export async function revertDigestClaims(
+  claims: Array<{ id: string; previousLastSentAt: Date | null }>,
   sentAt: Date,
-  previousLastSentAt: Date | null,
 ): Promise<void> {
-  await prismaWrite.roomSubscription.updateMany({
-    where: { id, lastSentAt: sentAt },
-    data: { lastSentAt: previousLastSentAt },
-  });
+  const byPrevious = new Map<number | null, string[]>();
+  for (const c of claims) {
+    const key = c.previousLastSentAt ? c.previousLastSentAt.getTime() : null;
+    let list = byPrevious.get(key);
+    if (!list) {
+      list = [];
+      byPrevious.set(key, list);
+    }
+    list.push(c.id);
+  }
+
+  const ops = [];
+  for (const [timeKey, ids] of byPrevious.entries()) {
+    ops.push(
+      prismaWrite.roomSubscription.updateMany({
+        where: { id: { in: ids }, lastSentAt: sentAt },
+        data: { lastSentAt: timeKey !== null ? new Date(timeKey) : null },
+      })
+    );
+  }
+
+  if (ops.length > 0) {
+    await prismaWrite.$transaction(ops);
+  }
 }
 
 /**

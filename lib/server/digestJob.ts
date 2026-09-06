@@ -22,7 +22,7 @@
 import {
   getDueSubscriptions,
   claimSubscriptionsForDigestBatch,
-  revertDigestClaim,
+  revertDigestClaims,
   getRoomEventsSince,
   type RoomEventType,
 } from "@/lib/db/roomRepository";
@@ -111,6 +111,7 @@ export async function runDigestTier(frequency: DigestFrequency, now: Date = new 
 
   const result: DigestRunResult = { sent: 0, quiet: 0, skipped: 0 };
   if (due.length === 0) return result;
+  const reverts: Array<{ id: string; previousLastSentAt: Date | null }> = [];
 
   // 1. Batch claim all due subscriptions
   const dueIds = due.map(sub => sub.id);
@@ -163,10 +164,23 @@ export async function runDigestTier(frequency: DigestFrequency, now: Date = new 
       if (sendResult.sent) {
         result.sent++;
       } else if (sendResult.reason === "error") {
-        await revertDigestClaim(sub.id, now, sub.lastSentAt);
+        // P094 reliability requirement — a genuine send failure (provider
+        // error, not "no provider configured") reverts the claim so this
+        // subscription is due again on the *next* job tick rather than
+        // silently losing the digest until the next full window (an
+        // hour/day later). Not true exponential backoff — retried at the
+        // job's own fixed interval — but a real retry rather than a drop.
+        // Batched via `reverts` + revertDigestClaims() below rather than
+        // reverted one-by-one here, to avoid an N+1 write pattern when a
+        // whole batch of sends fails together (e.g. an email provider outage).
+        reverts.push({ id: sub.id, previousLastSentAt: sub.lastSentAt });
       }
     })
   );
+
+  if (reverts.length > 0) {
+    await revertDigestClaims(reverts, now);
+  }
 
   return result;
 }
