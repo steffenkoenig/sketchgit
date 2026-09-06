@@ -21,7 +21,9 @@ vi.mock('@/lib/db/prisma', () => {
     room: {
       upsert: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
       deleteMany: vi.fn(),
     },
     commit: {
@@ -82,6 +84,8 @@ import {
   revertDigestClaims,
   getDueSubscriptions,
   getRoomEventsSince,
+  resolveRoomId,
+  updateRoomSlug,
   type CommitRecord,
 } from './roomRepository';
 import { saveCommitHistogram } from '../server/metrics';
@@ -111,6 +115,8 @@ const mock = {
   membershipFindUnique: prisma.roomMembership.findUnique as ReturnType<typeof vi.fn>,
   roomFindMany: prisma.room.findMany as ReturnType<typeof vi.fn>,
   roomDeleteMany: prisma.room.deleteMany as ReturnType<typeof vi.fn>,
+  roomFindFirst: prisma.room.findFirst as ReturnType<typeof vi.fn>,
+  roomUpdate: prisma.room.update as ReturnType<typeof vi.fn>,
 };
 
 const sampleCommit: CommitRecord = {
@@ -810,5 +816,61 @@ describe('Room email subscriptions (P094)', () => {
         select: { id: true, eventType: true, actorId: true, payload: true, createdAt: true },
       });
     });
+  });
+});
+
+describe('resolveRoomId caching', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('caches a resolved id so a second lookup skips the DB', async () => {
+    mock.roomFindFirst.mockResolvedValue({ id: 'room_1' });
+
+    expect(await resolveRoomId('my-slug')).toBe('room_1');
+    expect(await resolveRoomId('my-slug')).toBe('room_1');
+
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('negative-caches a not-found lookup so a repeat miss also skips the DB', async () => {
+    mock.roomFindFirst.mockResolvedValue(null);
+
+    expect(await resolveRoomId('ghost-slug')).toBeNull();
+    expect(await resolveRoomId('ghost-slug')).toBeNull();
+
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates the old slug, the new slug, and the room id when updateRoomSlug renames a room', async () => {
+    mock.roomFindFirst.mockResolvedValue({ id: 'room_1' });
+    expect(await resolveRoomId('old-slug')).toBe('room_1');
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+
+    mock.roomFindUnique.mockResolvedValue({ slug: 'old-slug' });
+    mock.roomUpdate.mockResolvedValue({ id: 'room_1', slug: 'new-slug' });
+    await updateRoomSlug('room_1', 'new-slug');
+
+    // The old slug must no longer resolve from a stale cache entry — it
+    // should fall through to the DB again (and this room no longer matches
+    // "old-slug", so a real resolver would return null; here we just assert
+    // the cache didn't short-circuit the lookup).
+    mock.roomFindFirst.mockResolvedValue(null);
+    expect(await resolveRoomId('old-slug')).toBeNull();
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates a negative-cached new slug once a room claims it', async () => {
+    mock.roomFindFirst.mockResolvedValue(null);
+    expect(await resolveRoomId('claimed-slug')).toBeNull();
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(1);
+
+    mock.roomFindUnique.mockResolvedValue({ slug: null });
+    mock.roomUpdate.mockResolvedValue({ id: 'room_2', slug: 'claimed-slug' });
+    await updateRoomSlug('room_2', 'claimed-slug');
+
+    // Without invalidation this would still resolve to the stale `null`
+    // cached above, even though "claimed-slug" now belongs to room_2.
+    mock.roomFindFirst.mockResolvedValue({ id: 'room_2' });
+    expect(await resolveRoomId('claimed-slug')).toBe('room_2');
+    expect(mock.roomFindFirst).toHaveBeenCalledTimes(2);
   });
 });
