@@ -219,6 +219,34 @@ describe('saveCommitWithDelta (P033/P085)', () => {
     // Should fail before ever attempting the transaction.
     expect(mock.transaction).not.toHaveBeenCalled();
   });
+
+  it('falls back to SNAPSHOT storage if looking up the parent commit throws an error', async () => {
+    const commitWithParent: CommitRecord = {
+      ...sampleCommit,
+      parent: 'parent123',
+    };
+
+    // Mock findUnique to throw an error, which should trigger the fallback to SNAPSHOT
+    (prisma.commit.findUnique as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Database read failed')
+    );
+
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+
+    let storedStorageType: string | undefined;
+    (prisma.commit.upsert as ReturnType<typeof vi.fn>).mockImplementation(({ create }: { create: { storageType: string } }) => {
+      storedStorageType = create.storageType;
+      return Promise.resolve({});
+    });
+
+    // Pass the commit with a parent to trigger the delta calculation block
+    await saveCommitWithDelta('room-1', commitWithParent, 'user-1');
+
+    // We expect it to have caught the error and fallen back to SNAPSHOT storage
+    expect(storedStorageType).toBe('SNAPSHOT');
+  });
 });
 
 describe('resolveCommitCanvas (P085)', () => {
