@@ -600,7 +600,7 @@ export async function checkRoomAccess(
  * Returns the canonical room ID, or null if no room matches.
  */
 
-const resolveRoomIdCache = new LRUCache<string, string | null>({
+const resolveRoomIdCache = new LRUCache<string, string>({
   max: 1000,
   ttl: 1000 * 60 * 5, // 5 minutes
 });
@@ -610,7 +610,7 @@ export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
 
   const cached = resolveRoomIdCache.get(idOrSlug);
   if (cached !== undefined) {
-    return cached;
+    return cached === "" ? null : cached;
   }
 
   const room = await prismaRead.room.findFirst({
@@ -619,7 +619,7 @@ export async function resolveRoomId(idOrSlug: string): Promise<string | null> {
   });
 
   const result = room?.id ?? null;
-  resolveRoomIdCache.set(idOrSlug, result);
+  resolveRoomIdCache.set(idOrSlug, result ?? "");
   return result;
 }
 

@@ -227,7 +227,7 @@ export async function POST(
         ...mutableHeaders(),
       },
     });
-  } catch (error) {
+  } catch {
     return apiError(ApiErrorCode.EXPORT_FAILED, "Export failed", 500);
   }
 }
