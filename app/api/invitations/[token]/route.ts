@@ -16,6 +16,7 @@
  * Returns 410 Gone for expired or exhausted tokens.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getSafeCallbackUrl } from "@/lib/server/redirects";
 import { auth } from "@/lib/auth";
 import { getAuthSession } from "@/lib/authTypes";
 import { apiError, ApiErrorCode } from "@/lib/api/errors";
@@ -27,6 +28,7 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+  const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
   const url = new URL(req.url);
   const roomId = url.searchParams.get("roomId") ?? "";
   const expStr = url.searchParams.get("exp") ?? "";
@@ -62,9 +64,10 @@ export async function GET(
     if (!authSession) {
       // Redirect to sign-in with callbackUrl pointing back here
       const rawPath = url.pathname + url.search;
-      const safePath = rawPath.replace(/^[/\\]+/, "/");
+
+      const safePath = getSafeCallbackUrl(rawPath, baseUrl);
       const callbackUrl = encodeURIComponent(safePath);
-      const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+
       return NextResponse.redirect(`${baseUrl}/auth/signin?callbackUrl=${callbackUrl}`);
     }
 
@@ -84,6 +87,6 @@ export async function GET(
   }
 
   // Redirect to the room
-  const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+
   return NextResponse.redirect(`${baseUrl}/?room=${encodeURIComponent(roomId)}`);
 }
