@@ -6,8 +6,7 @@
  * Supports email + password credentials and GitHub OAuth.
  * Anonymous users can dismiss the page and return to the canvas.
  */
-import { Suspense } from "react";
-import React from "react";
+import { Suspense, FormEvent } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useSignIn } from "../../../hooks/auth/useSignIn";
@@ -48,7 +47,7 @@ type CredentialsFormProps = {
   setPassword: (password: string) => void;
   error: string | null;
   loading: boolean;
-  handleSubmit: (e: React.FormEvent) => void;
+  handleSubmit: (e: FormEvent) => void;
 };
 
 function CredentialsForm({
