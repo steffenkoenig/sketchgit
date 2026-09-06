@@ -44,6 +44,7 @@ vi.mock('@/lib/db/prisma', () => {
       findUnique: vi.fn(),
       count: vi.fn(),
       update: vi.fn(),
+      upsert: vi.fn(),
     },
     roomEvent: {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -74,6 +75,7 @@ import {
   checkRoomAccess,
   listRoomMembers,
   setRoomMemberRole,
+  addRoomMember,
   COMMIT_PAGE_SIZE,
   upsertRoomSubscription,
   deleteRoomSubscription,
@@ -86,6 +88,7 @@ import {
   getRoomEventsSince,
   resolveRoomId,
   updateRoomSlug,
+  getRoomOwnership,
   type CommitRecord,
 } from './roomRepository';
 import { saveCommitHistogram } from '../server/metrics';
@@ -668,6 +671,58 @@ describe('setRoomMemberRole (P091)', () => {
     expect(result).toEqual({ ok: true });
     expect(prisma.roomMembership.count).not.toHaveBeenCalled();
   });
+
+  it('invalidates the cached getRoomOwnership result for this room/user after a role change', async () => {
+    mock.roomFindUnique.mockResolvedValue({ ownerId: 'someone_else', memberships: [] });
+    expect(await getRoomOwnership('room_role_change', 'usr_1')).toEqual({
+      ownerId: 'someone_else',
+      isOwner: false,
+    });
+    expect(mock.roomFindUnique).toHaveBeenCalledTimes(1);
+
+    mock.membershipFindUnique.mockResolvedValue({ role: 'EDITOR' });
+    (prisma.roomMembership.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await setRoomMemberRole('room_role_change', 'usr_1', 'OWNER');
+
+    mock.roomFindUnique.mockResolvedValue({ ownerId: 'someone_else', memberships: [{ role: 'OWNER' }] });
+    expect(await getRoomOwnership('room_role_change', 'usr_1')).toEqual({
+      ownerId: 'someone_else',
+      isOwner: true,
+    });
+    expect(mock.roomFindUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('addRoomMember', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('upserts the membership', async () => {
+    (prisma.roomMembership.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await addRoomMember('room_1', 'usr_1', 'VIEWER');
+    expect(prisma.roomMembership.upsert).toHaveBeenCalledWith({
+      where: { roomId_userId: { roomId: 'room_1', userId: 'usr_1' } },
+      update: {},
+      create: { roomId: 'room_1', userId: 'usr_1', role: 'VIEWER' },
+    });
+  });
+
+  it('invalidates a stale negative getRoomOwnership cache entry once the user is granted OWNER', async () => {
+    mock.roomFindUnique.mockResolvedValue({ ownerId: 'someone_else', memberships: [] });
+    expect(await getRoomOwnership('room_new_member', 'usr_1')).toEqual({
+      ownerId: 'someone_else',
+      isOwner: false,
+    });
+
+    (prisma.roomMembership.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await addRoomMember('room_new_member', 'usr_1', 'OWNER');
+
+    mock.roomFindUnique.mockResolvedValue({ ownerId: 'someone_else', memberships: [{ role: 'OWNER' }] });
+    expect(await getRoomOwnership('room_new_member', 'usr_1')).toEqual({
+      ownerId: 'someone_else',
+      isOwner: true,
+    });
+    expect(mock.roomFindUnique).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('Room email subscriptions (P094)', () => {
@@ -872,5 +927,46 @@ describe('resolveRoomId caching', () => {
     mock.roomFindFirst.mockResolvedValue({ id: 'room_2' });
     expect(await resolveRoomId('claimed-slug')).toBe('room_2');
     expect(mock.roomFindFirst).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('getRoomOwnership caching', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('caches an owner result so a second lookup skips the DB', async () => {
+    mock.roomFindUnique.mockResolvedValue({ ownerId: 'user_1', memberships: [] });
+
+    expect(await getRoomOwnership('room_owner_cache', 'user_1')).toEqual({
+      ownerId: 'user_1',
+      isOwner: true,
+    });
+    expect(await getRoomOwnership('room_owner_cache', 'user_1')).toEqual({
+      ownerId: 'user_1',
+      isOwner: true,
+    });
+
+    expect(mock.roomFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches a not-found (null) result distinctly from a real result', async () => {
+    mock.roomFindUnique.mockResolvedValue(null);
+
+    expect(await getRoomOwnership('room_missing_cache', 'user_1')).toBeNull();
+    expect(await getRoomOwnership('room_missing_cache', 'user_1')).toBeNull();
+
+    expect(mock.roomFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches distinctly per roomId/userId pair', async () => {
+    mock.roomFindUnique
+      .mockResolvedValueOnce({ ownerId: 'user_1', memberships: [] })
+      .mockResolvedValueOnce({ ownerId: 'user_1', memberships: [{ role: 'OWNER' }] });
+
+    const a = await getRoomOwnership('room_multi_cache', 'user_1');
+    const b = await getRoomOwnership('room_multi_cache', 'user_2');
+
+    expect(a).toEqual({ ownerId: 'user_1', isOwner: true });
+    expect(b).toEqual({ ownerId: 'user_1', isOwner: true });
+    expect(mock.roomFindUnique).toHaveBeenCalledTimes(2);
   });
 });

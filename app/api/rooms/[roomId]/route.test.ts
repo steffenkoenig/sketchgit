@@ -23,6 +23,7 @@ import { prisma } from '@/lib/db/prisma';
 import { hashPassword } from '@/lib/passwordHashing';
 import { NextRequest } from 'next/server';
 import { makeRoom, makeMembership } from '@/lib/test/factories';
+import { _test_clearRoomOwnershipCache } from '@/lib/db/roomRepository';
 
 const mockAuth = auth as ReturnType<typeof vi.fn>;
 const mockRoomFindUnique = prisma.room.findUnique as ReturnType<typeof vi.fn>;
@@ -45,7 +46,10 @@ function makeRequest(roomId: string, body: object) {
 describe('PATCH /api/rooms/[roomId] (P049)', () => {
   const params = Promise.resolve({ roomId: 'room_1' });
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _test_clearRoomOwnershipCache();
+  });
 
   it('returns 401 when not authenticated', async () => {
     mockAuth.mockResolvedValue(null);
