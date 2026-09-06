@@ -227,7 +227,10 @@ export async function POST(
         ...mutableHeaders(),
       },
     });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error(error);
+    }
     return apiError(ApiErrorCode.EXPORT_FAILED, "Export failed", 500);
   }
 }

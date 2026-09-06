@@ -51,11 +51,8 @@ const EnvSchema = z.object({
   GITHUB_ID: z.string().optional(),
   GITHUB_SECRET: z.string().optional(),
   // GAP-014 – 32-byte base64-encoded AES-256-GCM key for encrypting OAuth
-  // access/refresh/id tokens at rest in the Account table. Optional: falls
-  // back to a key derived from AUTH_SECRET (see lib/server/tokenEncryption.ts)
-  // so tokens are encrypted by default without requiring a new required env
-  // var — same "derive, don't force a new secret" pattern as
-  // EMAIL_UNSUBSCRIBE_SECRET's AUTH_SECRET fallback.
+  // access/refresh/id tokens at rest in the Account table. Required if
+  // GitHub OAuth is enabled.
   OAUTH_TOKEN_ENCRYPTION_KEY: z
     .string()
     .refine((v) => Buffer.from(v, "base64").length === 32, {
