@@ -21,7 +21,7 @@
  */
 import {
   getDueSubscriptions,
-  claimSubscriptionForDigest,
+  claimSubscriptionsForDigestBatch,
   revertDigestClaim,
   getRoomEventsSince,
   type RoomEventType,
@@ -110,47 +110,66 @@ export async function runDigestTier(frequency: DigestFrequency, now: Date = new 
   const due = await getDueSubscriptions(frequency, windowStart);
 
   const result: DigestRunResult = { sent: 0, quiet: 0, skipped: 0 };
+  if (due.length === 0) return result;
 
-  for (const sub of due) {
-    const claimed = await claimSubscriptionForDigest(sub.id, windowStart, now);
-    if (!claimed) {
+  // 1. Batch claim all due subscriptions
+  const dueIds = due.map(sub => sub.id);
+  const claimedIds = await claimSubscriptionsForDigestBatch(dueIds, windowStart, now);
+  const claimedSet = new Set(claimedIds);
+
+  const claimedSubs = due.filter(sub => {
+    if (!claimedSet.has(sub.id)) {
       result.skipped++;
-      continue;
+      return false;
     }
+    return true;
+  });
 
-    const events = await getRoomEventsSince(sub.roomId, windowStart);
-    if (events.length === 0) {
-      // Nothing to report — lastSentAt already advanced by the claim above,
-      // so the next window starts from here. No email for an empty digest.
-      result.quiet++;
-      continue;
-    }
+  if (claimedSubs.length === 0) return result;
 
-    const unsubscribeUrl = `${baseUrl()}/api/subscriptions/unsubscribe?token=${encodeURIComponent(signUnsubscribeToken(sub.id))}`;
-    const { html, text } = renderDigestEmail(sub.roomId, sub.roomSlug, events, unsubscribeUrl);
+  // 2. Batch fetch events grouped by roomId
+  // Get unique rooms for the claimed subscriptions
+  const uniqueRoomIds = Array.from(new Set(claimedSubs.map(sub => sub.roomId)));
+  const roomEventsMap = new Map<string, Array<{ eventType: RoomEventType; createdAt: Date }>>();
 
-    const sendResult = await sendEmail({
-      to: sub.userEmail,
-      subject: `Activity in "${roomLabel(sub.roomId, sub.roomSlug)}" (${events.length} update${events.length === 1 ? "" : "s"})`,
-      html,
-      text,
-    });
-    if (sendResult.sent) {
-      result.sent++;
-    } else if (sendResult.reason === "error") {
-      // P094 reliability requirement — a genuine send failure (provider
-      // error, not "no provider configured") reverts the claim so this
-      // subscription is due again on the *next* job tick rather than
-      // silently losing the digest until the next full window (an
-      // hour/day later). Not true exponential backoff — retried at the
-      // job's own fixed interval — but a real retry rather than a drop.
-      await revertDigestClaim(sub.id, now, sub.lastSentAt);
-    }
-  }
+  await Promise.all(
+    uniqueRoomIds.map(async (roomId) => {
+      const events = await getRoomEventsSince(roomId, windowStart);
+      roomEventsMap.set(roomId, events);
+    })
+  );
+
+  // 3. Render and send emails
+  // Emails can be rendered concurrently, and sent sequentially or concurrently
+  // We process them all
+  await Promise.all(
+    claimedSubs.map(async (sub) => {
+      const events = roomEventsMap.get(sub.roomId) || [];
+      if (events.length === 0) {
+        result.quiet++;
+        return;
+      }
+
+      const unsubscribeUrl = `${baseUrl()}/api/subscriptions/unsubscribe?token=${encodeURIComponent(signUnsubscribeToken(sub.id))}`;
+      const { html, text } = renderDigestEmail(sub.roomId, sub.roomSlug, events, unsubscribeUrl);
+
+      const sendResult = await sendEmail({
+        to: sub.userEmail,
+        subject: `Activity in "${roomLabel(sub.roomId, sub.roomSlug)}" (${events.length} update${events.length === 1 ? "" : "s"})`,
+        html,
+        text,
+      });
+
+      if (sendResult.sent) {
+        result.sent++;
+      } else if (sendResult.reason === "error") {
+        await revertDigestClaim(sub.id, now, sub.lastSentAt);
+      }
+    })
+  );
 
   return result;
 }
-
 /** Runs both frequency tiers once. Called on each job tick from server.ts. */
 export async function runDigestJob(now: Date = new Date()): Promise<Record<DigestFrequency, DigestRunResult>> {
   const [hourly, daily] = await Promise.all([runDigestTier("HOURLY", now), runDigestTier("DAILY", now)]);
