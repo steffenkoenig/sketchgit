@@ -6,6 +6,31 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.11.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.11.0...sketchgit-next-v0.11.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* remove insecure fallback for OAuth token encryption key ([#409](https://github.com/steffenkoenig/sketchgit/issues/409)) ([ece47ac](https://github.com/steffenkoenig/sketchgit/commit/ece47ac48636df0dac9e6e9ee561dc8664678bfa))
+* resolve open redirect vulnerability in invitation and share routes ([#405](https://github.com/steffenkoenig/sketchgit/issues/405)) ([7952241](https://github.com/steffenkoenig/sketchgit/commit/7952241ea1e28290c98fe2c91386a6765856db07))
+* surface UX bug for unprotected room unlock attempts ([#403](https://github.com/steffenkoenig/sketchgit/issues/403)) ([c65f4f3](https://github.com/steffenkoenig/sketchgit/commit/c65f4f3fc24b44db8b6e47874ade904d106fc00b))
+
+
+### Performance Improvements
+
+* batch database queries in runDigestTier to solve N+1 problem ([#407](https://github.com/steffenkoenig/sketchgit/issues/407)) ([3f4e097](https://github.com/steffenkoenig/sketchgit/commit/3f4e0970c81d93ee1bbde7130701ff1cbdae23f2))
+* **digestJob:** batch revert digest claims to fix N+1 query issue ([#408](https://github.com/steffenkoenig/sketchgit/issues/408)) ([6d382b1](https://github.com/steffenkoenig/sketchgit/commit/6d382b174bc37fec2d8e77f0c35a24d9abd2511d))
+
+
+### Refactoring
+
+* extract inline SketchGitApp modals into components ([#350](https://github.com/steffenkoenig/sketchgit/issues/350)) ([1f1bad5](https://github.com/steffenkoenig/sketchgit/commit/1f1bad5b1692719b1c2ffe0bf6a10a6fedcc9cbe))
+* remove eslint-disable and split large describe block ([#399](https://github.com/steffenkoenig/sketchgit/issues/399)) ([ae0b7d7](https://github.com/steffenkoenig/sketchgit/commit/ae0b7d79ccf1ba389a525614a912565d16a088ab))
+* remove unused eslint-disable comment from signin page ([#394](https://github.com/steffenkoenig/sketchgit/issues/394)) ([b3aeae9](https://github.com/steffenkoenig/sketchgit/commit/b3aeae99c4e219445468163bdbcf2888050746d2))
+* remove unused React import in signin page ([#391](https://github.com/steffenkoenig/sketchgit/issues/391)) ([935e630](https://github.com/steffenkoenig/sketchgit/commit/935e630ed7fd5280a18a685b1e8061126687d57e))
+* split ShareModal.tsx into sub-components and hooks ([#377](https://github.com/steffenkoenig/sketchgit/issues/377)) ([0a47844](https://github.com/steffenkoenig/sketchgit/commit/0a4784439e87325158b1bdc999f88404249228e6))
+* use Prisma.InputJsonObject instead of any for room event payload ([#404](https://github.com/steffenkoenig/sketchgit/issues/404)) ([5f7a199](https://github.com/steffenkoenig/sketchgit/commit/5f7a1994acfff483b1250491314d3eb4a2bce53e))
+
 ## [0.11.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.10.2...sketchgit-next-v0.11.0) (2026-09-04)
 
 
