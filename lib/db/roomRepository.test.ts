@@ -1,14 +1,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-
-// Mock metrics
-vi.mock('../server/metrics', () => ({
-  saveCommitHistogram: {
-    record: vi.fn(),
-  },
-}));
-
 // Mock Prisma before importing the module under test
 
 vi.mock('@/lib/sketchgit/git/canvasSchemaMigrations', async (importOriginal) => {
@@ -95,6 +87,16 @@ import {
 import { saveCommitHistogram } from '../server/metrics';
 import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
 import { prisma } from '@/lib/db/prisma';
+
+vi.mock('../server/metrics', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../server/metrics')>();
+  return {
+    ...actual,
+    saveCommitHistogram: {
+      record: vi.fn(),
+    },
+  };
+});
 
 const mock = {
   transaction: prisma.$transaction as ReturnType<typeof vi.fn>,
@@ -264,6 +266,17 @@ describe('saveCommitWithDelta (P033/P085)', () => {
     await expect(saveCommitWithDelta('room-1', futureCommit)).rejects.toThrow('schemaVersion');
     // Should fail before ever attempting the transaction.
     expect(mock.transaction).not.toHaveBeenCalled();
+  });
+
+  it('records the storage metric as snapshot even if the transaction throws', async () => {
+    mock.transaction.mockRejectedValueOnce(new Error('Transaction failed'));
+
+    await expect(saveCommitWithDelta('room-1', sampleCommit, 'user-1')).rejects.toThrow('Transaction failed');
+
+    expect(saveCommitHistogram.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ storage: 'snapshot' })
+    );
   });
 
   it('throws wrapped error when migrateCanvasJson throws a generic error', async () => {
