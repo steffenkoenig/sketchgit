@@ -12,6 +12,7 @@ import {
   WsFollowAcceptSchema,
   WsFollowStopSchema,
   WsFullsyncRequestSchema,
+  WsFullsyncSchema,
   WsObjectLockSchema,
   WsObjectUnlockSchema,
   InboundWsMessageSchema,
@@ -293,6 +294,61 @@ describe('InboundWsMessageSchema discriminated union', () => {
 
   it('rejects missing type', () => {
     expect(InboundWsMessageSchema.safeParse({ canvas: '{}' }).success).toBe(false);
+  });
+});
+
+describe('WsFullsyncSchema', () => {
+  const valid = {
+    type: 'fullsync',
+    targetId: 'target123',
+    commits: { sha1: {} },
+    branches: { main: 'sha1' },
+    HEAD: 'main',
+    detached: null,
+  };
+
+  it('accepts valid fullsync message with all fields', () => {
+    expect(WsFullsyncSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('accepts valid fullsync message without targetId', () => {
+    const { targetId, ...rest } = valid;
+    expect(WsFullsyncSchema.safeParse(rest).success).toBe(true);
+  });
+
+  it('rejects fullsync message missing commits', () => {
+    const { commits, ...rest } = valid;
+    expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('rejects fullsync message missing branches', () => {
+    const { branches, ...rest } = valid;
+    expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('rejects fullsync message missing HEAD', () => {
+    const { HEAD, ...rest } = valid;
+    expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('rejects fullsync message missing detached', () => {
+    const { detached, ...rest } = valid;
+    expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('rejects targetId exceeding 64 characters', () => {
+    const longTargetId = 'a'.repeat(65);
+    expect(WsFullsyncSchema.safeParse({ ...valid, targetId: longTargetId }).success).toBe(false);
+  });
+
+  it('rejects HEAD exceeding maximum branch length', () => {
+    const longHead = 'a'.repeat(101); // MAX_BRANCH_LEN is 100
+    expect(WsFullsyncSchema.safeParse({ ...valid, HEAD: longHead }).success).toBe(false);
+  });
+
+  it('rejects detached exceeding maximum sha length', () => {
+    const longDetached = 'a'.repeat(65); // MAX_SHA_LEN is 64
+    expect(WsFullsyncSchema.safeParse({ ...valid, detached: longDetached }).success).toBe(false);
   });
 });
 

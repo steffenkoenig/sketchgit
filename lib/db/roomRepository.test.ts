@@ -2,6 +2,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock Prisma before importing the module under test
+
+vi.mock('@/lib/sketchgit/git/canvasSchemaMigrations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/sketchgit/git/canvasSchemaMigrations')>();
+  return {
+    ...actual,
+    migrateCanvasJson: vi.fn(actual.migrateCanvasJson),
+  };
+});
+import { migrateCanvasJson } from '@/lib/sketchgit/git/canvasSchemaMigrations';
+
 vi.mock('@/lib/db/prisma', () => {
   const $transaction = vi.fn();
   const $queryRaw = vi.fn();
@@ -74,8 +84,8 @@ import {
   getRoomEventsSince,
   type CommitRecord,
 } from './roomRepository';
-import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
 import { saveCommitHistogram } from '../server/metrics';
+import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
 import { prisma } from '@/lib/db/prisma';
 
 vi.mock('../server/metrics', async (importOriginal) => {
@@ -139,6 +149,18 @@ describe('ensureRoom', () => {
 describe('saveCommit', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('records metrics even when transaction fails', async () => {
+    mock.transaction.mockRejectedValueOnce(new Error('Transaction failed'));
+
+    await expect(saveCommit('room-1', sampleCommit, 'user-1')).rejects.toThrow('Transaction failed');
+
+    expect(saveCommitHistogram.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      { storage: 'snapshot' }
+    );
+  });
+
+
   it('executes a transaction with commit, branch, and roomState upserts', async () => {
     // $transaction receives an array of promises; we resolve it immediately
     mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
@@ -168,6 +190,21 @@ describe('saveCommit', () => {
     });
 
     await expect(saveCommit('room-1', badCommit)).rejects.toThrow('Invalid canvas JSON');
+  });
+
+  it('throws wrapped error when migrateCanvasJson throws a generic error', async () => {
+    // Mock migrateCanvasJson to throw a generic error
+    const genericError = new Error('Some generic migration error');
+
+    (migrateCanvasJson as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw genericError;
+    });
+
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+
+    await expect(saveCommit('room-1', sampleCommit)).rejects.toThrow('Invalid canvas JSON for commit abc123');
   });
 
   it('P085: stamps schemaVersion on a legacy (unversioned) canvas payload', async () => {
@@ -240,6 +277,43 @@ describe('saveCommitWithDelta (P033/P085)', () => {
       expect.any(Number),
       expect.objectContaining({ storage: 'snapshot' })
     );
+  });
+
+  it('throws wrapped error when migrateCanvasJson throws a generic error', async () => {
+    const genericError = new Error('Some generic migration error');
+    (migrateCanvasJson as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw genericError;
+    });
+
+    await expect(saveCommitWithDelta('room-1', sampleCommit)).rejects.toThrow('Invalid canvas JSON for commit abc123');
+  });
+
+  it('falls back to SNAPSHOT storage if looking up the parent commit throws an error', async () => {
+    const commitWithParent: CommitRecord = {
+      ...sampleCommit,
+      parent: 'parent123',
+    };
+
+    // Mock findUnique to throw an error, which should trigger the fallback to SNAPSHOT
+    (prisma.commit.findUnique as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Database read failed')
+    );
+
+    mock.transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
+      await Promise.all(ops);
+    });
+
+    let storedStorageType: string | undefined;
+    (prisma.commit.upsert as ReturnType<typeof vi.fn>).mockImplementation(({ create }: { create: { storageType: string } }) => {
+      storedStorageType = create.storageType;
+      return Promise.resolve({});
+    });
+
+    // Pass the commit with a parent to trigger the delta calculation block
+    await saveCommitWithDelta('room-1', commitWithParent, 'user-1');
+
+    // We expect it to have caught the error and fallen back to SNAPSHOT storage
+    expect(storedStorageType).toBe('SNAPSHOT');
   });
 });
 

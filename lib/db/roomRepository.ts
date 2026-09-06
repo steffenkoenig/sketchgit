@@ -467,8 +467,7 @@ export async function appendRoomEvent(
   actorId: string | null,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await prismaWrite.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as any } });
+  await prismaWrite.roomEvent.create({ data: { roomId, eventType, actorId, payload: payload as Prisma.InputJsonObject } });
 }
 
 /**
