@@ -886,10 +886,8 @@ describe('Room email subscriptions (P094)', () => {
       (prismaRead.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       const since = new Date('2026-01-01T00:00:00Z');
       await getRoomEventsSinceBatch(['room_1', 'room_2'], since);
-      expect(prismaRead.$queryRaw).toHaveBeenCalled();
-
       const callArgs = (prismaRead.$queryRaw as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      let finalSqlString = '';
+      let finalSqlString: string;
       if (Array.isArray(callArgs)) {
         finalSqlString = callArgs.join('');
       } else if (callArgs && Array.isArray(callArgs.strings)) {

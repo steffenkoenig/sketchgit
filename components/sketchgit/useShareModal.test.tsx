@@ -1,6 +1,6 @@
 /// <reference types="vitest" />
 // @vitest-environment jsdom
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import { useShareModal } from "./useShareModal";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
@@ -25,8 +25,8 @@ vi.mock("./useShareModalLinks", () => ({
 }));
 
 describe("useShareModal", () => {
-  let mockFetch: any;
-  let mockClipboard: any;
+  let mockFetch: ReturnType<typeof vi.fn>;
+  let mockClipboard: { writeText: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     mockFetch = vi.fn();
