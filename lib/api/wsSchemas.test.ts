@@ -312,27 +312,27 @@ describe('WsFullsyncSchema', () => {
   });
 
   it('accepts valid fullsync message without targetId', () => {
-    const { targetId, ...rest } = valid;
+    const { targetId: _targetId, ...rest } = valid;
     expect(WsFullsyncSchema.safeParse(rest).success).toBe(true);
   });
 
   it('rejects fullsync message missing commits', () => {
-    const { commits, ...rest } = valid;
+    const { commits: _commits, ...rest } = valid;
     expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
   });
 
   it('rejects fullsync message missing branches', () => {
-    const { branches, ...rest } = valid;
+    const { branches: _branches, ...rest } = valid;
     expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
   });
 
   it('rejects fullsync message missing HEAD', () => {
-    const { HEAD, ...rest } = valid;
+    const { HEAD: _HEAD, ...rest } = valid;
     expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
   });
 
   it('rejects fullsync message missing detached', () => {
-    const { detached, ...rest } = valid;
+    const { detached: _detached, ...rest } = valid;
     expect(WsFullsyncSchema.safeParse(rest).success).toBe(false);
   });
 
