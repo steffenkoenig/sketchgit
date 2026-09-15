@@ -1344,7 +1344,7 @@ export class CanvasEngine {
       this.pushHistory();
       this.setFillColorOnObject(o, v);
       this.canvas?.requestRenderAll();
-      // BUG-010 – same fix: mark dirty and broadcast so peers see the change.
+      // same fix: mark dirty and broadcast so peers see the change.
       this.markDirty();
       this.onBroadcastDraw(true);
     }
