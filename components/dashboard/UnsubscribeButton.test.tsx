@@ -11,7 +11,7 @@ describe("UnsubscribeButton", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -29,7 +29,7 @@ describe("UnsubscribeButton", () => {
   });
 
   it("calls API and onUnsubscribed callback on success", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: async () => ({}),
     });
@@ -44,7 +44,7 @@ describe("UnsubscribeButton", () => {
     expect(button).toBeDisabled();
 
     // Verify API call
-    expect(global.fetch).toHaveBeenCalledWith("/api/rooms/room-123/subscribe", {
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/rooms/room-123/subscribe", {
       method: "DELETE",
     });
 
@@ -60,7 +60,7 @@ describe("UnsubscribeButton", () => {
   });
 
   it("encodes roomId properly in API URL", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
     });
 
@@ -69,13 +69,13 @@ describe("UnsubscribeButton", () => {
     const button = screen.getByRole("button", { name: "Unsubscribe from room room/123?abc" });
     fireEvent.click(button);
 
-    expect(global.fetch).toHaveBeenCalledWith("/api/rooms/room%2F123%3Fabc/subscribe", {
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/rooms/room%2F123%3Fabc/subscribe", {
       method: "DELETE",
     });
   });
 
   it("does not call onUnsubscribed on API failure", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,
       status: 500,
     });
@@ -89,7 +89,7 @@ describe("UnsubscribeButton", () => {
       expect(button).not.toBeDisabled();
     });
 
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(mockOnUnsubscribed).not.toHaveBeenCalled();
     expect(button).toHaveTextContent("Unsubscribe");
   });
