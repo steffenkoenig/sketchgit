@@ -184,6 +184,47 @@ describe('GET /api/rooms/[roomId]/export', () => {
     expect(res.status).toBe(401);
   });
 
+
+  // ── P093: password protection ────────────────────────────────────────────────
+
+  it('returns 401 PASSWORD_REQUIRED for a password-protected room without an unlock cookie', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash', ownerId: null });
+    const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
+    const res = await GET(req, { params });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROOM_PASSWORD_REQUIRED');
+  });
+
+  it('allows a password-protected room through with a valid unlock cookie', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash', ownerId: null });
+    mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
+    const { grantRoomUnlock, ROOM_UNLOCK_COOKIE_NAME } = await import('@/lib/server/roomPasswordCookie');
+    const cookieValue = grantRoomUnlock(undefined, ROOM_ID);
+    const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
+    req.cookies.set(ROOM_UNLOCK_COOKIE_NAME, cookieValue);
+    const res = await GET(req, { params });
+    expect(res.status).toBe(200);
+  });
+
+  it('allows the room owner into a password-protected room without an unlock cookie', async () => {
+    mock.roomFindUnique.mockResolvedValue({ isPublic: true, passwordHash: 'hash', ownerId: 'usr_owner' });
+    mock.commitFindUnique.mockResolvedValue(SNAPSHOT_COMMIT);
+    mock.queryRaw.mockResolvedValue([SNAPSHOT_COMMIT]);
+
+    // Set up owner session
+    const { auth } = await import('@/lib/auth');
+    const { getAuthSession } = await import('@/lib/authTypes');
+    const session = { user: { id: 'usr_owner' } };
+    (auth as any).mockResolvedValueOnce(session);
+    (getAuthSession as any).mockReturnValueOnce(session);
+
+    const req = makeRequest(ROOM_ID, { sha: COMMIT_SHA });
+    const res = await GET(req, { params });
+    expect(res.status).toBe(200);
+  });
+
   // ── P070: Cache-Control headers ─────────────────────────────────────────────
 
   it('returns immutable Cache-Control header when sha is provided', async () => {
