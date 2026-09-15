@@ -86,6 +86,7 @@ import {
   revertDigestClaims,
   getDueSubscriptions,
   getRoomEventsSince,
+  getRoomEventsSinceBatch,
   resolveRoomId,
   updateRoomSlug,
   getRoomOwnership,
@@ -93,7 +94,7 @@ import {
 } from './roomRepository';
 import { saveCommitHistogram } from '../server/metrics';
 import { CANVAS_JSON_SCHEMA_VERSION } from '../sketchgit/git/canvasSchemaVersion';
-import { prisma } from '@/lib/db/prisma';
+import { prisma, prismaRead } from '@/lib/db/prisma';
 
 vi.mock('../server/metrics', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../server/metrics')>();
@@ -107,7 +108,7 @@ vi.mock('../server/metrics', async (importOriginal) => {
 
 const mock = {
   transaction: prisma.$transaction as ReturnType<typeof vi.fn>,
-  queryRaw: prisma.$queryRaw as ReturnType<typeof vi.fn>,
+  queryRaw: prismaRead.$queryRaw as ReturnType<typeof vi.fn>,
   roomUpsert: prisma.room.upsert as ReturnType<typeof vi.fn>,
   roomFindUnique: prisma.room.findUnique as ReturnType<typeof vi.fn>,
   commitFindMany: prisma.commit.findMany as ReturnType<typeof vi.fn>,
@@ -870,6 +871,34 @@ describe('Room email subscriptions (P094)', () => {
         take: 200,
         select: { id: true, eventType: true, actorId: true, payload: true, createdAt: true },
       });
+    });
+  });
+
+  describe('getRoomEventsSinceBatch', () => {
+    it('returns empty array when roomIds is empty', async () => {
+      const since = new Date('2026-01-01T00:00:00Z');
+      const result = await getRoomEventsSinceBatch([], since);
+      expect(result).toEqual([]);
+      expect(prismaRead.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('queries events for multiple rooms using raw SQL', async () => {
+      (prismaRead.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      const since = new Date('2026-01-01T00:00:00Z');
+      await getRoomEventsSinceBatch(['room_1', 'room_2'], since);
+      expect(prismaRead.$queryRaw).toHaveBeenCalled();
+
+      const callArgs = (prismaRead.$queryRaw as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      let finalSqlString = '';
+      if (Array.isArray(callArgs)) {
+        finalSqlString = callArgs.join('');
+      } else if (callArgs && Array.isArray(callArgs.strings)) {
+        finalSqlString = callArgs.strings.join('');
+      } else {
+        finalSqlString = JSON.stringify(callArgs);
+      }
+      expect(finalSqlString).toContain('ROW_NUMBER() OVER(PARTITION BY "roomId" ORDER BY "createdAt" ASC)');
+      expect(finalSqlString).toContain('WHERE rn <= 200');
     });
   });
 });

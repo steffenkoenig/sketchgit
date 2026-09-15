@@ -519,6 +519,39 @@ export async function getRoomEventsSince(
   });
 }
 
+/**
+ * P094 – Batched variant of getRoomEventsSince to avoid N+1 queries.
+ * Returns events for an array of rooms created after `since`, oldest-first,
+ * capped at 200 per room.
+ */
+export async function getRoomEventsSinceBatch(
+  roomIds: string[],
+  since: Date,
+): Promise<Array<{
+  id: string;
+  roomId: string;
+  eventType: RoomEventType;
+  actorId: string | null;
+  payload: unknown;
+  createdAt: Date;
+}>> {
+  if (roomIds.length === 0) return [];
+
+  return prismaRead.$queryRaw`
+    WITH RankedEvents AS (
+      SELECT id, "roomId", "eventType", "actorId", "payload", "createdAt",
+             ROW_NUMBER() OVER(PARTITION BY "roomId" ORDER BY "createdAt" ASC) as rn
+      FROM "RoomEvent"
+      WHERE "roomId" IN (${Prisma.join(roomIds)})
+        AND "createdAt" > ${since}
+    )
+    SELECT id, "roomId", "eventType", "actorId", "payload", "createdAt"
+    FROM RankedEvents
+    WHERE rn <= 200
+    ORDER BY "createdAt" ASC;
+  `;
+}
+
 // ─── Access control ───────────────────────────────────────────────────────────
 
 /** Role type used in WebSocket access control checks. */
