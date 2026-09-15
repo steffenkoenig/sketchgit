@@ -6,6 +6,23 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.11.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.11.1...sketchgit-next-v0.11.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* cancel per-peer lock-expire timers on manager destroy ([#425](https://github.com/steffenkoenig/sketchgit/issues/425)) ([2c5600d](https://github.com/steffenkoenig/sketchgit/commit/2c5600d35101c35bb8eb81e3aca614ae0b9e7587))
+* remove BUG-007 tracker from password reset token code ([#422](https://github.com/steffenkoenig/sketchgit/issues/422)) ([a7240d3](https://github.com/steffenkoenig/sketchgit/commit/a7240d33ed8322d77430bc385024812add97f0cd))
+* Remove resolved BUG-021 tags from canvas engine ([#426](https://github.com/steffenkoenig/sketchgit/issues/426)) ([10657fe](https://github.com/steffenkoenig/sketchgit/commit/10657feba5d7e6bbdab19c80ad9e43a0492958fc))
+
+
+### Performance Improvements
+
+* fix N+1 query issue loading room snapshot deltas ([#434](https://github.com/steffenkoenig/sketchgit/issues/434)) ([9e4db04](https://github.com/steffenkoenig/sketchgit/commit/9e4db04bf4c53023544d1de0ccc35eb45b9672e6))
+* optimize event loop yielding in sync processing ([#432](https://github.com/steffenkoenig/sketchgit/issues/432)) ([4528c54](https://github.com/steffenkoenig/sketchgit/commit/4528c542c29c4323d0f9299b24d7f730e6493964))
+* optimize object diffing loop with fast-deep-equal ([#435](https://github.com/steffenkoenig/sketchgit/issues/435)) ([a53740d](https://github.com/steffenkoenig/sketchgit/commit/a53740dd428c2338ed0217e33ec2b8c8c25ba6ba))
+* replace N+1 event fetching loop with batched query ([#438](https://github.com/steffenkoenig/sketchgit/issues/438)) ([7196d7d](https://github.com/steffenkoenig/sketchgit/commit/7196d7de3fd31f7635bb4048b561d3a56d9721c2))
+
 ## [0.11.1](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.11.0...sketchgit-next-v0.11.1) (2026-09-06)
 
 
