@@ -23,7 +23,7 @@ import {
   getDueSubscriptions,
   claimSubscriptionsForDigestBatch,
   revertDigestClaims,
-  getRoomEventsSince,
+  getRoomEventsSinceBatch,
   type RoomEventType,
 } from "@/lib/db/roomRepository";
 import { sendEmail } from "@/lib/server/email";
@@ -132,13 +132,15 @@ export async function runDigestTier(frequency: DigestFrequency, now: Date = new 
   // Get unique rooms for the claimed subscriptions
   const uniqueRoomIds = Array.from(new Set(claimedSubs.map(sub => sub.roomId)));
   const roomEventsMap = new Map<string, Array<{ eventType: RoomEventType; createdAt: Date }>>();
+  // Pre-populate map to ensure all claimed rooms have an array (even if empty)
+  for (const roomId of uniqueRoomIds) {
+    roomEventsMap.set(roomId, []);
+  }
 
-  await Promise.all(
-    uniqueRoomIds.map(async (roomId) => {
-      const events = await getRoomEventsSince(roomId, windowStart);
-      roomEventsMap.set(roomId, events);
-    })
-  );
+  const allEvents = await getRoomEventsSinceBatch(uniqueRoomIds, windowStart);
+  for (const event of allEvents) {
+    roomEventsMap.get(event.roomId)!.push(event);
+  }
 
   // 3. Render and send emails
   // Emails can be rendered concurrently, and sent sequentially or concurrently

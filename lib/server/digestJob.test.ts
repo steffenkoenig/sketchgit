@@ -12,7 +12,7 @@ vi.mock("@/lib/db/roomRepository", () => ({
   getDueSubscriptions: vi.fn(),
   claimSubscriptionsForDigestBatch: vi.fn(),
   revertDigestClaims: vi.fn(),
-  getRoomEventsSince: vi.fn(),
+  getRoomEventsSinceBatch: vi.fn(),
 }));
 
 describe("runDigestJob", () => {
@@ -30,7 +30,7 @@ describe("runDigestJob", () => {
 
   describe("runDigestTier", () => {
     const mockClaimBatch = vi.mocked(db.claimSubscriptionsForDigestBatch);
-    const mockGetEvents = vi.mocked(db.getRoomEventsSince);
+    const mockGetEvents = vi.mocked(db.getRoomEventsSinceBatch);
     const mockSendEmail = vi.mocked(sendEmail);
     const mockRevert = vi.mocked(db.revertDigestClaims);
 
@@ -48,9 +48,16 @@ describe("runDigestJob", () => {
         },
       ]);
       mockClaimBatch.mockImplementation(async (ids) => ids);
-      mockGetEvents.mockResolvedValue([
-        { id: "e1", eventType: "COMMIT", actorId: "user_2", payload: {}, createdAt: new Date() },
-      ]);
+      mockGetEvents.mockImplementation(async (roomIds) => {
+        return roomIds.map(roomId => ({
+          roomId,
+          id: "e1",
+          eventType: "COMMIT",
+          actorId: "user_2",
+          payload: {},
+          createdAt: new Date(),
+        }));
+      });
       mockSendEmail.mockResolvedValue({ sent: true });
     });
 
