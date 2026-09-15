@@ -2643,9 +2643,9 @@ describe('CanvasEngine – connector snapping and following', () => {
     expect((arrowGroup.removeAll as any).mock.calls.length).toBe(1);
   });
 
-  // ── BUG-021: pending rAF cancelled on snap rebuild ────────────────────────
+  // ── pending rAF cancelled on snap rebuild ────────────────────────
 
-  it('object:modified snap rebuild cancels any pending scheduleAttachmentUpdate rAF (BUG-021)', () => {
+  it('object:modified snap rebuild cancels any pending scheduleAttachmentUpdate rAF', () => {
     // If a rAF was queued by the last object:moving event before mouse-up, and then
     // object:modified fires and rebuilds the arrow, the stale rAF must be cancelled
     // so it cannot run with a reference to the removed old arrow group.
