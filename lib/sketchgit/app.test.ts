@@ -274,30 +274,36 @@ describe('createSketchGitApp', () => {
     const { showToast } = await import('./ui/toast');
     const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement;
     const opt = document.createElement('option'); opt.value = 'dev'; sel.appendChild(opt); sel.value = 'dev';
-    mocks.mockGit.merge.mockReturnValue({ type: 'ok', sha: 'sha2' });
+    mocks.mockGit.merge.mockReturnValue({ done: true, sha: 'sha2' } as any);
     const app = createSketchGitApp();
     app.doMerge();
     expect(showToast).toHaveBeenCalled();
   });
 
-  it('doMerge handles up-to-date result', async () => {
+  it('doMerge handles conflicts result', async () => {
     const { showToast } = await import('./ui/toast');
     const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement;
     const opt = document.createElement('option'); opt.value = 'dev'; sel.appendChild(opt); sel.value = 'dev';
-    mocks.mockGit.merge.mockReturnValue({ type: 'up-to-date' });
+    mocks.mockGit.merge.mockReturnValue({
+      conflicts: {
+        conflicts: [],
+        cleanObjects: [],
+        oursData: '{}',
+        branchNames: { ours: 'main', theirs: 'dev' },
+        mergedCanvasProps: {},
+      },
+    } as any);
     const app = createSketchGitApp();
     app.doMerge();
     expect(showToast).toHaveBeenCalled();
   });
 
-  it('doMerge handles no-source result', async () => {
-    const { showToast } = await import('./ui/toast');
+  it('doMerge handles null result', async () => {
     const sel = document.getElementById('mergeSourceSelect') as HTMLSelectElement;
     const opt = document.createElement('option'); opt.value = 'dev'; sel.appendChild(opt); sel.value = 'dev';
-    mocks.mockGit.merge.mockReturnValue({ type: 'no-source' });
+    mocks.mockGit.merge.mockReturnValue(null);
     const app = createSketchGitApp();
-    app.doMerge();
-    expect(showToast).toHaveBeenCalledWith(expect.any(String), true);
+    expect(() => app.doMerge()).not.toThrow();
   });
 
   it('resolveAllOurs, resolveAllTheirs, applyMergeResolution do not throw', () => {
