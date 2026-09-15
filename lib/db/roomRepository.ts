@@ -319,9 +319,12 @@ export async function loadRoomSnapshot(
   }
 
   const commitsMap: Record<string, CommitRecord> = {};
-  let i = 0;
+  let lastYieldTime = Date.now();
   for (const c of commits) {
-    if (++i % 10 === 0) await new Promise((r) => setImmediate(r));
+    if (Date.now() - lastYieldTime > 5) {
+      await new Promise((r) => setImmediate(r));
+      lastYieldTime = Date.now();
+    }
     let canvasStr: string;
     if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
       try { canvasStr = JSON.stringify(c.canvasJson); }
