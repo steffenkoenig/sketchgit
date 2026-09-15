@@ -260,21 +260,29 @@ export async function loadRoomSnapshot(
   // database so reconstruction is always correct regardless of page boundaries.
   const canvasCache = new Map<string, string>();
 
-  async function resolveCanvas(sha: string): Promise<string> {
-    if (canvasCache.has(sha)) return canvasCache.get(sha)!;
-    // Ancestor not in the current page – fetch chain via CTE to avoid N+1.
+  // Batch-resolve all missing parents before the loop to avoid N+1 queries.
+  const missingParents = new Set<string>();
+  for (const c of commits) {
+    if (c.storageType === CommitStorageType.DELTA && c.parentSha && !pageShAs.has(c.parentSha)) {
+      missingParents.add(c.parentSha);
+    }
+  }
+
+  if (missingParents.size > 0) {
+    const missingArray = Array.from(missingParents);
     type CommitRow = {
       sha: string;
       parentSha: string | null;
       canvasJson: Prisma.JsonValue;
       storageType: CommitStorageType;
+      depth: number;
     };
     const maxDepth = 10000;
     const rows = await prismaRead.$queryRaw<CommitRow[]>`
       WITH RECURSIVE commit_chain AS (
         SELECT sha, "parentSha", "canvasJson", "storageType", 1 as depth
         FROM "Commit"
-        WHERE "roomId" = ${roomId} AND sha = ${sha}
+        WHERE "roomId" = ${roomId} AND sha IN (${Prisma.join(missingArray)})
 
         UNION ALL
 
@@ -283,39 +291,28 @@ export async function loadRoomSnapshot(
         INNER JOIN commit_chain cc ON c.sha = cc."parentSha"
         WHERE c."roomId" = ${roomId} AND cc."storageType" != 'SNAPSHOT' AND cc.depth < ${maxDepth}
       )
-      SELECT sha, "parentSha", "canvasJson", "storageType" FROM commit_chain ORDER BY depth ASC;
+      SELECT sha, "parentSha", "canvasJson", "storageType", depth FROM commit_chain ORDER BY depth DESC;
     `;
 
-    if (!rows || rows.length === 0) {
-      canvasCache.set(sha, '{"objects":[]}');
-      return '{"objects":[]}';
-    }
-
-    const chain: CommitRow[] = [];
-    for (const row of rows) {
-      chain.push(row);
-    }
-    chain.reverse(); // Process oldest (snapshot) to newest
-
-    for (const c of chain) {
-      if (canvasCache.has(c.sha)) continue;
-      let canvasStr: string;
-      if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
-        try { canvasStr = JSON.stringify(c.canvasJson); }
-        catch { canvasStr = '{"objects":[]}'; }
-      } else {
-        const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
-        try {
-          canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
-        } catch {
+    if (rows && rows.length > 0) {
+      for (const c of rows) {
+        if (canvasCache.has(c.sha)) continue;
+        let canvasStr: string;
+        if (c.storageType === CommitStorageType.SNAPSHOT || !c.parentSha) {
           try { canvasStr = JSON.stringify(c.canvasJson); }
           catch { canvasStr = '{"objects":[]}'; }
+        } else {
+          const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
+          try {
+            canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
+          } catch {
+            try { canvasStr = JSON.stringify(c.canvasJson); }
+            catch { canvasStr = '{"objects":[]}'; }
+          }
         }
+        canvasCache.set(c.sha, canvasStr);
       }
-      canvasCache.set(c.sha, canvasStr);
     }
-
-    return canvasCache.get(sha) ?? '{"objects":[]}';
   }
 
   const commitsMap: Record<string, CommitRecord> = {};
@@ -336,8 +333,8 @@ export async function loadRoomSnapshot(
         catch { canvasStr = '{"objects":[]}'; }
       }
     } else {
-      // Parent is outside this page – resolve via DB walk.
-      const parentCanvas = await resolveCanvas(c.parentSha);
+      // Parent is outside this page, but it was pre-fetched in the batch above.
+      const parentCanvas = canvasCache.get(c.parentSha) ?? '{"objects":[]}';
       try {
         canvasStr = replayCanvasDelta(parentCanvas, c.canvasJson as unknown as CanvasDelta);
       } catch {
