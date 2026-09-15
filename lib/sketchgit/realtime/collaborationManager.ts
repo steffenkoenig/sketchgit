@@ -10,6 +10,7 @@ import { logger } from '../logger';
 import { enqueueAction, type OfflineActionPath } from '../offline/offlineDb';
 import { isOnline } from '../offline/networkStatus';
 import { drainOfflineQueue } from '../offline/offlineSync';
+import deepEqual from 'fast-deep-equal';
 
 /** REST event paths queued for offline replay (P092) when the client is offline. */
 const OFFLINE_QUEUEABLE_PATHS = new Set<OfflineActionPath>(['draw', 'commits']);
@@ -567,8 +568,8 @@ export class CollaborationManager {
         for (const [k, v] of Object.entries(currObj)) {
           if (k === '_id') continue;
           const pv = prevObj[k];
-          // Fast path: primitive equality; slow path: stringify nested structures.
-          if (pv !== v && (typeof v !== 'object' || typeof pv !== 'object' || JSON.stringify(pv) !== JSON.stringify(v))) {
+          // Fast path: primitive equality; slow path: deep equality.
+          if (pv !== v && (typeof v !== 'object' || typeof pv !== 'object' || !deepEqual(pv, v))) {
             patch[k] = v;
           }
         }
@@ -909,13 +910,13 @@ export class CollaborationManager {
       clearTimeout(this.drawFlushTimer);
       this.drawFlushTimer = null;
     }
-    // BUG-008 – cancel all per-peer lock-expire timers so they don't fire
+    // Cancel all per-peer lock-expire timers so they don't fire
     // after the manager has been destroyed.
     for (const timer of this.lockExpireTimers.values()) {
       clearTimeout(timer);
     }
     this.lockExpireTimers.clear();
-    // BUG-008 / P080 – stop presenter mode (clears view-sync interval and UI state).
+    // P080 – stop presenter mode (clears view-sync interval and UI state).
     this._stopPresenting();
     this.followingClientId = null;
     this.presenterClientId = null;
