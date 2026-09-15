@@ -9,7 +9,7 @@ import "@testing-library/jest-dom/vitest";
 
 // Mock UnsubscribeButton to simplify testing
 vi.mock("./UnsubscribeButton", () => ({
-  UnsubscribeButton: ({ roomId, onUnsubscribed }: any) => (
+  UnsubscribeButton: ({ roomId, onUnsubscribed }: { roomId: string, onUnsubscribed: () => void }) => (
     <button onClick={onUnsubscribed} data-testid={`unsubscribe-${roomId}`}>
       Unsubscribe {roomId} btn
     </button>
@@ -27,7 +27,7 @@ describe("SubscriptionsList", () => {
   });
 
   it("renders a list of subscriptions", () => {
-    const subs: any[] = [
+    const subs: import("./SubscriptionsList").SubscriptionRow[] = [
       { id: "sub1", roomId: "room1", roomSlug: "my-room", frequency: "HOURLY" },
       { id: "sub2", roomId: "room2", roomSlug: null, frequency: "DAILY" },
     ];
@@ -43,12 +43,12 @@ describe("SubscriptionsList", () => {
     expect(within(listItems[0]).getByText(/\(hourly digest\)/)).toBeInTheDocument();
 
     // Checks if roomId is used when roomSlug is null
-    expect(within(listItems[1]).getByText((content, element) => content.startsWith('room2'))).toBeInTheDocument();
+    expect(within(listItems[1]).getByText((content) => content.startsWith('room2'))).toBeInTheDocument();
     expect(within(listItems[1]).getByText(/\(daily digest\)/)).toBeInTheDocument();
   });
 
   it("removes a subscription when onUnsubscribed is called", async () => {
-    const subs: any[] = [
+    const subs: import("./SubscriptionsList").SubscriptionRow[] = [
       { id: "sub1", roomId: "room1", roomSlug: "my-room", frequency: "HOURLY" },
       { id: "sub2", roomId: "room2", roomSlug: null, frequency: "DAILY" },
     ];
@@ -64,6 +64,6 @@ describe("SubscriptionsList", () => {
     expect(screen.queryByText(/my-room/)).not.toBeInTheDocument();
     const remainingItems = screen.getAllByRole("listitem");
     expect(remainingItems).toHaveLength(1);
-    expect(within(remainingItems[0]).getByText((content, element) => content.startsWith('room2'))).toBeInTheDocument();
+    expect(within(remainingItems[0]).getByText((content) => content.startsWith('room2'))).toBeInTheDocument();
   });
 });
