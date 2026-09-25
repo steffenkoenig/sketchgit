@@ -18,8 +18,13 @@ describe("passwordHashing", () => {
       const hash = await hashPassword(password);
 
       // Argon2 hashes typically start with $argon2id$v=19$m=...,t=...,p=...
+      // The exact ordering of the m/t/p params within the PHC string is an
+      // implementation detail of the argon2 package (it changed between
+      // 0.44.0 and 0.45.1), so assert on presence rather than order.
       expect(hash.startsWith("$argon2id$")).toBe(true);
-      expect(hash).toContain("$m=65536,t=3,p=4$");
+      expect(hash).toContain("m=65536");
+      expect(hash).toContain("t=3");
+      expect(hash).toContain("p=4");
     });
 
     it("produces unique hashes for the same password due to random salting", async () => {
