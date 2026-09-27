@@ -17,6 +17,14 @@ async function ensureMermaidInit(theme: 'dark' | 'default'): Promise<void> {
   mermaid.initialize({
     startOnLoad: false,
     theme,
+    // mermaid@12.0.0 changes the *unconfigured* defaults: flowchart, class,
+    // state, ER, requirement and use-case diagrams switch from a dagre
+    // layout to ELK, and the default `look` switches from 'classic' to the
+    // new 'neo' style. Pin both to the pre-12.0.0 behavior so this diagram
+    // renderer's output doesn't silently change shape/style on a dependency
+    // bump — see the mermaid@12.0.0 release notes' migration guidance.
+    layout: 'dagre',
+    look: 'classic',
     fontFamily: 'Fira Code, monospace',
     securityLevel: 'strict',
   });
