@@ -1,14 +1,14 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
-import { vi, describe, it, expect, beforeEach } from "vitest";
 
-const mockVerifyTwoFactorToken = vi.fn();
-const mockSetTwoFactorEnabled = vi.fn();
 const mockAuth = vi.fn();
-
 vi.mock("@/lib/auth", () => ({
   auth: () => mockAuth(),
 }));
+
+const mockVerifyTwoFactorToken = vi.fn();
+const mockSetTwoFactorEnabled = vi.fn();
 
 vi.mock("@/lib/db/userRepository", () => ({
   verifyTwoFactorToken: (...args: any[]) => mockVerifyTwoFactorToken(...args),
@@ -31,27 +31,44 @@ describe("POST /api/auth/2fa/verify", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 if code is invalid", async () => {
-    mockAuth.mockResolvedValueOnce({
-      user: { id: "usr_1", email: "test@example.com" },
-    });
-    mockVerifyTwoFactorToken.mockResolvedValueOnce(false);
-
+  it("returns 400 for invalid JSON body", async () => {
+    mockAuth.mockResolvedValueOnce({ user: { email: "test@example.com", id: "usr_1" } });
     const req = new NextRequest("http://localhost:3000/api/auth/2fa/verify", {
       method: "POST",
-      body: JSON.stringify({ code: "000000" }),
+      body: "invalid-json",
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 if validation fails", async () => {
+    mockAuth.mockResolvedValueOnce({ user: { email: "test@example.com", id: "usr_1" } });
+    const req = new NextRequest("http://localhost:3000/api/auth/2fa/verify", {
+      method: "POST",
+      body: JSON.stringify({ code: "12" }), // too short
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(422);
+  });
+
+  it("returns 403 if code is invalid or expired", async () => {
+    mockAuth.mockResolvedValueOnce({ user: { email: "test@example.com", id: "usr_1" } });
+    mockVerifyTwoFactorToken.mockResolvedValueOnce(false);
+    const req = new NextRequest("http://localhost:3000/api/auth/2fa/verify", {
+      method: "POST",
+      body: JSON.stringify({ code: "123456" }),
     });
 
     const res = await POST(req);
     expect(res.status).toBe(403);
+    expect(mockVerifyTwoFactorToken).toHaveBeenCalledWith("test@example.com", "123456");
   });
 
   it("sets 2FA enabled if code is valid", async () => {
-    mockAuth.mockResolvedValueOnce({
-      user: { id: "usr_1", email: "test@example.com" },
-    });
+    mockAuth.mockResolvedValueOnce({ user: { email: "test@example.com", id: "usr_1" } });
     mockVerifyTwoFactorToken.mockResolvedValueOnce(true);
-
     const req = new NextRequest("http://localhost:3000/api/auth/2fa/verify", {
       method: "POST",
       body: JSON.stringify({ code: "123456" }),

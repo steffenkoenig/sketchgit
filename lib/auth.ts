@@ -12,7 +12,9 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import { prisma } from "@/lib/db/prisma";
-import { verifyCredentials } from "@/lib/db/userRepository";
+import { CredentialsSignin } from "next-auth";
+import { verifyCredentials, createTwoFactorToken, verifyTwoFactorToken } from "@/lib/db/userRepository";
+import { sendEmail } from "@/lib/server/email";
 import { withEncryptedAccountTokens } from "@/lib/server/encryptedAuthAdapter";
 
 // Build the provider list conditionally so that missing GitHub credentials
@@ -23,6 +25,7 @@ const providers = [
     credentials: {
       email: { label: "Email", type: "email", placeholder: "you@example.com" },
       password: { label: "Password", type: "password" },
+      code: { label: "2FA Code", type: "text", optional: true },
     },
     async authorize(credentials) {
       if (!credentials?.email || !credentials?.password) return null;
@@ -33,6 +36,32 @@ const providers = [
       );
 
       if (!user) return null;
+
+      if (user.twoFactorEnabled) {
+        if (!credentials.code) {
+          // Generate token and send email
+          const token = await createTwoFactorToken(user.email!);
+          await sendEmail({
+            to: user.email!,
+            subject: "Your SketchGit 2FA Verification Code",
+            html: `<p>Your Two-Factor Authentication code is:</p><h2>${token}</h2><p>This code is valid for 10 minutes. If you did not request this, you can safely ignore this email.</p>`,
+          });
+          // Auth.js v5 error handling for custom errors.
+          class TwoFactorRequiredError extends CredentialsSignin {
+            code = "2FA_REQUIRED";
+          }
+          throw new TwoFactorRequiredError();
+        } else {
+          // Verify code
+          const isValid = await verifyTwoFactorToken(user.email!, credentials.code as string);
+          if (!isValid) {
+            class InvalidTwoFactorCodeError extends CredentialsSignin {
+              code = "INVALID_2FA_CODE";
+            }
+            throw new InvalidTwoFactorCodeError();
+          }
+        }
+      }
 
       // Return the shape NextAuth expects
       return { id: user.id, email: user.email, name: user.name };

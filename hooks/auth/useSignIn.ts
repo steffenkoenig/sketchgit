@@ -12,8 +12,10 @@ export function useSignIn() {
     ? rawCallbackUrl
     : "/";
 
-  const [email, setEmail] = useState("");
+    const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [show2fa, setShow2fa] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -22,16 +24,26 @@ export function useSignIn() {
     setError(null);
     setLoading(true);
 
+    const payload: Record<string, string> = { email, password };
+    if (show2fa) payload.code = code;
+
     const result = await signIn("credentials", {
-      email,
-      password,
+      ...payload,
       redirect: false,
     });
 
     setLoading(false);
 
     if (result?.error) {
-      setError(t("auth.signIn.invalidCredentials"));
+      // Check for Custom Auth.js Error Strings
+      if (result.error.includes("2FA_REQUIRED")) {
+        setShow2fa(true);
+        setError(null);
+      } else if (result.error.includes("INVALID_2FA_CODE")) {
+        setError(t("auth.signIn.invalid2faCode") ?? "Invalid verification code.");
+      } else {
+        setError(t("auth.signIn.invalidCredentials"));
+      }
       return;
     }
 
@@ -42,11 +54,14 @@ export function useSignIn() {
     await signIn("github", { callbackUrl });
   }
 
-  return {
+    return {
     email,
     setEmail,
     password,
     setPassword,
+    code,
+    setCode,
+    show2fa,
     error,
     loading,
     callbackUrl,

@@ -8,3 +8,11 @@ You can now group multiple canvas items together and align them perfectly:
 2. **Group Objects:** Click the "Group" button in the right-hand Properties Panel, or press `Ctrl+G`. This binds them into a single manipulable layer.
 3. **Align Objects:** When multiple objects (or a group) are selected, use the Alignment buttons in the Properties Panel (Align Left, Center Horizontal, Right, Top, Center Vertical, Bottom) to arrange them relative to their bounding box.
 4. **Ungroup:** Click the "Ungroup" button, or press `Ctrl+Shift+G` to break a group back into individual objects.
+
+## Two-Factor Authentication (Milestone 2.0)
+You can now add an extra layer of security to your SketchGit account using Email Two-Factor Authentication (2FA).
+To enable it:
+1. Navigate to the **My Drawings** dashboard.
+2. Under **Security Settings**, click the **Enable 2FA** button.
+3. Enter the 6-digit verification code sent to your email to confirm.
+When enabled, you will be prompted to enter a verification code sent to your inbox each time you sign in with your email and password.

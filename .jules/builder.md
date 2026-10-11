@@ -38,3 +38,13 @@
 
 **Active Step:** Complete.
 **Blockers/Constraints:** None.
+
+## Milestone 2.0 - Two-Factor Authentication via Email
+**Current State Audit:** The backend API for 2FA was largely implemented, but the NextAuth credentials provider and frontend sign-in page did not support multi-step authentication. The dashboard lacked the interface for users to enable/disable the feature.
+**Completed Items:**
+- [x] Extended the NextAuth credentials provider to accept an optional `code` field and return a `CredentialsSignin` error if a 2FA challenge is required.
+- [x] Updated `app/auth/signin/page.tsx` and `useSignIn` hook to catch the 2FA required state and display a verification code input form.
+- [x] Created `TwoFactorSettings` component and integrated it into the `DashboardPage` allowing users to toggle their 2FA settings.
+- [x] Updated docs (customer, technical, support) detailing the new 2FA implementation.
+**Active Step:** Complete.
+**Blockers/Constraints:** NextAuth v5 suppresses string errors from the `authorize` callback, requiring the use of a custom `CredentialsSignin` subclass to propagate the `2FA_REQUIRED` signal to the frontend.
