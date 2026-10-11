@@ -1,5 +1,6 @@
 
 import { UISyncManager } from './uiSyncManager';
+import { SnappingManager, type AnchoredArrowGroup, type AnchoredLine } from './snappingLogic';
 
 /**
  * canvasEngine – encapsulates Fabric.js canvas setup and all drawing tools.
@@ -33,34 +34,7 @@ import { renderMermaidToDataUrl } from './mermaidRenderer';
 import { nearestPointOnBounds } from './snapEngine';
 
 
-/** Shared type for arrow Group objects carrying endpoint + style metadata. */
-type ArrowGroupExt = FabricObject & {
-  _isArrow?: boolean;
-  _x1?: number; _y1?: number; _x2?: number; _y2?: number;
-  _arrowType?: string;
-  _arrowHeadStart?: string;
-  _arrowHeadEnd?: string;
-  /** Canvas center of the group the last time it was built/rebuilt.
-   *  Used to compute how far the group has moved when object:modified fires,
-   *  so that reSnapOnModified can derive the new absolute endpoint positions. */
-  _gcx?: number; _gcy?: number;
-};
 
-/** Attachment fields (shape IDs + border-anchor offsets) shared by lines and arrow groups. */
-type AttachmentProps = {
-  _attachedFrom?: string;
-  _attachedTo?: string;
-  _attachedFromAnchorX?: number;
-  _attachedFromAnchorY?: number;
-  _attachedToAnchorX?: number;
-  _attachedToAnchorY?: number;
-};
-
-/** Arrow group with full attachment metadata. */
-type AnchoredArrowGroup = ArrowGroupExt & AttachmentProps;
-
-/** Fabric Line with full attachment metadata. */
-type AnchoredLine = Line & AttachmentProps;
 
 export class CanvasEngine {
   // ── Fabric.js canvas instance (set by init()) ──────────────────────────────
@@ -119,9 +93,9 @@ export class CanvasEngine {
 
   // ── Connector-follow throttle (rAF-based) ─────────────────────────────────
   /** rAF id for the pending attachment update, or null if none scheduled. */
-  private _attachmentRafId: number | null = null;
+  public _attachmentRafId: number | null = null;
   /** The most-recently-moved shape waiting for a connector-follow update. */
-  private _attachmentRafTarget: FabricObject | null = null;
+  public _attachmentRafTarget: FabricObject | null = null;
 
   // ── Re-entrancy guard for object:modified snap logic ──────────────────────
   /** True while reSnapOnModified is running. Prevents Fabric.js v7's
@@ -131,11 +105,13 @@ export class CanvasEngine {
   private _reSnapping = false;
 
   // ── Callbacks provided by the orchestrator ────────────────────────────────
-  private readonly onBroadcastDraw: (immediate?: boolean) => void;
+  public readonly onBroadcastDraw: (immediate?: boolean) => void;
   private readonly onBroadcastCursor: (e: { e: MouseEvent }) => void;
   /** P067 – broadcast that the local user selected/deselected objects */
   private onBroadcastLock?: (objectIds: string[]) => void;
   private onBroadcastUnlock?: () => void;
+
+  public snappingManager: SnappingManager;
 
   constructor(
     onBroadcastDraw: (immediate?: boolean) => void,
@@ -147,6 +123,7 @@ export class CanvasEngine {
     this.onBroadcastCursor = onBroadcastCursor;
     this.onBroadcastLock = onBroadcastLock;
     this.onBroadcastUnlock = onBroadcastUnlock;
+    this.snappingManager = new SnappingManager(this);
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -217,7 +194,7 @@ export class CanvasEngine {
       if (e.target) {
         this._reSnapping = true;
         try {
-          this.reSnapOnModified(e.target);
+          this.snappingManager.reSnapOnModified(e.target);
         } finally {
           this._reSnapping = false;
         }
@@ -279,7 +256,7 @@ export class CanvasEngine {
     // Calls are throttled to one per animation frame to avoid rebuilding arrow groups
     // and sketch-path connectors on every mousemove event.
     this.canvas.on('object:moving', (e: { target?: FabricObject }) => {
-      if (e.target) this.scheduleAttachmentUpdate(e.target);
+      if (e.target) this.snappingManager.scheduleAttachmentUpdate(e.target);
     });
 
     // P020: store bound references so they can be removed in destroy()
@@ -874,7 +851,7 @@ export class CanvasEngine {
         this.stampOrigGeomAndSloppiness(this.activeObj);
 
         if (this.sloppiness !== 'architect') {
-          const sketch = this.tryConvertToSketch(this.activeObj, this.sloppiness);
+          const sketch = this.snappingManager.tryConvertToSketch(this.activeObj, this.sloppiness);
           if (sketch) {
             this.canvas?.remove(this.activeObj);
             this.activeObj = sketch;
@@ -1515,7 +1492,7 @@ export class CanvasEngine {
         geom.rx = r;
         oe._origGeom = JSON.stringify(geom);
         const sloppiness = (oe._sloppiness ?? this.sloppiness) as 'architect' | 'artist' | 'cartoonist' | 'doodle';
-        const replacement = this.tryConvertToSketch(obj, sloppiness);
+        const replacement = this.snappingManager.tryConvertToSketch(obj, sloppiness);
         if (replacement) this.replaceObject(obj, replacement);
       }
     }
@@ -1580,7 +1557,7 @@ export class CanvasEngine {
       }
       obj.set('dirty', true);
     } else {
-      const replacement = this.tryConvertToSketch(obj, type);
+      const replacement = this.snappingManager.tryConvertToSketch(obj, type);
       if (replacement) {
         this.replaceObject(obj, replacement);
       } else {
@@ -2022,162 +1999,20 @@ export class CanvasEngine {
    * large constant (9301.7) to break integer periodicity, then use the
    * fractional part of sin(…)·43758.5453 (a common LCG-like scrambler).
    */
-  private static sketchRand(seed: number, i: number): number {
-    const x = Math.sin(Math.abs(seed) + i * 9301.7) * 43758.5453;
-    return (x - Math.floor(x)) * 2 - 1;
-  }
 
   /** Convert a string _id to a stable numeric seed. */
-  private static seedFromId(id: string): number {
-    let h = 2166136261;
-    for (let c = 0; c < id.length; c++) {
-      h ^= id.charCodeAt(c);
-      h = Math.imul(h, 16777619);
-    }
-    return h >>> 0; // unsigned 32-bit
-  }
 
   /** Maximum jitter in CSS pixels for the given sloppiness level. */
-  private static sloppinessAmplitude(
-    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
-    strokeWidth: number,
-  ): number {
-    if (sloppiness === 'architect') return 0;
-    const base = sloppiness === 'cartoonist' ? 7 : sloppiness === 'doodle' ? 5 : 3.5;
-    return Math.max(base, strokeWidth * 1.2);
-  }
 
   /**
    * Geometry descriptor used to regenerate a shape at a different sloppiness level.
    * Stored as JSON in the custom property `_origGeom`.
    */
-  private static origGeomFromObj(obj: FabricObject): string | null {
-    const t = (obj as FabricObject & { type?: string }).type ?? '';
-    if (t === 'rect') {
-      const g = { type: 'rect',
-        left: (obj.get('left') as number) ?? 0,
-        top:  (obj.get('top')  as number) ?? 0,
-        width: (obj.get('width') as number) ?? 0,
-        height: (obj.get('height') as number) ?? 0,
-        rx: (obj.get('rx') as number) ?? 0 };
-      return JSON.stringify(g);
-    }
-    if (t === 'ellipse') {
-      const erx = (obj.get('rx') as number) ?? 0;
-      const ery = (obj.get('ry') as number) ?? 0;
-      const g = { type: 'ellipse',
-        cx: ((obj.get('left') as number) ?? 0) + erx,
-        cy: ((obj.get('top')  as number) ?? 0) + ery,
-        rx: erx, ry: ery };
-      return JSON.stringify(g);
-    }
-    if (t === 'line') {
-      const lo = obj as Line & { x1?: number; y1?: number; x2?: number; y2?: number };
-      const g = { type: 'line', x1: lo.x1 ?? 0, y1: lo.y1 ?? 0, x2: lo.x2 ?? 0, y2: lo.y2 ?? 0 };
-      return JSON.stringify(g);
-    }
-    return null;
-  }
 
   /**
    * Generates a hand-drawn–style SVG path for the given original geometry.
    * Wobble is deterministic (seed) so the shape looks the same every render.
    */
-  private makeSketchyPath(
-    geom: Record<string, unknown>,
-    amplitude: number,
-    seed: number,
-  ): string {
-    const j = (i: number) => CanvasEngine.sketchRand(seed, i) * amplitude;
-    const t = geom.type as string;
-
-    if (t === 'line') {
-      const { x1, y1, x2, y2 } = geom as { x1: number; y1: number; x2: number; y2: number };
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2;
-      return `M ${x1.toFixed(1)} ${y1.toFixed(1)} `
-           + `Q ${(mx + j(0)).toFixed(1)} ${(my + j(1)).toFixed(1)} `
-           + `${x2.toFixed(1)} ${y2.toFixed(1)}`;
-    }
-
-    if (t === 'rect') {
-      const { left: l, top: to, width: w, height: h } =
-        geom as { left: number; top: number; width: number; height: number };
-      const rx = (geom.rx as number | undefined) ?? 0;
-      const r = Math.min(rx, w / 2, h / 2);
-
-      if (r > 0) {
-        // Rounded-corner rect: 8 approach points (2 per corner) with jitter applied.
-        // Indices 0-15 for approach points, 16-23 for corner arc control points.
-        const pts: [number, number][] = [
-          [l + r + j(0),     to + j(1)],           // top side start (after TL arc)
-          [l + w - r + j(2), to + j(3)],            // top side end   (before TR arc)
-          [l + w + j(4),     to + r + j(5)],        // right side start (after TR arc)
-          [l + w + j(6),     to + h - r + j(7)],   // right side end   (before BR arc)
-          [l + w - r + j(8), to + h + j(9)],        // bottom side start (after BR arc)
-          [l + r + j(10),    to + h + j(11)],       // bottom side end   (before BL arc)
-          [l + j(12),        to + h - r + j(13)],  // left side start (after BL arc)
-          [l + j(14),        to + r + j(15)],       // left side end   (before TL arc)
-        ];
-        // Control points at each corner (jittered toward actual corner)
-        const cps: [number, number][] = [
-          [l + w + j(16), to + j(17)],        // TR corner
-          [l + w + j(18), to + h + j(19)],   // BR corner
-          [l + j(20),     to + h + j(21)],   // BL corner
-          [l + j(22),     to + j(23)],        // TL corner
-        ];
-        const pt = (p: [number, number]) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
-        const cp = (p: [number, number]) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
-        return `M ${pt(pts[0])} `
-             + `L ${pt(pts[1])} Q ${cp(cps[0])} ${pt(pts[2])} `  // TR arc
-             + `L ${pt(pts[3])} Q ${cp(cps[1])} ${pt(pts[4])} `  // BR arc
-             + `L ${pt(pts[5])} Q ${cp(cps[2])} ${pt(pts[6])} `  // BL arc
-             + `L ${pt(pts[7])} Q ${cp(cps[3])} ${pt(pts[0])} Z`; // TL arc
-      }
-
-      // Sharp corners: four corners, each slightly offset
-      const c: [number, number][] = [
-        [l + j(0),     to + j(1)],
-        [l + w + j(2), to + j(3)],
-        [l + w + j(4), to + h + j(5)],
-        [l + j(6),     to + h + j(7)],
-      ];
-      const jitteredMidpoint = (a: [number, number], b: [number, number], i: number) =>
-        `${((a[0] + b[0]) / 2 + j(i)).toFixed(1)} ${((a[1] + b[1]) / 2 + j(i + 1)).toFixed(1)}`;
-      return `M ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} `
-           + `Q ${jitteredMidpoint(c[0], c[1], 8)} ${c[1][0].toFixed(1)} ${c[1][1].toFixed(1)} `
-           + `Q ${jitteredMidpoint(c[1], c[2], 10)} ${c[2][0].toFixed(1)} ${c[2][1].toFixed(1)} `
-           + `Q ${jitteredMidpoint(c[2], c[3], 12)} ${c[3][0].toFixed(1)} ${c[3][1].toFixed(1)} `
-           + `Q ${jitteredMidpoint(c[3], c[0], 14)} ${c[0][0].toFixed(1)} ${c[0][1].toFixed(1)} Z`;
-    }
-
-    if (t === 'ellipse') {
-      const { cx, cy, rx, ry } = geom as { cx: number; cy: number; rx: number; ry: number };
-      const N = 12;
-      const pts: [number, number][] = [];
-      for (let i = 0; i < N; i++) {
-        const angle = (i / N) * Math.PI * 2;
-        const dr = j(i * 2) * 0.4;            // radial jitter
-        const dx = j(i * 2 + 1) * 0.3;        // tangential jitter
-        pts.push([
-          cx + (rx + dr) * Math.cos(angle) + dx,
-          cy + (ry + dr) * Math.sin(angle) + j(i * 2 + N + 1) * 0.3,
-        ]);
-      }
-      const parts: string[] = [`M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`];
-      for (let i = 1; i <= N; i++) {
-        const cur = pts[i % N];
-        const prv = pts[(i - 1 + N) % N];
-        const cpx = ((prv[0] + cur[0]) / 2 + j(N * 3 + i * 2)).toFixed(1);
-        const cpy = ((prv[1] + cur[1]) / 2 + j(N * 3 + i * 2 + 1)).toFixed(1);
-        parts.push(`Q ${cpx} ${cpy} ${cur[0].toFixed(1)} ${cur[1].toFixed(1)}`);
-      }
-      parts.push('Z');
-      return parts.join(' ');
-    }
-
-    return '';
-  }
 
   /**
    * Converts a Rect/Ellipse/Line to a sketch-like Path (artist/cartoonist/doodle),
@@ -2187,152 +2022,6 @@ export class CanvasEngine {
    * The returned object copies the `_id` of the original so the merge engine
    * continues to track it as the same object.
    */
-  private tryConvertToSketch(
-    obj: FabricObject,
-    sloppiness: 'architect' | 'artist' | 'cartoonist' | 'doodle',
-  ): FabricObject | null {
-    if (!this.canvas) return null;
-
-    type Ext = {
-      _id?: string; _sloppiness?: string; _origGeom?: string;
-      _fillPattern?: string; _link?: string; _isArrow?: boolean; type?: string;
-    };
-    const oa = obj as FabricObject & Ext;
-
-    // Don't convert arrow groups, text, or eraser placeholders
-    if (oa._isArrow) return null;
-    const t = oa.type ?? '';
-    if (t === 'i-text' || t === 'text' || t === 'group' || t === 'eraser') return null;
-
-    // Fetch stored origGeom, or try to build it from the current shape
-    let geomStr = oa._origGeom ?? null;
-    if (!geomStr) geomStr = CanvasEngine.origGeomFromObj(obj);
-    if (!geomStr) return null; // pen paths etc – nothing to do
-
-    let geom: Record<string, unknown>;
-    try { geom = JSON.parse(geomStr) as Record<string, unknown>; }
-    catch { return null; }
-
-    const seed = CanvasEngine.seedFromId(oa._id ?? '');
-    const sw   = (obj.get('strokeWidth') as number) ?? 1;
-    const stroke = obj.get('stroke') as string ?? this.strokeColor;
-    const opacity       = (obj.get('opacity') as number) ?? 1;
-    const strokeDashArr = obj.get('strokeDashArray') as number[] | undefined;
-
-    // Resolve fill: if the current fill is a Pattern, recreate it from stored metadata
-    // to avoid casting a Pattern object to string (which would yield "[object Object]").
-    // Use the object's stored _fillColor (not the engine's current fillColor) so that
-    // switching sloppiness does not silently change the object's fill appearance.
-    const rawFill = obj.get('fill');
-    const fillIsPattern = rawFill instanceof Pattern ||
-      (rawFill !== null && typeof rawFill === 'object');
-    const objFillColor = (oa as FabricObject & { _fillColor?: string })._fillColor ?? this.fillColor;
-    const fillArg: string | Pattern = fillIsPattern
-      ? this.createFill(
-          (oa._fillPattern as 'filled' | 'striped' | 'crossed' | undefined) ?? 'filled',
-          objFillColor,
-        )
-      : (rawFill as string) ?? 'transparent';
-
-    // Capture source center BEFORE any canvas mutation so we can reposition the
-    // replacement at exactly the same visual location.
-    const srcCenter = obj.getCenterPoint();
-
-    const copyCustom = (dst: FabricObject) => {
-      const d = dst as FabricObject & Ext & { _fillColor?: string } & AttachmentProps;
-      d._id          = oa._id;
-      d._sloppiness  = sloppiness;
-      d._origGeom    = geomStr as string;
-      d._fillPattern = oa._fillPattern;
-      d._fillColor   = objFillColor;
-      d._link        = oa._link;
-      // Preserve connector attachment IDs and border-anchor offsets so sketch-path
-      // connectors continue following their attached shapes when shapes move.
-      const oaA = oa as FabricObject & Ext & AttachmentProps;
-      d._attachedFrom      = oaA._attachedFrom;
-      d._attachedTo        = oaA._attachedTo;
-      d._attachedFromAnchorX = oaA._attachedFromAnchorX;
-      d._attachedFromAnchorY = oaA._attachedFromAnchorY;
-      d._attachedToAnchorX   = oaA._attachedToAnchorX;
-      d._attachedToAnchorY   = oaA._attachedToAnchorY;
-    };
-
-    /** Position `newObj` so its visual center matches the source object's center. */
-    const applyCenter = (newObj: FabricObject) => {
-      newObj.set({ left: srcCenter.x, top: srcCenter.y, originX: 'center', originY: 'center' });
-      newObj.setCoords();
-    };
-
-    if (sloppiness === 'architect') {
-      // Restore the native Fabric.js shape from origGeom.
-      // Use stored DIMENSIONS but position at current srcCenter for correct placement
-      // even when the shape has been moved since it was first drawn.
-      const archOpts = this.getSloppinessOptions('architect');
-      const gt = geom.type as string;
-      let newObj: FabricObject;
-      if (gt === 'line') {
-        // For lines, restore from stored dx/dy relative to current center
-        const g = geom as { x1: number; y1: number; x2: number; y2: number };
-        const dx = (g.x2 - g.x1) / 2, dy = (g.y2 - g.y1) / 2;
-        newObj = new Line(
-          [srcCenter.x - dx, srcCenter.y - dy, srcCenter.x + dx, srcCenter.y + dy],
-          { stroke, strokeWidth: sw, fill: 'transparent', ...archOpts,
-            strokeDashArray: strokeDashArr, opacity, selectable: true, evented: true,
-            strokeUniform: true },
-        );
-      } else if (gt === 'rect') {
-        const g = geom as { width: number; height: number; rx: number };
-        newObj = new Rect({
-          width: g.width, height: g.height, rx: g.rx, ry: g.rx,
-          stroke, strokeWidth: sw, fill: fillArg,
-          ...archOpts, strokeDashArray: strokeDashArr,
-          opacity, selectable: true, evented: true, strokeUniform: true,
-        });
-        applyCenter(newObj);
-      } else if (gt === 'ellipse') {
-        const g = geom as { rx: number; ry: number };
-        newObj = new Ellipse({
-          rx: g.rx, ry: g.ry,
-          stroke, strokeWidth: sw, fill: fillArg,
-          ...archOpts, strokeDashArray: strokeDashArr,
-          opacity, selectable: true, evented: true, strokeUniform: true,
-        });
-        applyCenter(newObj);
-      } else {
-        return null;
-      }
-      copyCustom(newObj);
-      return newObj;
-    }
-
-    // artist / cartoonist / doodle → sketch path
-    const amp = CanvasEngine.sloppinessAmplitude(sloppiness, sw);
-    const d   = this.makeSketchyPath(geom, amp, seed);
-    if (!d) return null;
-
-    // doodle: draw a second pass with a different seed offset to create a
-    // characteristic "double-drawn with a pen" appearance.
-    let pathData = d;
-    if (sloppiness === 'doodle') {
-      const d2 = this.makeSketchyPath(geom, amp * 0.6, seed + 1000);
-      if (d2) pathData = `${d} ${d2}`;
-    }
-
-    const newPath = new Path(pathData, {
-      stroke, strokeWidth: sw, fill: fillArg,
-      strokeLineCap: 'round', strokeLineJoin: 'round',
-      strokeDashArray: strokeDashArr,
-      opacity, selectable: true, evented: true,
-      strokeUniform: true,
-    });
-    // Fabric auto-sets left/top to pathOffset (= center of path's bounding box).
-    // By switching to originX='center' and overriding left/top with the source
-    // center, we ensure the sketch path appears at the same position regardless of
-    // whether the shape was moved after it was drawn (fixes position-shift bug).
-    applyCenter(newPath);
-    copyCustom(newPath);
-    return newPath;
-  }
 
   private isGroupLike(obj: FabricObject): boolean {
     if ((obj as FabricObject & { _isArrow?: boolean })._isArrow) return false;
@@ -2381,7 +2070,7 @@ export class CanvasEngine {
   private stampOrigGeomAndSloppiness(obj: FabricObject): void {
     const ext = obj as FabricObject & { _sloppiness?: string; _origGeom?: string };
     if (!ext._origGeom) {
-      const g = CanvasEngine.origGeomFromObj(obj);
+      const g = SnappingManager.origGeomFromObj(obj);
       if (g) ext._origGeom = g;
     }
     ext._sloppiness = this.sloppiness;
@@ -2505,7 +2194,7 @@ export class CanvasEngine {
    * never fires _discardActiveObject() and the _currentTransform (drag state)
    * is preserved.
    */
-  private rebuildArrowGroupInPlace(
+  public rebuildArrowGroupInPlace(
     grp: FabricObject,
     x1: number, y1: number, x2: number, y2: number,
   ): void {
@@ -2610,7 +2299,7 @@ export class CanvasEngine {
     sp._origGeom = JSON.stringify({ type: 'line', x1, y1, x2, y2 });
 
     const sloppiness = (sp._sloppiness as 'architect' | 'artist' | 'cartoonist') ?? 'artist';
-    const rebuilt = this.tryConvertToSketch(pathObj, sloppiness);
+    const rebuilt = this.snappingManager.tryConvertToSketch(pathObj, sloppiness);
 
     // tryConvertToSketch returns a Path for artist/cartoonist/doodle sloppiness.
     // For architect it would return a Line, which cannot be merged into the existing
@@ -2737,13 +2426,13 @@ export class CanvasEngine {
     return da[0] <= (da[1] ?? 0) ? 'dotted' : 'dashed';
   }
 
-  private getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
+  public getSloppinessOptions(type: 'architect' | 'artist' | 'cartoonist' | 'doodle'): { strokeLineCap: 'butt' | 'round'; strokeLineJoin: 'miter' | 'round' } {
     if (type === 'architect') return { strokeLineCap: 'butt', strokeLineJoin: 'miter' };
     // artist, cartoonist, and doodle all use rounded joins
     return { strokeLineCap: 'round', strokeLineJoin: 'round' };
   }
 
-  private createFill(type: 'filled' | 'striped' | 'crossed', color: string): string | Pattern {
+  public createFill(type: 'filled' | 'striped' | 'crossed', color: string): string | Pattern {
     if (type === 'filled') return color;
     // Create a small canvas as the pattern tile
     if (typeof document === 'undefined') return color; // SSR guard
@@ -2779,7 +2468,7 @@ export class CanvasEngine {
    * so that, when the shape is later moved, the connector endpoint tracks the same
    * relative border position rather than always jumping to the center.
    */
-  private snapLineAttachment(line: FabricObject): void {
+  public snapLineAttachment(line: FabricObject): void {
     if (!this.canvas) return;
     if (!(line instanceof Line)) return;
     const SNAP_RADIUS = 30;
@@ -2871,361 +2560,6 @@ export class CanvasEngine {
    * half-delta stored in `_origGeom`, then runs the same snap logic and rebuilds
    * via `rebuildSketchPathForMove` if any endpoint snaps.
    */
-
-  private reSnapLine(tl: AnchoredLine): void {
-    tl._attachedFrom = undefined;
-    tl._attachedTo = undefined;
-    tl._attachedFromAnchorX = undefined;
-    tl._attachedFromAnchorY = undefined;
-    tl._attachedToAnchorX = undefined;
-    tl._attachedToAnchorY = undefined;
-    this.snapLineAttachment(tl);
-  }
-
-  private reSnapArrowGroup(ag: AnchoredArrowGroup, SNAP_RADIUS: number): void {
-    if (this._attachmentRafId !== null) {
-      cancelAnimationFrame(this._attachmentRafId);
-      this._attachmentRafId = null;
-      this._attachmentRafTarget = null;
-    }
-
-    const newCenter = ag.getCenterPoint();
-    const dx = newCenter.x - (ag._gcx ?? newCenter.x);
-    const dy = newCenter.y - (ag._gcy ?? newCenter.y);
-    const x1 = (ag._x1 ?? 0) + dx;
-    const y1 = (ag._y1 ?? 0) + dy;
-    const x2 = (ag._x2 ?? 0) + dx;
-    const y2 = (ag._y2 ?? 0) + dy;
-
-    ag._attachedFrom = undefined;
-    ag._attachedTo = undefined;
-    ag._attachedFromAnchorX = undefined;
-    ag._attachedFromAnchorY = undefined;
-    ag._attachedToAnchorX = undefined;
-    ag._attachedToAnchorY = undefined;
-
-    const shapes = this.canvas!.getObjects().filter(
-      (o) => o !== ag && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
-    );
-
-    let snapX1 = x1, snapY1 = y1, snapX2 = x2, snapY2 = y2;
-    let didSnap = false;
-    let fromDist = Infinity, toDist = Infinity;
-
-    for (const shape of shapes) {
-      const center = shape.getCenterPoint();
-      const id = (shape as FabricObject & { _id?: string })._id;
-      if (!id) continue;
-      const w = ((shape.get('width') as number) ?? 0) * ((shape.get('scaleX') as number) ?? 1);
-      const h = ((shape.get('height') as number) ?? 0) * ((shape.get('scaleY') as number) ?? 1);
-      const bLeft = center.x - w / 2;
-      const bRight = center.x + w / 2;
-      const bTop = center.y - h / 2;
-      const bBottom = center.y + h / 2;
-      const distToBox = (px: number, py: number): number => {
-        const clampedX = Math.max(bLeft, Math.min(bRight, px));
-        const clampedY = Math.max(bTop, Math.min(bBottom, py));
-        return Math.hypot(px - clampedX, py - clampedY);
-      };
-      const d1 = distToBox(x1, y1);
-      if (d1 < SNAP_RADIUS && d1 < fromDist) {
-        const anchor = nearestPointOnBounds(x1, y1, bLeft, bTop, bRight, bBottom);
-        ag._attachedFrom = id;
-        ag._attachedFromAnchorX = anchor.x - center.x;
-        ag._attachedFromAnchorY = anchor.y - center.y;
-        snapX1 = anchor.x;
-        snapY1 = anchor.y;
-        fromDist = d1;
-        didSnap = true;
-      }
-      const d2 = distToBox(x2, y2);
-      if (d2 < SNAP_RADIUS && d2 < toDist) {
-        const anchor = nearestPointOnBounds(x2, y2, bLeft, bTop, bRight, bBottom);
-        ag._attachedTo = id;
-        ag._attachedToAnchorX = anchor.x - center.x;
-        ag._attachedToAnchorY = anchor.y - center.y;
-        snapX2 = anchor.x;
-        snapY2 = anchor.y;
-        toDist = d2;
-        didSnap = true;
-      }
-    }
-
-    ag._x1 = snapX1;
-    ag._y1 = snapY1;
-    ag._x2 = snapX2;
-    ag._y2 = snapY2;
-
-    if (didSnap) {
-      if (this._attachmentRafId !== null) {
-        cancelAnimationFrame(this._attachmentRafId);
-        this._attachmentRafId = null;
-        this._attachmentRafTarget = null;
-      }
-      this.rebuildArrowGroupInPlace(ag, snapX1, snapY1, snapX2, snapY2);
-    } else {
-      ag._gcx = newCenter.x;
-      ag._gcy = newCenter.y;
-    }
-  }
-
-  private reSnapSketchPath(sp: AnchoredLine & { _origGeom?: string; _sloppiness?: string; type?: string }, SNAP_RADIUS_SP: number): void {
-    let geom: { type: string; x1: number; y1: number; x2: number; y2: number };
-    try { geom = JSON.parse(sp._origGeom ?? '') as typeof geom; } catch { return; }
-    if (geom.type !== 'line') return;
-
-    if (this._attachmentRafId !== null) {
-      cancelAnimationFrame(this._attachmentRafId);
-      this._attachmentRafId = null;
-      this._attachmentRafTarget = null;
-    }
-
-    const pathCenter = sp.getCenterPoint();
-    const halfDx = (geom.x2 - geom.x1) / 2;
-    const halfDy = (geom.y2 - geom.y1) / 2;
-    const x1sp = pathCenter.x - halfDx;
-    const y1sp = pathCenter.y - halfDy;
-    const x2sp = pathCenter.x + halfDx;
-    const y2sp = pathCenter.y + halfDy;
-
-    sp._attachedFrom = undefined;
-    sp._attachedTo = undefined;
-    sp._attachedFromAnchorX = undefined;
-    sp._attachedFromAnchorY = undefined;
-    sp._attachedToAnchorX = undefined;
-    sp._attachedToAnchorY = undefined;
-
-    const spShapes = this.canvas!.getObjects().filter(
-      (o) => o !== sp && !(o instanceof Line) && !(o as FabricObject & { _isArrow?: boolean })._isArrow,
-    );
-
-    let snapX1sp = x1sp, snapY1sp = y1sp, snapX2sp = x2sp, snapY2sp = y2sp;
-    let didSnapSp = false;
-    let fromDistSp = Infinity, toDistSp = Infinity;
-
-    for (const shape of spShapes) {
-      const center = shape.getCenterPoint();
-      const id = (shape as FabricObject & { _id?: string })._id;
-      if (!id) continue;
-      const w = ((shape.get('width') as number) ?? 0) * ((shape.get('scaleX') as number) ?? 1);
-      const h = ((shape.get('height') as number) ?? 0) * ((shape.get('scaleY') as number) ?? 1);
-      const bLeft = center.x - w / 2;
-      const bRight = center.x + w / 2;
-      const bTop = center.y - h / 2;
-      const bBottom = center.y + h / 2;
-      const distToBox = (px: number, py: number): number => {
-        const clampedX = Math.max(bLeft, Math.min(bRight, px));
-        const clampedY = Math.max(bTop, Math.min(bBottom, py));
-        return Math.hypot(px - clampedX, py - clampedY);
-      };
-      const d1 = distToBox(x1sp, y1sp);
-      if (d1 < SNAP_RADIUS_SP && d1 < fromDistSp) {
-        const anchor = nearestPointOnBounds(x1sp, y1sp, bLeft, bTop, bRight, bBottom);
-        sp._attachedFrom = id;
-        sp._attachedFromAnchorX = anchor.x - center.x;
-        sp._attachedFromAnchorY = anchor.y - center.y;
-        snapX1sp = anchor.x;
-        snapY1sp = anchor.y;
-        fromDistSp = d1;
-        didSnapSp = true;
-      }
-      const d2 = distToBox(x2sp, y2sp);
-      if (d2 < SNAP_RADIUS_SP && d2 < toDistSp) {
-        const anchor = nearestPointOnBounds(x2sp, y2sp, bLeft, bTop, bRight, bBottom);
-        sp._attachedTo = id;
-        sp._attachedToAnchorX = anchor.x - center.x;
-        sp._attachedToAnchorY = anchor.y - center.y;
-        snapX2sp = anchor.x;
-        snapY2sp = anchor.y;
-        toDistSp = d2;
-        didSnapSp = true;
-      }
-    }
-
-    if (didSnapSp) {
-      if (this._attachmentRafId !== null) {
-        cancelAnimationFrame(this._attachmentRafId);
-        this._attachmentRafId = null;
-        this._attachmentRafTarget = null;
-      }
-      const wasActive = this.canvas!.getActiveObject() === sp;
-      const spId = (sp as FabricObject & { _id?: string })._id;
-      const rebuilt = this.rebuildSketchPathForMove(sp, snapX1sp, snapY1sp, snapX2sp, snapY2sp);
-      if (wasActive && spId && rebuilt) {
-        this.canvas!.setActiveObject(rebuilt);
-      }
-    }
-  }
-
-  private reSnapOnModified(obj: FabricObject): void {
-    if (!this.canvas) return;
-
-    // Cancel any pending rAF from object:moving so it doesn't fire with a stale reference
-    if (this._attachmentRafId !== null) {
-      cancelAnimationFrame(this._attachmentRafId);
-      this._attachmentRafId = null;
-      this._attachmentRafTarget = null;
-    }
-
-    if (obj instanceof Line) {
-      this.reSnapLine(obj as AnchoredLine);
-      return;
-    }
-
-    const ag = obj as AnchoredArrowGroup;
-    if (ag._isArrow) {
-      this.reSnapArrowGroup(ag, 30);
-      return;
-    }
-
-    const sp = obj as AnchoredLine & { _origGeom?: string; _sloppiness?: string; type?: string };
-    if (sp.type === 'path' && sp._origGeom) {
-      this.reSnapSketchPath(sp, 30);
-    }
-  }
-
-
-
-
-  /**
-   * Schedule a connector-follow update for `movedObj` on the next animation frame.
-   * If a frame is already pending the new target simply overwrites the old one so
-   * that the work done per frame stays constant regardless of mousemove frequency.
-   */
-  private scheduleAttachmentUpdate(movedObj: FabricObject): void {
-    this._attachmentRafTarget = movedObj;
-    if (this._attachmentRafId !== null) return; // frame already queued
-    this._attachmentRafId = requestAnimationFrame(() => {
-      this._attachmentRafId = null;
-      const target = this._attachmentRafTarget;
-      this._attachmentRafTarget = null;
-      if (target) this.updateAttachedLines(target);
-    });
-  }
-
-  /** When a shape is moved, update the endpoints of any Line or arrow Group attached to it. */
-  private updateAttachedLines(movedObj: FabricObject): void {    if (!this.canvas) return;
-    const id = (movedObj as FabricObject & { _id?: string })._id;
-    if (!id) return;
-    const center = movedObj.getCenterPoint();
-    let changed = false;
-
-    // Collect arrow groups and sketch paths that need rebuilding so we don't modify
-    // the objects list while iterating over it.
-    const arrowsToRebuild: Array<{ grp: FabricObject; x1: number; y1: number; x2: number; y2: number }> = [];
-    const sketchesToRebuild: Array<{ sp: FabricObject; x1: number; y1: number; x2: number; y2: number }> = [];
-
-    for (const obj of this.canvas.getObjects()) {
-      if (obj instanceof Line) {
-        const attached = obj as AnchoredLine;
-        if (attached._attachedFrom === id) {
-          attached.set({
-            x1: center.x + (attached._attachedFromAnchorX ?? 0),
-            y1: center.y + (attached._attachedFromAnchorY ?? 0),
-          });
-          attached.setCoords();
-          changed = true;
-        }
-        if (attached._attachedTo === id) {
-          attached.set({
-            x2: center.x + (attached._attachedToAnchorX ?? 0),
-            y2: center.y + (attached._attachedToAnchorY ?? 0),
-          });
-          attached.setCoords();
-          changed = true;
-        }
-      } else {
-        const ag = obj as AnchoredArrowGroup;
-        if (ag._isArrow) {
-          let x1 = ag._x1 ?? 0;
-          let y1 = ag._y1 ?? 0;
-          let x2 = ag._x2 ?? 0;
-          let y2 = ag._y2 ?? 0;
-          let needsRebuild = false;
-          if (ag._attachedFrom === id) {
-            x1 = center.x + (ag._attachedFromAnchorX ?? 0);
-            y1 = center.y + (ag._attachedFromAnchorY ?? 0);
-            needsRebuild = true;
-          }
-          if (ag._attachedTo === id) {
-            x2 = center.x + (ag._attachedToAnchorX ?? 0);
-            y2 = center.y + (ag._attachedToAnchorY ?? 0);
-            needsRebuild = true;
-          }
-          if (needsRebuild) {
-            arrowsToRebuild.push({ grp: obj, x1, y1, x2, y2 });
-            changed = true;
-          }
-        } else {
-          // Handle sketch-path connectors (artist/cartoonist lines stored as Path objects).
-          const sp = obj as AnchoredLine & { _origGeom?: string; _sloppiness?: string; type?: string };
-          if (sp.type !== 'path' || !sp._origGeom) continue;
-          if (sp._attachedFrom !== id && sp._attachedTo !== id) continue;
-          let geom: { type: string; x1: number; y1: number; x2: number; y2: number };
-          try { geom = JSON.parse(sp._origGeom) as typeof geom; }
-          catch { continue; }
-          if (geom.type !== 'line') continue;
-          let { x1, y1, x2, y2 } = geom;
-          if (sp._attachedFrom === id) {
-            x1 = center.x + (sp._attachedFromAnchorX ?? 0);
-            y1 = center.y + (sp._attachedFromAnchorY ?? 0);
-          }
-          if (sp._attachedTo === id) {
-            x2 = center.x + (sp._attachedToAnchorX ?? 0);
-            y2 = center.y + (sp._attachedToAnchorY ?? 0);
-          }
-          sketchesToRebuild.push({ sp: obj, x1, y1, x2, y2 });
-          changed = true;
-        }
-      }
-    }
-
-    for (const { grp, x1, y1, x2, y2 } of arrowsToRebuild) {
-      this.rebuildArrowGroupInPlace(grp, x1, y1, x2, y2);
-    }
-    for (const { sp, x1, y1, x2, y2 } of sketchesToRebuild) {
-      this.rebuildSketchPathForMove(sp, x1, y1, x2, y2);
-    }
-
-    if (changed) {
-      this.canvas.requestRenderAll();
-      this.markDirty();
-      this.onBroadcastDraw(false); // throttled — endpoint moves are frequent
-    }
-  }
-
-  /**
-   * Rebuild a sketch-path connector (artist/cartoonist Line stored as a Path) with
-   * updated endpoint coordinates when an attached shape is moved.
-   * Updates `_origGeom` on the existing Path, regenerates it via `tryConvertToSketch`,
-   * and replaces it on the canvas without disturbing the active selection.
-   */
-  public rebuildSketchPathForMove(
-    pathObj: FabricObject,
-    x1: number, y1: number, x2: number, y2: number,
-  ): FabricObject | null {
-    const sp = pathObj as AnchoredLine & { _origGeom?: string; _sloppiness?: string };
-    sp._origGeom = JSON.stringify({ type: 'line', x1, y1, x2, y2 });
-
-    const sloppiness = (sp._sloppiness as 'architect' | 'artist' | 'cartoonist') ?? 'artist';
-    const rebuilt = this.tryConvertToSketch(pathObj, sloppiness);
-    if (!rebuilt) return null;
-
-    rebuilt.set({
-      left: (x1 + x2) / 2,
-      top: (y1 + y2) / 2,
-      originX: 'center', originY: 'center',
-    });
-    rebuilt.setCoords();
-
-    const prevActive = this.canvas?.getActiveObject();
-    this.canvas?.remove(pathObj);
-    this.canvas?.add(rebuilt);
-    if (prevActive && prevActive !== pathObj) {
-      this.canvas?.setActiveObject(prevActive);
-    }
-    return rebuilt;
-  }
 
   /** Sync the toolbar and properties panel UI to the currently selected object. */
   public syncPropertiesPanelToSelection(): void {
