@@ -172,8 +172,8 @@
     },
     "members": {
       "title": "Room Members",
-      "loading": "Loading members…",
-      "empty": "No explicit members yet — anyone with the link can join.",
+      "loading": "Loading members\u2026",
+      "empty": "No explicit members yet \u2014 anyone with the link can join.",
       "roleFor": "Role for {name}",
       "close": "Close"
     }
@@ -317,7 +317,13 @@
       "forgotPassword": "Forgot password?",
       "noAccount": "Don't have an account?",
       "createOne": "Create one",
-      "invalidCredentials": "Invalid email or password."
+      "invalidCredentials": "Invalid email or password.",
+      "twoFactorLabel": "2FA Code",
+      "verifying": "Verifying...",
+      "verify": "Verify",
+      "twoFactorTitle": "Two-Factor Verification",
+      "twoFactorSubtitle": "Enter the code sent to your email",
+      "invalid2faCode": "Invalid verification code."
     },
     "register": {
       "title": "Create your account",

@@ -41,6 +41,10 @@ const RATE_LIMITED_PATHS = new Set([
   "/api/auth/signin",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
+  // Credentials sign-in (password + 2FA code) and the 2FA endpoints: a 6-digit code must not be guessable.
+  "/api/auth/callback/credentials",
+  "/api/auth/2fa/enable",
+  "/api/auth/2fa/verify",
 ]);
 
 // P093 – room-unlock is a dynamic route (roomId is a path segment, not a
@@ -237,6 +241,9 @@ export const config = {
     "/api/auth/signin",
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
+    "/api/auth/callback/credentials",
+    "/api/auth/2fa/enable",
+    "/api/auth/2fa/verify",
     "/api/rooms/:roomId/unlock",
   ],
 };

@@ -123,6 +123,45 @@ describe('useSignIn', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
+  it('handles 2FA required response', async () => {
+    (signIn as any).mockResolvedValue({ error: 'CredentialsSignin', code: '2FA_REQUIRED' });
+    const { result } = renderHook(() => useSignIn());
+
+    act(() => {
+      result.current.setEmail('test@example.com');
+      result.current.setPassword('password123');
+    });
+
+    const preventDefault = vi.fn();
+    const event = { preventDefault } as any;
+
+    await act(async () => {
+      await result.current.handleSubmit(event);
+    });
+
+    expect(result.current.show2fa).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('handles 2FA invalid code response', async () => {
+    (signIn as any).mockResolvedValue({ error: 'CredentialsSignin', code: 'INVALID_2FA_CODE' });
+    const { result } = renderHook(() => useSignIn());
+
+    act(() => {
+      result.current.setEmail('test@example.com');
+      result.current.setPassword('password123');
+    });
+
+    const preventDefault = vi.fn();
+    const event = { preventDefault } as any;
+
+    await act(async () => {
+      await result.current.handleSubmit(event);
+    });
+
+    expect(result.current.error).toBe('translated_auth.signIn.invalid2faCode');
+  });
+
   it('handles github sign in', async () => {
     const { result } = renderHook(() => useSignIn());
 

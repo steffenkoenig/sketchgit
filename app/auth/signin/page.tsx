@@ -122,6 +122,49 @@ function AuthFooter({ callbackUrl }: { callbackUrl: string }) {
   );
 }
 
+type TwoFactorFormProps = {
+  code: string;
+  setCode: (code: string) => void;
+  error: string | null;
+  loading: boolean;
+  handleSubmit: (e: FormEvent) => void;
+};
+
+function TwoFactorForm({
+  code,
+  setCode,
+  error,
+  loading,
+  handleSubmit,
+}: TwoFactorFormProps) {
+  const t = useTranslations();
+  return (
+    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      {error && (
+        <p className="auth-error">{error}</p>
+      )}
+
+      <div>
+        <label className="auth-label" htmlFor="code">{t("auth.signIn.twoFactorLabel") ?? "2FA Code"}</label>
+        <input
+          id="code"
+          type="text"
+          autoComplete="one-time-code"
+          required
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          className="auth-input"
+          placeholder="123456"
+        />
+      </div>
+
+      <button type="submit" disabled={loading} className="auth-btn">
+        {loading ? (t("auth.signIn.verifying") ?? "Verifying...") : (t("auth.signIn.verify") ?? "Verify")}
+      </button>
+    </form>
+  );
+}
+
 function SignInForm() {
   const t = useTranslations();
   const {
@@ -129,12 +172,36 @@ function SignInForm() {
     setEmail,
     password,
     setPassword,
+    code,
+    setCode,
+    show2fa,
     error,
     loading,
     callbackUrl,
     handleSubmit,
     handleGitHub,
   } = useSignIn();
+
+  if (show2fa) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <div style={{ textAlign: "center", marginBottom: "20px" }}>
+            <div className="auth-logo-badge" aria-hidden="true">🔒</div>
+            <h1 style={{ marginTop: "10px" }}>{t("auth.signIn.twoFactorTitle") ?? "Two-Factor Verification"}</h1>
+            <p className="auth-subtitle">{t("auth.signIn.twoFactorSubtitle") ?? "Enter the code sent to your email"}</p>
+          </div>
+          <TwoFactorForm
+            code={code}
+            setCode={setCode}
+            error={error}
+            loading={loading}
+            handleSubmit={handleSubmit}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-page">

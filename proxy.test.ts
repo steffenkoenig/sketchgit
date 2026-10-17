@@ -82,6 +82,21 @@ describe('proxy.ts', () => {
     });
   });
 
+  describe('Rate limiting of the 2FA code guesses', () => {
+    it.each([
+      '/api/auth/callback/credentials',
+      '/api/auth/2fa/verify',
+      '/api/auth/2fa/enable',
+    ])('limits %s per client', async (pathname) => {
+      const req = createMockReq(pathname, '10.9.8.7');
+      let response: any;
+      for (let i = 0; i < 15; i++) {
+        response = await proxyMiddleware(req, {} as any);
+      }
+      expect(response.options.status).toBe(429);
+    });
+  });
+
   describe('Rate Limiting Error Paths (fail-open)', () => {
     it('should fail-open and return next() when redis.eval throws an exception', async () => {
       vi.mocked(getRedisClient).mockReturnValue({

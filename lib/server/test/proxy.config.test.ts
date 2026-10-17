@@ -34,6 +34,10 @@ describe('Proxy Config', () => {
     expect(config.matcher).toContain('/api/auth/reset-password');
     // P093 – room-unlock rate limiting
     expect(config.matcher).toContain('/api/rooms/:roomId/unlock');
-    expect(config.matcher.length).toBe(6);
+    // 2FA: credentials sign-in and the 2FA endpoints are rate-limited too
+    expect(config.matcher).toContain('/api/auth/callback/credentials');
+    expect(config.matcher).toContain('/api/auth/2fa/enable');
+    expect(config.matcher).toContain('/api/auth/2fa/verify');
+    expect(config.matcher.length).toBe(9);
   });
 });

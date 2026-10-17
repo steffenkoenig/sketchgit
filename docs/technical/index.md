@@ -11,3 +11,7 @@
 ## Canvas Context Menus (Milestone 1.2)
 - **Implementation:** Integrated a native DOM `contextmenu` event listener to `#canvas-wrap` within `CanvasEngine`. It intercepts the event, prevents the default browser context menu, and determines what actions are applicable based on `this.canvas.getActiveObjects()`. It dispatches a custom `sketchgit-context-menu` window event with client coordinates and context state variables (`hasSelection`, `canGroup`, `canUngroup`).
 - **UI Architecture:** `<ContextMenu />` is rendered dynamically as a React portal overlay above the canvas container using `position: fixed`. It listens to the window event, sets its active coordinates, and relies on `call()` to communicate canvas manipulation intent back to the `CanvasEngine`. Scrolling, keypresses (Escape), or outside clicks close the menu seamlessly.
+
+## Two-Factor Authentication (Milestone 2.0)
+- **Implementation:** Integrated an email-based Two-Factor Authentication (2FA) flow into the existing NextAuth v5 credentials provider. A custom `CredentialsSignin` subclass is thrown to propagate the `2FA_REQUIRED` state to the client without exposing raw error strings, which are sanitized by default in NextAuth v5.
+- **Verification:** OTP tokens are generated using `node:crypto`'s `randomInt` for CSPRNG security and are stored with a 10-minute expiry. They are verified seamlessly within the `authorize` callback if the `code` field is provided in the credentials payload.
