@@ -78,7 +78,7 @@
     "alignBottom": "Unten ausrichten",
     "noSelection": "Keine Auswahl",
     "saveAsTemplate": "Als Vorlage speichern",
-    "delete": "Löschen"
+    "delete": "L\u00f6schen"
   },
   "topbar": {
     "collab": "Zusammenarbeit",
@@ -172,10 +172,10 @@
     },
     "members": {
       "title": "Raummitglieder",
-      "loading": "Mitglieder werden geladen…",
-      "empty": "Noch keine expliziten Mitglieder — jeder mit dem Link kann beitreten.",
-      "roleFor": "Rolle für {name}",
-      "close": "Schließen"
+      "loading": "Mitglieder werden geladen\u2026",
+      "empty": "Noch keine expliziten Mitglieder \u2014 jeder mit dem Link kann beitreten.",
+      "roleFor": "Rolle f\u00fcr {name}",
+      "close": "Schlie\u00dfen"
     }
   },
   "collab": {
@@ -291,9 +291,9 @@
     "SHARE_LINK_EXHAUSTED": "Dieser Freigabe-Link hat sein Nutzungslimit erreicht.",
     "SHARE_LINK_INVALID": "Dieser Freigabe-Link ist ung\u00fcltig oder wurde widerrufen.",
     "SHARE_LINK_FORBIDDEN": "Ihr Freigabe-Link erlaubt diese Aktion nicht.",
-    "ROOM_PASSWORD_REQUIRED": "Dieser Raum ist passwortgeschützt.",
+    "ROOM_PASSWORD_REQUIRED": "Dieser Raum ist passwortgesch\u00fctzt.",
     "ROOM_PASSWORD_INCORRECT": "Falsches Passwort. Bitte versuchen Sie es erneut.",
-    "ROOM_NOT_PASSWORD_PROTECTED": "Dieser Raum ist nicht passwortgeschützt.",
+    "ROOM_NOT_PASSWORD_PROTECTED": "Dieser Raum ist nicht passwortgesch\u00fctzt.",
     "renderError": "Ein Fehler ist beim Rendern der Seite aufgetreten.",
     "canvasError": "Zeichenfl\u00e4chenfehler \u2014 klicken, um es erneut zu versuchen.",
     "timelineError": "Zeitleistenfehler",
@@ -317,7 +317,13 @@
       "forgotPassword": "Passwort vergessen?",
       "noAccount": "Noch kein Konto?",
       "createOne": "Konto erstellen",
-      "invalidCredentials": "Ung\u00fcltige E-Mail-Adresse oder Passwort."
+      "invalidCredentials": "Ung\u00fcltige E-Mail-Adresse oder Passwort.",
+      "twoFactorLabel": "2FA-Code",
+      "verifying": "\u00dcberpr\u00fcfung...",
+      "verify": "\u00dcberpr\u00fcfen",
+      "twoFactorTitle": "Zwei-Faktor-Authentifizierung",
+      "twoFactorSubtitle": "Geben Sie den an Ihre E-Mail gesendeten Code ein",
+      "invalid2faCode": "Ung\u00fcltiger Best\u00e4tigungscode."
     },
     "register": {
       "title": "Konto erstellen",

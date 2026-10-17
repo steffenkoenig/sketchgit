@@ -7,13 +7,14 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserRooms, getUserSubscriptions, type RoomSummary } from "@/lib/db/roomRepository";
-import { userHasPassword } from "@/lib/db/userRepository";
+import { userHasPassword, getTwoFactorStatus } from "@/lib/db/userRepository";
 import { getAuthSession } from "@/lib/authTypes";
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { DeleteAccountButton } from "@/components/auth/DeleteAccountButton";
 import { RenameRoomButton } from "@/components/dashboard/RenameRoomButton";
 import { SubscriptionsList } from "@/components/dashboard/SubscriptionsList";
+import { TwoFactorSettings } from "@/components/dashboard/TwoFactorSettings";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -30,6 +31,8 @@ export default async function DashboardPage() {
   // P041: Check if the user has a credentials password to conditionally require
   // password re-entry in the delete confirmation dialog.
   const hasPassword = await userHasPassword(userId);
+
+  const is2faEnabled = await getTwoFactorStatus(userId);
 
   // P094 – room activity email subscriptions
   const subscriptions = await getUserSubscriptions(userId);
@@ -63,6 +66,10 @@ export default async function DashboardPage() {
           frequency: s.frequency,
         }))}
       />
+
+      <div className="max-w-4xl mx-auto px-6 pb-10">
+        <TwoFactorSettings initialEnabled={is2faEnabled} />
+      </div>
     </div>
   );
 }
