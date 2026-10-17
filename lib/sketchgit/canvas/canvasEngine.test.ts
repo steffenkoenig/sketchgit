@@ -140,6 +140,7 @@ vi.mock('fabric', () => ({
 
 import { Canvas, Rect, Ellipse, Line, Path, Polyline, IText, Polygon, Group, FabricObject, util } from 'fabric';
 import { CanvasEngine } from './canvasEngine';
+import { SnappingManager } from './snappingLogic';
 import { nearestPointOnBounds } from './snapEngine';
 
 
@@ -1739,15 +1740,15 @@ describe('CanvasEngine – sloppiness for all shapes', () => {
 
 describe('CanvasEngine – sketch path helpers', () => {
   it('seedFromId returns a stable non-negative integer', () => {
-    const eng = (CanvasEngine as unknown as Record<string, unknown>);
-    const fn = eng.seedFromId as (id: string) => number;
+
+    const fn = SnappingManager.seedFromId as (id: string) => number;
     expect(fn('obj_abc123')).toBe(fn('obj_abc123'));
     expect(fn('obj_abc123')).toBeGreaterThanOrEqual(0);
   });
 
   it('sloppinessAmplitude: 0 for architect, positive for artist, larger for cartoonist, between artist and cartoonist for doodle', () => {
-    const eng = (CanvasEngine as unknown as Record<string, unknown>);
-    const fn = eng.sloppinessAmplitude as (s: string, sw: number) => number;
+
+    const fn = SnappingManager.sloppinessAmplitude as (s: string, sw: number) => number;
     expect(fn('architect', 2)).toBe(0);
     expect(fn('artist', 2)).toBeGreaterThan(0);
     expect(fn('doodle', 2)).toBeGreaterThan(fn('artist', 2));
@@ -1755,9 +1756,9 @@ describe('CanvasEngine – sketch path helpers', () => {
   });
 
   it('makeSketchyPath: rounded rect path contains Q commands and closes', () => {
-    const _eng = (CanvasEngine as unknown as Record<string, unknown>);
+    const _eng = (SnappingManager as unknown as Record<string, unknown>);
     const engine = new CanvasEngine(vi.fn(), vi.fn());
-    const makeSketchyPath = (engine as unknown as Record<string, unknown>).makeSketchyPath as
+    const makeSketchyPath = (engine.snappingManager as unknown as Record<string, unknown>).makeSketchyPath as
       (geom: Record<string, unknown>, amp: number, seed: number) => string;
     const geom = { type: 'rect', left: 10, top: 10, width: 100, height: 80, rx: 12 };
     const path = makeSketchyPath.call(engine, geom, 3, 42);
@@ -1768,7 +1769,7 @@ describe('CanvasEngine – sketch path helpers', () => {
 
   it('makeSketchyPath: sharp rect path (rx=0) uses only Q commands to connect corners', () => {
     const engine = new CanvasEngine(vi.fn(), vi.fn());
-    const makeSketchyPath = (engine as unknown as Record<string, unknown>).makeSketchyPath as
+    const makeSketchyPath = (engine.snappingManager as unknown as Record<string, unknown>).makeSketchyPath as
       (geom: Record<string, unknown>, amp: number, seed: number) => string;
     const geom = { type: 'rect', left: 10, top: 10, width: 100, height: 80, rx: 0 };
     const path = makeSketchyPath.call(engine, geom, 3, 42);
@@ -2241,10 +2242,7 @@ describe('CanvasEngine – connector snapping and following', () => {
     });
 
     mockCanvasInstance.add.mockClear();
-    const eng = engine as unknown as {
-      tryConvertToSketch: (obj: unknown, sloppiness: string) => unknown;
-    };
-    const result = eng.tryConvertToSketch(lineObj, 'artist') as Record<string, unknown> | null;
+    const result = engine.snappingManager.tryConvertToSketch(lineObj as unknown as any, 'artist') as Record<string, unknown> | null;
 
     expect(result).not.toBeNull();
     expect(result?._attachedFrom).toBe('shape-A');
@@ -2308,10 +2306,7 @@ describe('CanvasEngine – connector snapping and following', () => {
     mockCanvasInstance.remove.mockClear();
     (Path as unknown as ReturnType<typeof vi.fn>).mockClear();
 
-    const eng = engine as unknown as {
-      rebuildSketchPathForMove: (p: unknown, x1: number, y1: number, x2: number, y2: number) => FabricObject | null;
-    };
-    eng.rebuildSketchPathForMove(sketchPath, 10, 20, 80, 90);
+    engine.snappingManager.rebuildSketchPathForMove(sketchPath as unknown as any, 10, 20, 80, 90);
 
     // Old path removed, new one added.
     expect(mockCanvasInstance.remove).toHaveBeenCalledWith(sketchPath);
