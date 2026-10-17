@@ -124,7 +124,7 @@ describe('useSignIn', () => {
   });
 
   it('handles 2FA required response', async () => {
-    (signIn as any).mockResolvedValue({ error: '2FA_REQUIRED' });
+    (signIn as any).mockResolvedValue({ error: 'CredentialsSignin', code: '2FA_REQUIRED' });
     const { result } = renderHook(() => useSignIn());
 
     act(() => {
@@ -144,7 +144,7 @@ describe('useSignIn', () => {
   });
 
   it('handles 2FA invalid code response', async () => {
-    (signIn as any).mockResolvedValue({ error: 'INVALID_2FA_CODE' });
+    (signIn as any).mockResolvedValue({ error: 'CredentialsSignin', code: 'INVALID_2FA_CODE' });
     const { result } = renderHook(() => useSignIn());
 
     act(() => {

@@ -12,7 +12,7 @@ export function useSignIn() {
     ? rawCallbackUrl
     : "/";
 
-    const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [show2fa, setShow2fa] = useState(false);
@@ -35,11 +35,13 @@ export function useSignIn() {
     setLoading(false);
 
     if (result?.error) {
-      // Check for Custom Auth.js Error Strings
-      if (result.error.includes("2FA_REQUIRED")) {
+      // Auth.js v5 reports `error: "CredentialsSignin"` and puts the custom error class' `code` into
+      // `result.code`, so check both.
+      const reason = `${result.code ?? ""} ${result.error}`;
+      if (reason.includes("2FA_REQUIRED")) {
         setShow2fa(true);
         setError(null);
-      } else if (result.error.includes("INVALID_2FA_CODE")) {
+      } else if (reason.includes("INVALID_2FA_CODE")) {
         setError(t("auth.signIn.invalid2faCode") ?? "Invalid verification code.");
       } else {
         setError(t("auth.signIn.invalidCredentials"));
@@ -54,7 +56,7 @@ export function useSignIn() {
     await signIn("github", { callbackUrl });
   }
 
-    return {
+  return {
     email,
     setEmail,
     password,
