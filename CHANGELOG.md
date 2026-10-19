@@ -6,6 +6,23 @@ This changelog is maintained automatically by [Release Please](https://github.co
 Once this release automation is active, every `feat:`, `fix:`, `perf:`, and `refactor:` commit merged to `main` will
 automatically appear here when the next Release Please PR is merged.
 
+## [0.12.0](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.11.2...sketchgit-next-v0.12.0) (2026-10-19)
+
+
+### Features
+
+* [milestone 2.0] Implement Two-Factor Authentication via Email ([#457](https://github.com/steffenkoenig/sketchgit/issues/457)) ([4535c61](https://github.com/steffenkoenig/sketchgit/commit/4535c61245a7eee443a6ed30a8029f41948e899c))
+
+
+### Refactoring
+
+* [structure] Decompose monolithic snapping logic from canvasEngine into snappingLogic ([#456](https://github.com/steffenkoenig/sketchgit/issues/456)) ([703769e](https://github.com/steffenkoenig/sketchgit/commit/703769e502f11c518799fd1096fbc2af647f6a64))
+
+
+### Documentation
+
+* add implementation plans for new canvas features ([f53962e](https://github.com/steffenkoenig/sketchgit/commit/f53962e296b7ced8fe38696d135c26158bdeefea))
+
 ## [0.11.2](https://github.com/steffenkoenig/sketchgit/compare/sketchgit-next-v0.11.1...sketchgit-next-v0.11.2) (2026-09-15)
 
 
